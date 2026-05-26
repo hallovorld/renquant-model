@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from renquant_common import Job, Pipeline, Task
-from renquant_artifacts import validate_artifact_manifest
+from renquant_artifacts import validate_artifact_manifest, validate_model_evidence_contract
 from renquant_base_data import validate_data_manifest
 
 
@@ -88,6 +88,18 @@ class BuildPatchTstArtifactManifestTask(Task):
         missing = [key for key in required if not ctx.checkpoint_artifact.get(key)]
         if missing:
             raise ValueError(f"checkpoint_artifact missing required keys: {missing}")
+        evidence_contract = validate_model_evidence_contract(
+            ctx.checkpoint_artifact,
+            strict=bool(ctx.model_config.get("strict_model_evidence_contract", True)),
+            runtime_config=ctx.model_config,
+        )
+        if not evidence_contract.ok:
+            raise ValueError(
+                "checkpoint_artifact model evidence contract failed: "
+                f"errors={evidence_contract.errors}; warnings={evidence_contract.warnings}"
+            )
+        ctx.sanity_report.setdefault("model_evidence_contract_ok", evidence_contract.ok)
+        ctx.sanity_report.setdefault("model_evidence_contract_details", evidence_contract.details)
         manifest = {
             "artifact_id": ctx.checkpoint_artifact["artifact_id"],
             "model_family": ctx.checkpoint_artifact["model_family"],
