@@ -19,11 +19,17 @@ def test_patchtst_training_pipeline_runs_sanity_stage(tmp_path: Path) -> None:
         assert frame["label_col"] == "fwd_60d_excess"
         assert config["architecture"] == "hf_patchtst"
         assert output_dir.exists()
-        return {"kind": "hf_patchtst", "checkpoint": "model.pt"}, {"kind": "patchtst_calibrator"}
+        return {
+            "artifact_id": "patchtst-fixture",
+            "model_family": "patchtst",
+            "fingerprint": "sha256:patchtst",
+            "uri": "object://renquant-artifacts/patchtst-fixture.pt",
+            "promotion_status": "shadow",
+        }, {"kind": "patchtst_calibrator"}
 
     def validator(checkpoint: dict, frame, config: dict):
         calls.append("sanity")
-        assert checkpoint["kind"] == "hf_patchtst"
+        assert checkpoint["model_family"] == "patchtst"
         return {"real_ic": 0.03, "placebo_ic": 0.001, "passed": True}
 
     ctx = PatchTstTrainingContext(
@@ -31,6 +37,8 @@ def test_patchtst_training_pipeline_runs_sanity_stage(tmp_path: Path) -> None:
             "dataset_id": "transformer_v4_fixture",
             "fingerprint": "sha256:test",
             "schema_version": "fixture-v1",
+            "uri": "object://renquant-data/transformer_v4_fixture.parquet",
+            "asset_class": "equity",
             "label_col": "fwd_60d_excess",
             "lookahead_days": 60,
             "split_policy": "purged-walk-forward",
@@ -43,7 +51,9 @@ def test_patchtst_training_pipeline_runs_sanity_stage(tmp_path: Path) -> None:
     assert result.ok is True
     assert result.name == "patchtst-training"
     assert calls == ["load", "train", "sanity"]
-    assert ctx.checkpoint_artifact["kind"] == "hf_patchtst"
+    assert ctx.checkpoint_artifact["model_family"] == "patchtst"
+    assert ctx.artifact_manifest is not None
+    assert ctx.artifact_manifest["promotion_status"] == "shadow"
     assert ctx.sanity_report["passed"] is True
 
 

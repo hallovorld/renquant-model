@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Any
 
 from renquant_common import Job, Pipeline, Task
+from renquant_artifacts import validate_artifact_manifest
+from renquant_base_data import validate_data_manifest
 
 
 @dataclass
@@ -17,6 +19,7 @@ class PatchTstTrainingContext:
     sequence_frame: Any | None = None
     checkpoint_artifact: dict[str, Any] | None = None
     calibration_artifact: dict[str, Any] | None = None
+    artifact_manifest: dict[str, Any] | None = None
     sanity_report: dict[str, Any] = field(default_factory=dict)
 
 
@@ -30,9 +33,6 @@ class ValidateSequenceManifestTask(Task):
 
     def run(self, ctx: PatchTstTrainingContext) -> bool | None:
         required = (
-            "dataset_id",
-            "fingerprint",
-            "schema_version",
             "label_col",
             "lookahead_days",
             "split_policy",
@@ -40,6 +40,7 @@ class ValidateSequenceManifestTask(Task):
         missing = [key for key in required if not ctx.dataset_manifest.get(key)]
         if missing:
             raise ValueError(f"dataset_manifest missing required keys: {missing}")
+        validate_data_manifest(ctx.dataset_manifest)
         ctx.output_dir.mkdir(parents=True, exist_ok=True)
         return True
 
@@ -77,6 +78,33 @@ class RunSanityTriadTask(Task):
         return True
 
 
+class BuildPatchTstArtifactManifestTask(Task):
+    """Convert checkpoint output into a registry-valid artifact manifest."""
+
+    def run(self, ctx: PatchTstTrainingContext) -> bool | None:
+        if ctx.checkpoint_artifact is None:
+            raise ValueError("checkpoint_artifact is required before artifact manifest build")
+        required = ("artifact_id", "model_family", "fingerprint", "uri")
+        missing = [key for key in required if not ctx.checkpoint_artifact.get(key)]
+        if missing:
+            raise ValueError(f"checkpoint_artifact missing required keys: {missing}")
+        manifest = {
+            "artifact_id": ctx.checkpoint_artifact["artifact_id"],
+            "model_family": ctx.checkpoint_artifact["model_family"],
+            "strategy": ctx.model_config.get("strategy", "renquant_104"),
+            "fingerprint": ctx.checkpoint_artifact["fingerprint"],
+            "uri": ctx.checkpoint_artifact["uri"],
+            "promotion_status": ctx.checkpoint_artifact.get("promotion_status", "shadow"),
+            "metrics": dict(ctx.sanity_report),
+            "data_fingerprint": ctx.dataset_manifest["fingerprint"],
+            "config_fingerprint": ctx.model_config.get("config_fingerprint", "unfingerprinted"),
+            "code_commit": ctx.model_config.get("code_commit", "uncommitted"),
+        }
+        validate_artifact_manifest(manifest)
+        ctx.artifact_manifest = manifest
+        return True
+
+
 class PatchTstTrainingJob(Job):
     def __init__(
         self,
@@ -89,6 +117,7 @@ class PatchTstTrainingJob(Job):
             LoadSequenceFrameTask(loader),
             TrainPatchTstTask(trainer),
             RunSanityTriadTask(validator),
+            BuildPatchTstArtifactManifestTask(),
         ]
 
     @property

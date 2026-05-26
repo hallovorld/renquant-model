@@ -1,5 +1,15 @@
 """PatchTST/PatchTXT sequence-model package."""
 
-from .pipelines import PatchTstTrainingContext, PatchTstTrainingPipeline
+from .pipelines import (
+    BuildPatchTstArtifactManifestTask,
+    PatchTstTrainingContext,
+    PatchTstTrainingPipeline,
+    ValidateSequenceManifestTask,
+)
 
-__all__ = ["PatchTstTrainingContext", "PatchTstTrainingPipeline"]
+__all__ = [
+    "BuildPatchTstArtifactManifestTask",
+    "PatchTstTrainingContext",
+    "PatchTstTrainingPipeline",
+    "ValidateSequenceManifestTask",
+]
