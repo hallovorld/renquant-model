@@ -4,9 +4,15 @@ Cross-family utilities (feature assembly, training-ledger writer, global
 calibrator, acceptance helpers) land here as they are ported from the
 umbrella per RFC §"Backfill Plan" P3 / task "Lift training_panel".
 
-Empty for now beyond this marker — the GBDT and PatchTST families
-currently import shared CV primitives directly from
-``renquant_common.purged_cv``.
+Lifted cross-family model utilities (copy-not-move, stdlib + numpy/pandas/
+scipy only):
+
+* ``calibrator_quality``  — calibrator health metrics
+* ``triple_barrier``      — triple-barrier label construction
+* ``acceptance_entry_ic`` — entry-IC acceptance metric
+* ``challenger``          — challenger-window model ledger
+
+Families also import shared CV primitives from ``renquant_common.purged_cv``.
 """
 from __future__ import annotations
 
