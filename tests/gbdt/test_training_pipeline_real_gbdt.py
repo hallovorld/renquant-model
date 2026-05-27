@@ -12,7 +12,7 @@ from renquant_model_gbdt import (
     validate_panel_ltr_artifact,
 )
 
-from panel_fixtures import make_easy_panel
+from .panel_fixtures import make_easy_panel
 
 
 def _dataset_manifest() -> dict:

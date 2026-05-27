@@ -5,7 +5,7 @@ import pytest
 
 from renquant_model_gbdt.ltr_model import PanelLTRModel
 
-from panel_fixtures import make_easy_panel
+from .panel_fixtures import make_easy_panel
 
 
 def test_panel_ltr_model_trains_on_easy_signal() -> None:

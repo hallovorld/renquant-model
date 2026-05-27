@@ -6,8 +6,8 @@ import pytest
 
 from renquant_model_gbdt import train_panel_ltr_artifact
 
-from panel_fixtures import make_easy_panel
-from test_training_pipeline_real_gbdt import _model_config
+from .panel_fixtures import make_easy_panel
+from .test_training_pipeline_real_gbdt import _model_config
 
 
 def _dataset():
