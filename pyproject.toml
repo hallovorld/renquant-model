@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "renquant-model"
+version = "0.1.0"
+description = "RenQuant model families (GBDT panel-LTR + PatchTST sequence) in one repo."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "renquant-common>=0.2,<0.3",
+  "renquant-base-data>=0.1.0",
+  "renquant-artifacts>=0.1.0",
+  "numpy>=1.26",
+  "pandas>=2.0",
+  "scipy>=1.11",
+]
+
+# Per-family optional extras keep installs slim:
+#   pip install renquant-model[gbdt]      → XGBoost backend
+#   pip install renquant-model[patchtst]  → torch + transformers backend
+[project.optional-dependencies]
+gbdt = ["xgboost>=2.1"]
+patchtst = ["torch>=2.2", "transformers>=4.40"]
+
+# Scorer entry points — consumers reach these only via
+# renquant_common.load_scorer (RFC §"Cross-Repo Contracts → Scorer Protocol").
+[project.entry-points."renquant_common.scorers"]
+panel_ltr_xgboost = "renquant_model_gbdt.scorer:load"
+# patchtst_panel registered once the sequence scorer lands (P-future).
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "--import-mode=importlib"
+pythonpath = ["src", "../renquant-common/src", "../renquant-base-data/src", "../renquant-artifacts/src"]
+testpaths = ["tests"]
