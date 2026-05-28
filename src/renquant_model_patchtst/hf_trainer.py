@@ -831,7 +831,9 @@ def train_one(args: argparse.Namespace) -> dict:
     return summary
 
 
-def main():
+def build_parser() -> argparse.ArgumentParser:
+    """The trainer's CLI parser — reused by main() and by the SequenceTrainer
+    adapter (training.py) so default hyperparameters live in exactly one place."""
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--dataset", default="data/transformer_v4_wl200_clean.parquet")
@@ -897,7 +899,11 @@ def main():
                    help="Strategy config JSON whose model-relevant fingerprint "
                         "is stamped into the summary/checkpoint. Defaults to "
                         "renquant_104 strategy_config.shadow.json.")
-    args = p.parse_args()
+    return p
+
+
+def main():
+    args = build_parser().parse_args()
     print(json.dumps(train_one(args), indent=2, default=str))
 
 
