@@ -1,10 +1,10 @@
-"""Byte-identity guard: the reconciled legacy_panel_trainer must reproduce the
+"""Byte-identity guard: the reconciled panel_trainer must reproduce the
 umbrella's scripts/train_production_model.py model-side math exactly.
 
 The "golden" legacy contract is encoded inline (float64 features, label clip(-5,5),
 ``np.argsort`` date ordering, per-date ``np.unique`` group sizes, the caller's
 params verbatim). If the engine port ever drifts — e.g. someone reintroduces the
-float32 cast or DEFAULT_PARAMS merge that PanelLTRModel uses — these tests fail.
+float32 cast or an implicit DEFAULT_PARAMS merge — these tests fail.
 
 Booster determinism (XGBoost 2.x, fixed seed, fixed nthread, same process) was
 verified empirically before this test was written.
@@ -17,8 +17,8 @@ import pytest
 
 xgb = pytest.importorskip("xgboost")
 
-from renquant_model_gbdt.legacy_panel_trainer import (  # noqa: E402
-    LEGACY_PARAMS,
+from renquant_model_gbdt.panel_trainer import (  # noqa: E402
+    PANEL_LTR_PARAMS,
     evaluate_walk_forward_cv,
     train_xgb,
 )
@@ -55,23 +55,23 @@ def _legacy_train_xgb_golden(train, feat_cols, params, num_boost_round, label="f
 
 def test_engine_booster_byte_identical_to_legacy_golden():
     panel, feat_cols = _synthetic_panel()
-    booster_engine, _ = train_xgb(panel, feat_cols, params=dict(LEGACY_PARAMS), num_boost_round=40)
-    booster_golden = _legacy_train_xgb_golden(panel, feat_cols, LEGACY_PARAMS, 40)
+    booster_engine, _ = train_xgb(panel, feat_cols, params=dict(PANEL_LTR_PARAMS), num_boost_round=40)
+    booster_golden = _legacy_train_xgb_golden(panel, feat_cols, PANEL_LTR_PARAMS, 40)
     raw_engine = bytes(booster_engine.save_raw(raw_format="json"))
     raw_golden = bytes(booster_golden.save_raw(raw_format="json"))
     assert raw_engine == raw_golden, "engine booster diverged from legacy golden math"
 
 
 def test_default_params_merge_would_change_booster():
-    """The real booster-changer: PanelLTRModel force-merges DEFAULT_PARAMS
+    """The real booster-changer: an implicit DEFAULT_PARAMS merge
     (alpha=0.5, tree_method='hist', max_depth=4, …). Training with those instead
     of the legacy params must produce a DIFFERENT booster — which is exactly why
-    the legacy trainer uses the caller's params verbatim, not the engine defaults.
+    the production trainer uses the caller's params verbatim, not the engine defaults.
     (Note: float32 vs float64 does NOT differ — xgboost DMatrix downcasts to
     float32 internally — so dtype is not a parity blocker; params are.)"""
     panel, feat_cols = _synthetic_panel(seed=11)
-    b_legacy, _ = train_xgb(panel, feat_cols, params=dict(LEGACY_PARAMS), num_boost_round=30)
-    engine_defaults = dict(LEGACY_PARAMS)
+    b_legacy, _ = train_xgb(panel, feat_cols, params=dict(PANEL_LTR_PARAMS), num_boost_round=30)
+    engine_defaults = dict(PANEL_LTR_PARAMS)
     engine_defaults.update({"alpha": 0.5, "tree_method": "hist", "max_depth": 4,
                             "min_child_weight": 10, "subsample": 0.8, "colsample_bytree": 0.8})
     b_defaults, _ = train_xgb(panel, feat_cols, params=engine_defaults, num_boost_round=30)
@@ -87,13 +87,13 @@ def test_label_clip_is_noop_for_rankpairwise_but_preserved():
     panel, feat_cols = _synthetic_panel(seed=13)
     panel = panel.copy()
     panel.loc[panel.index[:5], "fwd_60d_excess"] = 999.0  # extreme outliers (still group-max)
-    b_clipped, _ = train_xgb(panel, feat_cols, params=dict(LEGACY_PARAMS), num_boost_round=30)
+    b_clipped, _ = train_xgb(panel, feat_cols, params=dict(PANEL_LTR_PARAMS), num_boost_round=30)
     Xtr = panel.reindex(columns=feat_cols, fill_value=0).fillna(0).values.astype(np.float64)
     ytr = panel["fwd_60d_excess"].values.astype(np.float64)  # no clip
     si = np.argsort(panel["date"].values)
     d = xgb.DMatrix(Xtr[si], label=ytr[si])
     d.set_group(np.unique(panel["date"].values[si], return_counts=True)[1])
-    b_noclip = xgb.train(dict(LEGACY_PARAMS), d, num_boost_round=30)
+    b_noclip = xgb.train(dict(PANEL_LTR_PARAMS), d, num_boost_round=30)
     assert bytes(b_clipped.save_raw(raw_format="json")) == bytes(b_noclip.save_raw(raw_format="json")), \
         "rank:pairwise depends only on order; clip should NOT change the booster"
 
@@ -106,7 +106,7 @@ def test_cv_oos_ic_identical_to_golden():
     )
     cv = evaluate_walk_forward_cv(
         panel, feat_cols, normalization_builder=identity_norm,
-        params=dict(LEGACY_PARAMS), num_boost_round=25, n_splits=3, embargo_days=5,
+        params=dict(PANEL_LTR_PARAMS), num_boost_round=25, n_splits=3, embargo_days=5,
     )
     assert cv["cv_method"] == "purged_walk_forward"
     assert cv["cv_n_splits"] == 3
