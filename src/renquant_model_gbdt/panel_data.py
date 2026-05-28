@@ -170,6 +170,10 @@ class LoadPanelTask(Task):
             Path(ctx.data_dir), label=ctx.label, cutoff_date=ctx.cutoff_date,
             watchlist=ctx.watchlist, cutoff_embargo_days=ctx.cutoff_embargo_days,
         )
+        if ctx.exclude_features:
+            drop = set(ctx.exclude_features)
+            feat_cols = [c for c in feat_cols if c not in drop]
+            log.info("Excluded %d feature(s); %d remain", len(drop & set(train.columns)), len(feat_cols))
         ctx.train, ctx.feat_cols, ctx.label = train, feat_cols, label
         ctx.lookahead_days = infer_label_lookahead_days(label)
         if ctx.cutoff_date is not None:
