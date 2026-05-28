@@ -83,3 +83,15 @@ def test_self_contained_skip_cv(tmp_path: Path) -> None:
     build_training_pipeline().run(ctx)
     assert ctx.artifact is not None and "oos_mean_ic" not in ctx.artifact
     assert ctx.booster is not None
+
+
+def test_exclude_features_drops_columns(tmp_path: Path) -> None:
+    """exclude_features removes the named columns from the trained feature set."""
+    data_dir = _make_data_dir(tmp_path, n_dates=30)
+    ctx = GbdtTrainingContext(
+        params=dict(PANEL_LTR_PARAMS), num_boost_round=15, skip_cv=True,
+        data_dir=str(data_dir), train_run_id="x", exclude_features=["a1"],
+    )
+    build_training_pipeline().run(ctx)
+    assert ctx.feat_cols == ["a0", "a2"]
+    assert ctx.artifact["feature_cols"] == ["a0", "a2"]

@@ -58,6 +58,9 @@ class GbdtTrainingContext:
     cutoff_embargo_days: Optional[int] = None
     side_label: Optional[str] = None
     output_path: Optional[str] = None
+    # Feature columns to drop from the panel before training (e.g. low/negative-IC
+    # families found to dilute the signal). Empty/None = keep all panel features.
+    exclude_features: Optional[list[str]] = None
     # Production config fingerprint, injected by the orchestrator (computed from the
     # strategy config so the runtime scorer's live-fingerprint check matches). When
     # None the contract Task falls back to a self-describing content hash.
