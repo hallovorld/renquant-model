@@ -1,19 +1,18 @@
-"""Legacy-parity panel-LTR trainer (model-side), reconciled into the engine.
+"""Panel-LTR trainer (model-side) — the canonical GBDT training engine.
 
-This is a **verbatim port** of the model-side training logic from the umbrella's
-``scripts/train_production_model.py`` (the production GBDT trainer), moved here so
-``renquant-model`` owns one canonical engine that reproduces the legacy artifact
-**byte-for-byte** (booster + OOS/CV metadata + schema), excluding the two fields
-the legacy script intentionally randomizes (``train_run_id`` = ``uuid4``,
-``trained_date`` = ``utcnow``).
+The model-side training logic from the umbrella's
+``scripts/train_production_model.py`` lives here so ``renquant-model`` owns one
+engine that reproduces the production artifact **byte-for-byte** (booster +
+OOS/CV metadata + version:3 schema), excluding the two fields the umbrella script
+intentionally randomizes (``train_run_id`` = ``uuid4``, ``trained_date`` =
+``utcnow``).
 
-Why a dedicated module rather than reusing :class:`PanelLTRModel`:
-``PanelLTRModel`` is a *different* trainer — it casts features to ``float32``,
-force-merges ``DEFAULT_PARAMS`` (``alpha=0.5``, ``tree_method="hist"``, …), does
-not clip the label, and bucketizes for ndcg/map. Any of those changes the
-booster. Byte-identity requires the legacy math exactly: ``float64`` features,
-label ``clip(-5, 5)``, the caller's params dict verbatim, date-sorted rows via
-``np.argsort``, and per-date ``np.unique`` group sizes.
+Byte-identity contract — the booster depends on exactly: ``float64`` features
+(xgboost ``DMatrix`` downcasts to float32 internally, so this is moot, but kept),
+label ``clip(-5, 5)``, the caller's params dict used verbatim (no implicit
+defaults merge — a stray ``alpha`` / ``tree_method`` changes the tree), date-
+sorted rows via ``np.argsort``, and per-date ``np.unique`` group sizes for
+rank:pairwise pairing.
 
 Data-side pieces (normalization built from on-disk stats/fund files, config
 fingerprint, sentiment gate, inference-smoke) stay in the driver and are injected
@@ -32,17 +31,17 @@ import pandas as pd
 
 from .feature_transform import transform_feature_frame
 
-log = logging.getLogger("renquant_model_gbdt.legacy_panel_trainer")
+log = logging.getLogger("renquant_model_gbdt.panel_trainer")
 
-# Legacy production defaults (scripts/train_production_model.py). Callers may
+# Production defaults (scripts/train_production_model.py). Callers may
 # override via ``config``; defaults preserve byte-identity with production.
-LEGACY_PARAMS: dict[str, Any] = {
+PANEL_LTR_PARAMS: dict[str, Any] = {
     "objective": "rank:pairwise", "eta": 0.05, "max_depth": 5,
     "min_child_weight": 50, "subsample": 0.7, "colsample_bytree": 0.7,
     "verbosity": 0, "seed": 42,
 }
-LEGACY_N_ROUNDS = 100
-LEGACY_LABEL = "fwd_60d_excess"
+DEFAULT_N_ROUNDS = 100
+DEFAULT_LABEL = "fwd_60d_excess"
 
 # A builder that, given (train_df, feat_cols), returns
 # (feature_means, feature_stds, feature_norm_kind, raw_clip_low, raw_clip_high).
@@ -90,23 +89,23 @@ def panel_training_matrix(
 def train_xgb(
     train: pd.DataFrame,
     feat_cols: list[str],
-    label: str = LEGACY_LABEL,
+    label: str = DEFAULT_LABEL,
     *,
     params: dict[str, Any] | None = None,
-    num_boost_round: int = LEGACY_N_ROUNDS,
+    num_boost_round: int = DEFAULT_N_ROUNDS,
     feature_means: np.ndarray | None = None,
     feature_stds: np.ndarray | None = None,
     feature_norm_kind: list[str] | None = None,
 ):
     """Train rank:pairwise XGB and return (booster, in-sample IC).
 
-    Verbatim port of the legacy ``train_xgb`` — float64 features, label
+    Verbatim port of the production ``train_xgb`` — float64 features, label
     ``clip(-5, 5)``, date-sorted rows, per-date ``np.unique`` group sizes.
     """
     import xgboost as xgb  # noqa: PLC0415
     from scipy.stats import spearmanr  # noqa: PLC0415
 
-    xgb_params = dict(LEGACY_PARAMS if params is None else params)
+    xgb_params = dict(PANEL_LTR_PARAMS if params is None else params)
 
     if feature_means is not None and feature_stds is not None and feature_norm_kind is not None:
         Xdf = panel_training_matrix(train, feat_cols, feature_means, feature_stds, feature_norm_kind)
@@ -164,13 +163,13 @@ def evaluate_walk_forward_cv(
     feat_cols: list[str],
     *,
     normalization_builder: NormalizationBuilder,
-    label: str = LEGACY_LABEL,
+    label: str = DEFAULT_LABEL,
     params: dict[str, Any] | None = None,
-    num_boost_round: int = LEGACY_N_ROUNDS,
+    num_boost_round: int = DEFAULT_N_ROUNDS,
     n_splits: int = 3,
     embargo_days: int = 60,
 ) -> dict:
-    """Purged expanding-window CV (verbatim port of the legacy artifact-contract CV).
+    """Purged expanding-window CV (verbatim port of the production artifact-contract CV).
 
     Each fold trains only on dates strictly before the validation fold, leaving
     ``embargo_days`` trading dates between train and validation, and rebuilds
@@ -252,21 +251,21 @@ def build_model_artifact(
     train: pd.DataFrame,
     *,
     params: dict[str, Any],
-    num_boost_round: int = LEGACY_N_ROUNDS,
+    num_boost_round: int = DEFAULT_N_ROUNDS,
     feature_norm_kind: list[str] | None = None,
     feature_raw_clip_low: list[float | None] | None = None,
     feature_raw_clip_high: list[float | None] | None = None,
-    label_used: str = LEGACY_LABEL,
+    label_used: str = DEFAULT_LABEL,
     lookahead_days: int = 60,
     train_ic: float | None = None,
     cv_result: dict | None = None,
     train_run_id: str | None = None,
     training_notes: str = "",
 ) -> dict:
-    """Assemble the model-side artifact dict (verbatim port of legacy build_artifact).
+    """Assemble the model-side artifact dict (verbatim port of the production build_artifact).
 
     Data/contract-side fields (cutoff, side_label, sentiment, fingerprint, smoke)
-    are layered on by the driver to preserve byte-identity with the legacy script.
+    are layered on by the driver to preserve byte-identity with the production script (scripts/train_production_model.py).
     """
     raw_json = bytes(booster.save_raw(raw_format="json")).decode("utf-8")
     artifact = {
