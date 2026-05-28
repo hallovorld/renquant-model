@@ -200,14 +200,22 @@ class BuildNormalizationTask(Task):
 # ── Contract-side Tasks ──
 
 class StampFingerprintTask(Task):
-    """Stamp a self-describing content fingerprint on the artifact."""
+    """Stamp the config fingerprint: the injected production fingerprint when the
+    orchestrator provides one (so the runtime scorer matches), else a
+    self-describing content hash."""
 
     def run(self, ctx: GbdtTrainingContext) -> bool | None:
         if ctx.artifact is None:
             raise ValueError("StampFingerprintTask: artifact required")
-        fp = content_fingerprint(ctx.artifact)
-        ctx.artifact["config_fingerprint"] = fp
-        log.info("Content fingerprint: %s", fp)
+        if ctx.config_fingerprint:
+            ctx.artifact["config_fingerprint"] = ctx.config_fingerprint
+            if ctx.config_fingerprint_fields is not None:
+                ctx.artifact["config_fingerprint_fields"] = ctx.config_fingerprint_fields
+            log.info("Production config fingerprint: %s", ctx.config_fingerprint)
+        else:
+            fp = content_fingerprint(ctx.artifact)
+            ctx.artifact["config_fingerprint"] = fp
+            log.info("Content fingerprint (no production fp injected): %s", fp)
         return True
 
 

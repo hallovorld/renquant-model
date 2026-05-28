@@ -58,6 +58,11 @@ class GbdtTrainingContext:
     cutoff_embargo_days: Optional[int] = None
     side_label: Optional[str] = None
     output_path: Optional[str] = None
+    # Production config fingerprint, injected by the orchestrator (computed from the
+    # strategy config so the runtime scorer's live-fingerprint check matches). When
+    # None the contract Task falls back to a self-describing content hash.
+    config_fingerprint: Optional[str] = None
+    config_fingerprint_fields: Optional[dict[str, Any]] = None
 
     # ── data-side (set by data-prep Tasks) ──
     train: Optional[pd.DataFrame] = None
