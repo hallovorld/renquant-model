@@ -50,7 +50,16 @@ class GbdtTrainingContext:
     train_run_id: Optional[str] = None
     training_notes: str = ""
 
-    # ── data-side (set by umbrella Tasks) ──
+    # ── data-side config (consumed by panel_data Tasks; leave None when injecting
+    #    a pre-loaded frame instead of loading from disk) ──
+    data_dir: Optional[str] = None
+    cutoff_date: Any = None            # pd.Timestamp | None
+    watchlist: Optional[list[str]] = None
+    cutoff_embargo_days: Optional[int] = None
+    side_label: Optional[str] = None
+    output_path: Optional[str] = None
+
+    # ── data-side (set by data-prep Tasks) ──
     train: Optional[pd.DataFrame] = None
     feat_cols: list[str] = field(default_factory=list)
     normalization_builder: Optional[NormalizationBuilder] = None

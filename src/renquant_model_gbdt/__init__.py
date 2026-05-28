@@ -24,6 +24,18 @@ from .pipeline import (
     TrainBoosterTask,
     WalkForwardCVTask,
 )
+# Self-contained data-side pipeline (reads data_dir; no umbrella / kernel.*).
+from .panel_data import (
+    ArtifactContractJob,
+    BuildNormalizationTask,
+    DataPrepJob,
+    LoadPanelTask,
+    build_normalization,
+    build_training_pipeline,
+    content_fingerprint,
+    infer_label_lookahead_days,
+    load_panel,
+)
 # Generic training-pipeline shell (Task/Job/Pipeline with trainer DI). Consumed by
 # renquant-orchestrator's DailyRunPipeline, which injects its own loader/trainer/
 # validator. The default trainer it is paired with is the canonical engine above.
@@ -40,10 +52,14 @@ __all__ = [
     "DEFAULT_LABEL",
     "DEFAULT_N_ROUNDS",
     "PANEL_LTR_PARAMS",
+    "ArtifactContractJob",
     "BuildArtifactManifestTask",
     "BuildArtifactTask",
+    "BuildNormalizationTask",
+    "DataPrepJob",
     "DatasetLoader",
     "GbdtTrainingContext",
+    "LoadPanelTask",
     "ModelTrainingJob",
     "NormalizationBuilder",
     "PanelGbdtTrainingPipeline",
@@ -53,8 +69,13 @@ __all__ = [
     "Validator",
     "WalkForwardCVTask",
     "build_model_artifact",
+    "build_normalization",
+    "build_training_pipeline",
+    "content_fingerprint",
     "cross_sectional_ic",
     "evaluate_walk_forward_cv",
+    "infer_label_lookahead_days",
+    "load_panel",
     "train_xgb",
     "transform_feature_frame",
 ]
