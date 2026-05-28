@@ -1,0 +1,262 @@
+"""Self-contained data-side for GBDT panel-LTR training.
+
+Loads the alpha158 + fundamentals panel, fits the inference normalization chain,
+and stamps contract evidence (content fingerprint + inference smoke) — all from a
+configurable ``data_dir``, with no umbrella code and no ``kernel.*`` imports. This
+lets renquant-model train the panel-LTR model end-to-end on its own; the
+orchestrator only points it at the data directory.
+
+Functions are verbatim ports of the umbrella's scripts/train_production_model.py
+data-side (load_and_slice_panel / build_normalization / infer_label_lookahead_days
+/ attach_inference_smoke), with hardcoded ``data/`` paths replaced by ``data_dir``.
+
+Out of scope here (umbrella-coupled, injected by the caller if desired): the
+per-regime sentiment training gate, which depends on the HMM regime detector +
+strategy config. Absent a regime map the model trains on the full feature set.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import logging
+import re
+from pathlib import Path
+from typing import Any, Optional
+
+import numpy as np
+import pandas as pd
+
+from renquant_common import Job, Pipeline, Task
+
+from .panel_trainer import DEFAULT_LABEL
+from .pipeline import GbdtTrainingContext, ModelTrainingJob
+
+log = logging.getLogger("renquant_model_gbdt.panel_data")
+
+PANEL_FILE = "alpha158_291_fundamental_dataset.parquet"
+ALPHA_STATS_FILE = "alpha158_qlib_dataset.stats.json"
+FUND_FILE = "sec_fundamentals_daily.parquet"
+FUND_COLS = ["earnings_yield", "book_to_price", "gross_profitability", "roe", "asset_growth"]
+_LABEL_EXCL = {"ticker", "date", "split_label", "fwd_5d_excess", "fwd_20d_excess", "fwd_60d_excess"}
+
+
+def infer_label_lookahead_days(label: str) -> int:
+    """Infer label lookahead from names such as fwd_60d_excess."""
+    m = re.search(r"fwd_(\d+)d", str(label))
+    return int(m.group(1)) if m else 60
+
+
+def load_panel(
+    data_dir: Path,
+    *,
+    label: str = DEFAULT_LABEL,
+    cutoff_date: Optional[pd.Timestamp] = None,
+    watchlist: Optional[list[str]] = None,
+    cutoff_embargo_days: Optional[int] = None,
+) -> tuple[pd.DataFrame, list[str], str]:
+    """Load the alpha158 + fund panel, optionally filtering by watchlist/cutoff."""
+    panel = pd.read_parquet(data_dir / PANEL_FILE)
+    panel["date"] = pd.to_datetime(panel["date"])
+    feat_cols = [c for c in panel.columns if c not in _LABEL_EXCL]
+    if watchlist:
+        panel = panel[panel["ticker"].isin(watchlist)].copy()
+    train = panel.dropna(subset=[label])
+    if cutoff_date is not None:
+        embargo = (infer_label_lookahead_days(label)
+                   if cutoff_embargo_days is None else int(cutoff_embargo_days))
+        effective_cutoff = cutoff_date - pd.offsets.BDay(max(0, embargo))
+        train = train[train["date"] < effective_cutoff]
+        if len(train) == 0:
+            raise ValueError(f"no training rows with date < {effective_cutoff.date()}")
+    log.info("Loaded panel: %d rows, %d tickers, %d dates, label=%s",
+             len(train), train["ticker"].nunique(), train["date"].nunique(), label)
+    return train, feat_cols, label
+
+
+def build_normalization(
+    train: pd.DataFrame,
+    feat_cols: list[str],
+    data_dir: Path,
+) -> tuple[np.ndarray, np.ndarray, list[str], list[Optional[float]], list[Optional[float]]]:
+    """Build the inference normalization chain: (mean, std) per feature s.t.
+    (raw - mean)/std = normalized. alpha cols from panel z-stats; fund cols robust-z
+    refit on the train period; everything else identity."""
+    ps = json.loads((data_dir / ALPHA_STATS_FILE).read_text())
+    alpha_cols = list(ps["feature_cols"])
+    alpha_lows = ps.get("feature_raw_clip_low") or [None] * len(alpha_cols)
+    alpha_highs = ps.get("feature_raw_clip_high") or [None] * len(alpha_cols)
+    if len(alpha_lows) != len(alpha_cols) or len(alpha_highs) != len(alpha_cols):
+        alpha_lows = [None] * len(alpha_cols)
+        alpha_highs = [None] * len(alpha_cols)
+    alpha_norm = {
+        c: {"mean": m, "std": s, "raw_clip_low": lo, "raw_clip_high": hi}
+        for c, m, s, lo, hi in zip(alpha_cols, ps["feature_means"], ps["feature_stds"],
+                                   alpha_lows, alpha_highs)
+    }
+
+    fund_raw = pd.read_parquet(data_dir / FUND_FILE)
+    fund_raw["date"] = pd.to_datetime(fund_raw["date"])
+    train_dates = set(train["date"])
+    fund_train = fund_raw[fund_raw["date"].isin(train_dates)
+                          & fund_raw["ticker"].isin(set(train["ticker"]))]
+    fund_norm = {}
+    for c in FUND_COLS:
+        col = fund_train[c].dropna()
+        med = float(col.median()) if len(col) else 0.0
+        mad = float((col - med).abs().median()) if len(col) else 1.0
+        fund_norm[c] = (med, max(mad * 1.4826, 1e-9))
+
+    means, stds, kinds = [], [], []
+    clip_lo: list[Optional[float]] = []
+    clip_hi: list[Optional[float]] = []
+    for c in feat_cols:
+        if c in alpha_norm:
+            rec = alpha_norm[c]
+            means.append(rec["mean"]); stds.append(rec["std"]); kinds.append("global_z")
+            clip_lo.append(rec["raw_clip_low"]); clip_hi.append(rec["raw_clip_high"])
+        elif c in fund_norm:
+            m, s = fund_norm[c]
+            means.append(m); stds.append(s); kinds.append("robust_z")
+            clip_lo.append(None); clip_hi.append(None)
+        else:
+            means.append(0.0); stds.append(1.0); kinds.append("identity")
+            clip_lo.append(None); clip_hi.append(None)
+    log.info("Normalization: %d global_z, %d robust_z, %d identity",
+             kinds.count("global_z"), kinds.count("robust_z"), kinds.count("identity"))
+    return np.array(means), np.array(stds), kinds, clip_lo, clip_hi
+
+
+def content_fingerprint(artifact: dict[str, Any]) -> str:
+    """Self-describing sha256 over model-defining fields (params + features + booster)."""
+    payload = {
+        "params": artifact.get("params"),
+        "feature_cols": artifact.get("feature_cols"),
+        "label_col": artifact.get("label_col"),
+        "booster_raw_json": artifact.get("booster_raw_json"),
+    }
+    blob = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return "sha256:" + hashlib.sha256(blob).hexdigest()
+
+
+def attach_inference_smoke(artifact: dict, booster: Any, feat_cols: list[str]) -> None:
+    """Deterministic scorer smoke evidence (synthetic input; serialization sanity)."""
+    import xgboost as xgb  # noqa: PLC0415
+
+    rng = np.random.default_rng(104)
+    X = rng.standard_normal((32, len(feat_cols))).astype(np.float64)
+    scores = booster.predict(xgb.DMatrix(X))
+    finite = np.isfinite(scores)
+    md = artifact.setdefault("metadata", {})
+    md["score_sample_range"] = [
+        float(np.nanmin(scores)) if len(scores) else float("nan"),
+        float(np.nanmax(scores)) if len(scores) else float("nan"),
+    ]
+    md["inference_smoke_test"] = {
+        "n": int(len(scores)),
+        "all_finite": bool(finite.all()) if len(scores) else False,
+        "n_unique": int(len(set(np.round(scores[finite], 12)))) if finite.any() else 0,
+    }
+
+
+# ── Data-side Tasks (populate the shared GbdtTrainingContext) ──
+
+class LoadPanelTask(Task):
+    """Read + slice the panel from data_dir; seed cutoff/side_label artifact fields."""
+
+    def run(self, ctx: GbdtTrainingContext) -> bool | None:
+        if ctx.data_dir is None:
+            raise ValueError("LoadPanelTask: ctx.data_dir required")
+        train, feat_cols, label = load_panel(
+            Path(ctx.data_dir), label=ctx.label, cutoff_date=ctx.cutoff_date,
+            watchlist=ctx.watchlist, cutoff_embargo_days=ctx.cutoff_embargo_days,
+        )
+        ctx.train, ctx.feat_cols, ctx.label = train, feat_cols, label
+        ctx.lookahead_days = infer_label_lookahead_days(label)
+        if ctx.cutoff_date is not None:
+            embargo = int(ctx.lookahead_days if ctx.cutoff_embargo_days is None
+                          else ctx.cutoff_embargo_days)
+            ctx.extra_artifact_fields["cutoff_date"] = pd.Timestamp(ctx.cutoff_date).isoformat()
+            ctx.extra_artifact_fields["cutoff_embargo_days"] = embargo
+            ctx.extra_artifact_fields["effective_train_cutoff_date"] = (
+                pd.Timestamp(ctx.cutoff_date) - pd.offsets.BDay(embargo)).isoformat()
+        if ctx.side_label is not None:
+            ctx.extra_artifact_fields["side_label"] = ctx.side_label
+        return True
+
+
+class BuildNormalizationTask(Task):
+    """Fit the normalization chain; expose it as the CV per-fold builder."""
+
+    def run(self, ctx: GbdtTrainingContext) -> bool | None:
+        if ctx.train is None or ctx.data_dir is None:
+            raise ValueError("BuildNormalizationTask: train + data_dir required")
+        data_dir = Path(ctx.data_dir)
+        ctx.mu, ctx.sd, ctx.norm_kind, ctx.raw_clip_low, ctx.raw_clip_high = (
+            build_normalization(ctx.train, ctx.feat_cols, data_dir))
+        ctx.normalization_builder = lambda tr, fc: build_normalization(tr, fc, data_dir)
+        return True
+
+
+# ── Contract-side Tasks ──
+
+class StampFingerprintTask(Task):
+    """Stamp a self-describing content fingerprint on the artifact."""
+
+    def run(self, ctx: GbdtTrainingContext) -> bool | None:
+        if ctx.artifact is None:
+            raise ValueError("StampFingerprintTask: artifact required")
+        fp = content_fingerprint(ctx.artifact)
+        ctx.artifact["config_fingerprint"] = fp
+        log.info("Content fingerprint: %s", fp)
+        return True
+
+
+class AttachSmokeTask(Task):
+    def run(self, ctx: GbdtTrainingContext) -> bool | None:
+        if ctx.artifact is None or ctx.booster is None:
+            raise ValueError("AttachSmokeTask: artifact + booster required")
+        attach_inference_smoke(ctx.artifact, ctx.booster, ctx.feat_cols)
+        return True
+
+
+class WriteArtifactTask(Task):
+    """Persist the artifact to ctx.output_path (when set)."""
+
+    def run(self, ctx: GbdtTrainingContext) -> bool | None:
+        if ctx.output_path is None:
+            return True
+        out = Path(ctx.output_path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(ctx.artifact))
+        log.info("Saved artifact: %s (%.1f MB)", out, out.stat().st_size / 1e6)
+        return True
+
+
+class DataPrepJob(Job):
+    """Self-contained data preparation: load panel → fit normalization."""
+
+    @property
+    def tasks(self) -> list[Task]:
+        return [LoadPanelTask(), BuildNormalizationTask()]
+
+
+class ArtifactContractJob(Job):
+    """Stamp contract evidence + persist."""
+
+    @property
+    def tasks(self) -> list[Task]:
+        return [StampFingerprintTask(), AttachSmokeTask(), WriteArtifactTask()]
+
+
+def build_training_pipeline() -> Pipeline:
+    """The full self-contained GBDT training Pipeline (data → model → contract).
+
+    Run it against a ``GbdtTrainingContext`` whose ``data_dir`` + ``params`` are
+    set; it loads the panel, fits normalization, runs CV + trains the booster,
+    builds the version:3 artifact, stamps a content fingerprint + smoke, and
+    persists to ``output_path``. No umbrella code, no ``kernel.*``.
+    """
+    return Pipeline(
+        [DataPrepJob(), ModelTrainingJob(), ArtifactContractJob()],
+        name="panel-gbdt-training",
+    )
