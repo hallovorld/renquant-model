@@ -24,16 +24,33 @@ from .pipeline import (
     TrainBoosterTask,
     WalkForwardCVTask,
 )
+# Generic training-pipeline shell (Task/Job/Pipeline with trainer DI). Consumed by
+# renquant-orchestrator's DailyRunPipeline, which injects its own loader/trainer/
+# validator. The default trainer it is paired with is the canonical engine above.
+from .pipelines import (
+    BuildArtifactManifestTask,
+    DatasetLoader,
+    PanelGbdtTrainingPipeline,
+    Trainer,
+    TrainingContext,
+    Validator,
+)
 
 __all__ = [
     "DEFAULT_LABEL",
     "DEFAULT_N_ROUNDS",
     "PANEL_LTR_PARAMS",
+    "BuildArtifactManifestTask",
     "BuildArtifactTask",
+    "DatasetLoader",
     "GbdtTrainingContext",
     "ModelTrainingJob",
     "NormalizationBuilder",
+    "PanelGbdtTrainingPipeline",
     "TrainBoosterTask",
+    "Trainer",
+    "TrainingContext",
+    "Validator",
     "WalkForwardCVTask",
     "build_model_artifact",
     "cross_sectional_ic",
