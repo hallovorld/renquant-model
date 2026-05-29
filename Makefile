@@ -14,4 +14,4 @@ test:
 	$(PYTHON) -m pytest -q
 
 doctor:
-	$(PYTHON) -c "from renquant_model_gbdt import PanelGbdtTrainingPipeline; from renquant_common import Pipeline; print('renquant-model-gbdt ok')"
+	$(PYTHON) -c "from renquant_model_gbdt import PanelGbdtTrainingPipeline; from renquant_model_patchtst import PatchTstTrainingPipeline; from renquant_common import Pipeline; print('renquant-model ok')"
