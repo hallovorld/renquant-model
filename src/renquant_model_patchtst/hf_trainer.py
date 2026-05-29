@@ -84,9 +84,13 @@ log = logging.getLogger("patchtst-hf")
 
 # ─── Model ──────────────────────────────────────────────────────────────────
 
-# Canonical ordering for one-hot regime context. Must match kernel/regime.py
-# emitter (BULL_STRONG is config-legacy phantom — detector doesn't emit it).
-REGIMES = ("BULL_CALM", "BULL_VOLATILE", "CHOPPY", "BEAR")
+# Canonical ordering for one-hot regime context. Must match the regime emitter
+# (BULL_STRONG is config-legacy phantom — detector doesn't emit it). RegimeLabel
+# is the single source of truth (renquant_common contract).
+from renquant_common.contracts.regime import RegimeLabel  # noqa: E402
+
+REGIMES = (RegimeLabel.BULL_CALM.value, RegimeLabel.BULL_VOLATILE.value,
+           RegimeLabel.CHOPPY.value, RegimeLabel.BEAR.value)
 
 
 def regime_to_onehot(regime_label: str) -> np.ndarray:
@@ -341,7 +345,7 @@ def load_panel_with_split(dataset_path: Path, cut_name: str, label_col: str,
         else:
             panel["split_label"] = "train"
     else:
-        from renquant_model_patchtst.walk_forward_splits import (assign_split_column,  # noqa: PLC0415
+        from renquant_common.walk_forward_splits import (assign_split_column,  # noqa: PLC0415
                                                  build_default_cuts)
         cut = next(c for c in build_default_cuts() if c.name == cut_name)
         panel["split_label"] = assign_split_column(panel, cut)
@@ -388,7 +392,7 @@ def build_config_contract(args: argparse.Namespace) -> dict:
         if not path.exists():
             path = STRATEGY_DIR / "strategy_config.json"
     cfg = json.loads(path.read_text())
-    from renquant_model_patchtst.config_consistency import (  # noqa: PLC0415
+    from renquant_common.config_consistency import (  # noqa: PLC0415
         fingerprint_config, _model_relevant_fields,
     )
     fields = _model_relevant_fields(cfg)
@@ -528,7 +532,7 @@ class PerDayDataset(torch.utils.data.Dataset):
                 "dates": np.array([s[2].value for s in samples], dtype="int64"),
             }
             if regime_map is not None:
-                regime = regime_map.get(int(d_ns), "BULL_CALM")  # fallback
+                regime = regime_map.get(int(d_ns), RegimeLabel.BULL_CALM.value)  # fallback
                 onehot = regime_to_onehot(regime)
                 n = len(samples)
                 day["regime_context"] = torch.from_numpy(
@@ -592,7 +596,7 @@ class PerRegimeICCallback(TrainerCallback):
     def on_evaluate(self, args, state, control, model=None, metrics=None, **kw):
         if model is None or metrics is None:
             return
-        from renquant_model_patchtst.hmm_regime_labels import per_hmm_regime_ic  # noqa: PLC0415
+        from renquant_common.hmm_regime_labels import per_hmm_regime_ic  # noqa: PLC0415
         device = next(model.parameters()).device
         model.eval()
         all_p, all_y, all_d = [], [], []
@@ -642,7 +646,7 @@ def train_one(args: argparse.Namespace) -> dict:
     hmm_labels = None
     spy_path = REPO / args.spy_path
     if spy_path.exists():
-        from renquant_model_patchtst.hmm_regime_labels import compute_hmm_regime_labels  # noqa: PLC0415
+        from renquant_common.hmm_regime_labels import compute_hmm_regime_labels  # noqa: PLC0415
         hmm_labels = compute_hmm_regime_labels(spy_path)
     elif args.film_regime_cond:
         raise FileNotFoundError(
