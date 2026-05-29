@@ -306,7 +306,8 @@ def load_panel_with_split(dataset_path: Path, cut_name: str, label_col: str,
                           val_tail_pct: float = 0.0,
                           embargo_days: int = 60,
                           train_cutoff: str | None = None,
-                          data_end: str | None = None) -> tuple[pd.DataFrame, list[str]]:
+                          data_end: str | None = None,
+                          exclude_features: list[str] | None = None) -> tuple[pd.DataFrame, list[str]]:
     """Load panel + assign train/val/test split.
 
     cut_name = "all": full-data PROD training; last val_tail_pct dates → val.
@@ -349,10 +350,15 @@ def load_panel_with_split(dataset_path: Path, cut_name: str, label_col: str,
                                                  build_default_cuts)
         cut = next(c for c in build_default_cuts() if c.name == cut_name)
         panel["split_label"] = assign_split_column(panel, cut)
+    _excluded = {"date", "ticker", "split_label",
+                 "fwd_5d_excess", "fwd_20d_excess", "fwd_60d_excess"}
+    _excluded.update(exclude_features or ())
     feat_cols = [c for c in panel.columns
-                 if c not in {"date", "ticker", "split_label",
-                              "fwd_5d_excess", "fwd_20d_excess", "fwd_60d_excess"}
+                 if c not in _excluded
                  and panel[c].dtype.kind in "fiub"]
+    if exclude_features:
+        log.info("excluded %d feature(s): %s",
+                 len(exclude_features), ",".join(exclude_features))
     if preprocess:
         panel = csrank_norm_per_day(panel, feat_cols)
         winsor_bounds = label_winsor_bounds(
@@ -639,7 +645,9 @@ def train_one(args: argparse.Namespace) -> dict:
         val_tail_pct=getattr(args, "val_tail_pct", 0.10),
         embargo_days=getattr(args, "embargo_days", 60),
         train_cutoff=getattr(args, "train_cutoff", None),
-        data_end=getattr(args, "data_end", None))
+        data_end=getattr(args, "data_end", None),
+        exclude_features=([s.strip() for s in args.exclude_features.split(",") if s.strip()]
+                          if getattr(args, "exclude_features", None) else None))
 
     # Compute HMM regime labels once — reused for FiLM dataset injection
     # AND for per-regime IC callback selection metric.
@@ -895,6 +903,10 @@ def build_parser() -> argparse.ArgumentParser:
                         "Stops training when eval_min_regime_ic doesn't improve "
                         "for N epochs. Saves 25-40% wallclock; convergence "
                         "typically reached by epoch 5-6 of 8.")
+    p.add_argument("--exclude-features", default=None,
+                   help="comma-separated feature columns to drop before training "
+                        "(mirrors GBDT exclude_features; e.g. the 3 sentiment "
+                        "feats for the E_drop_senti lever)")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--device", default="cpu", choices=["cpu", "mps", "cuda"])
     p.add_argument("--save-model", action="store_true")
