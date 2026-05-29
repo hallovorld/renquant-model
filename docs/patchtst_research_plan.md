@@ -52,8 +52,23 @@ DSR > 0.5. Anything less = research note only.
 Full Phase 0 (5 levers × 5 cuts × 1 seed × ~20 min @4ep) ≈ 8 GPU-hours; parallelize
 across cuts/configs. Phase 2 (5 seeds × 8ep) is the expensive part — only on the winner.
 
+## Where the code + data live (consolidated 2026-05-28 — work HERE, not the archived shell)
+- **CODE — all in this repo's `renquant_model_patchtst`** (self-contained): `hf_trainer.py`
+  (the real trainer), `research.py` (this harness), `training.py` (pipeline adapter),
+  and the formerly-umbrella data-side deps now lifted in-package:
+  `walk_forward_splits.py`, `hmm_regime_labels.py`, `config_consistency.py`. The trainer
+  no longer imports `kernel.*` for code. (NOTE: the archived standalone
+  `renquant-model-patchtst` repo is an empty pre-merge shell — RFC P3 merged everything
+  into renquant-model; do NOT work there.)
+- **DATA — `renquant-model/data/`** (gitignored symlink → the umbrella's `RenQuant/data/`,
+  which is the canonical gitignored data store; too large for git). Provides
+  `transformer_v4_wl200_clean.parquet` + `ohlcv/SPY/`. On a fresh machine, point the
+  symlink (or `--strategy-dir`) at wherever the umbrella data lives.
+- **Strategy config** (for the config-fingerprint contract): read from `--strategy-dir`
+  (default `../RenQuant/backtesting/renquant_104`); its proper home is the
+  `renquant-strategy-104` pin — wiring the harness to read it from there is a follow-up.
+
 ## Env to run
-Sibling pins on path (renquant-common/base-data/artifacts/model) — the `Makefile`
-PYTHONPATH covers them — plus the umbrella data dir (`--strategy-dir`, default
-`../RenQuant/backtesting/renquant_104`) which hosts the transformer dataset + SPY +
-the data-side `kernel.*` deps resolved via `RENQUANT_STRATEGY_DIR`.
+`Makefile` PYTHONPATH puts the sibling pins (common/base-data/artifacts) on path; the
+harness bootstraps them too. Just run from `renquant-model` with `data/` present:
+`python -m renquant_model_patchtst.research --phase 0 --epochs 4 --device mps`.
