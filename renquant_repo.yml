@@ -1,0 +1,31 @@
+schema_version: 1
+name: renquant-model
+role: model factory — research + train the GBDT and PatchTST families, publish models to renquant-artifacts
+operating_model: https://github.com/hallovorld/RenQuant/blob/main/doc/arch/subrepo-operating-model.md
+repo_map: RENQUANT_REPOS.md
+pipeline_required: true
+branch_policy:
+  main: stable interface for downstream repos and automation
+  feature_branches: experiments, optimizations, and large upgrades
+source_repo:
+  name: RenQuant
+  never_delete: true
+dependencies:
+  - renquant-common
+  - renquant-base-data
+  - renquant-artifacts
+owns:
+  - GBDT panel-LTR family (renquant_model_gbdt)
+  - PatchTST / sequence family (renquant_model_patchtst)
+  - cross-family scaffolding (renquant_model_common)
+  - model research, training, and walk-forward evaluation
+forbidden:
+  - runtime decision/signal internals
+  - broker adapter internals
+  - strategy config ownership
+  - raw data or heavy artifacts (referenced by manifest/fingerprint, not committed)
+automation:
+  test: make test
+  doctor: make doctor
+outputs:
+  - trained model artifacts published to renquant-artifacts
