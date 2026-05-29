@@ -72,7 +72,8 @@ class LoadPanelTask(Task):
             train_cutoff=getattr(a, "train_cutoff", None),
             data_end=getattr(a, "data_end", None),
             exclude_features=([s.strip() for s in a.exclude_features.split(",") if s.strip()]
-                              if getattr(a, "exclude_features", None) else None))
+                              if getattr(a, "exclude_features", None) else None),
+            shuffle_labels=getattr(a, "shuffle_labels", False))
         return True
 
 

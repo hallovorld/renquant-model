@@ -307,7 +307,8 @@ def load_panel_with_split(dataset_path: Path, cut_name: str, label_col: str,
                           embargo_days: int = 60,
                           train_cutoff: str | None = None,
                           data_end: str | None = None,
-                          exclude_features: list[str] | None = None) -> tuple[pd.DataFrame, list[str]]:
+                          exclude_features: list[str] | None = None,
+                          shuffle_labels: bool = False) -> tuple[pd.DataFrame, list[str]]:
     """Load panel + assign train/val/test split.
 
     cut_name = "all": full-data PROD training; last val_tail_pct dates → val.
@@ -359,6 +360,12 @@ def load_panel_with_split(dataset_path: Path, cut_name: str, label_col: str,
     if exclude_features:
         log.info("excluded %d feature(s): %s",
                  len(exclude_features), ",".join(exclude_features))
+    if shuffle_labels:
+        # §5.2 placebo: globally permute the label, breaking the feature→label
+        # link. A leak-free, non-selection-inflated run must score IC ≈ 0 here.
+        panel[label_col] = np.random.permutation(panel[label_col].to_numpy())
+        log.info("PLACEBO shuffle_labels: permuted '%s' across %d rows (expect IC≈0)",
+                 label_col, len(panel))
     if preprocess:
         panel = csrank_norm_per_day(panel, feat_cols)
         winsor_bounds = label_winsor_bounds(
@@ -713,6 +720,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="comma-separated feature columns to drop before training "
                         "(mirrors GBDT exclude_features; e.g. the 3 sentiment "
                         "feats for the E_drop_senti lever)")
+    p.add_argument("--shuffle-labels", action="store_true",
+                   help="§5.2 placebo: globally permute the label before training. "
+                        "A leak-free / non-overfit run must score pooled IC ≈ 0.")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--device", default="cpu", choices=["cpu", "mps", "cuda"])
     p.add_argument("--save-model", action="store_true")

@@ -89,6 +89,10 @@ def _configs(spy_path: str) -> dict[str, list[str]]:
         "E_drop_senti": _TUNED + ["--exclude-features",
                                   "mean_sentiment,n_articles_log,sentiment_pos_share"],
         "F_fwd20d":     _TUNED + ["--label", "fwd_20d_excess"],
+        # §5.2 placebos — must score pooled IC ≈ 0; quantify val-selection
+        # optimism in the real configs above (val IC is the selection metric).
+        "B_placebo":    _TUNED + ["--shuffle-labels"],
+        "C_placebo":    _TUNED + ["--cross-stock-attn", "--shuffle-labels"],
     }
 
 
