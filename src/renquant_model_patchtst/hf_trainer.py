@@ -516,7 +516,8 @@ class PerDayDataset(torch.utils.data.Dataset):
         feat_arr = panel[feat_cols].astype(np.float32).fillna(0.0).values
         lab_arr = panel[label_col].astype(np.float32).values
         samples_by_date: dict[int, list[tuple[np.ndarray, float, pd.Timestamp]]] = {}
-        for _, idxs in panel.groupby("ticker", sort=False).indices.items():
+        tkr_arr = panel["ticker"].to_numpy()
+        for ticker, idxs in panel.groupby("ticker", sort=False).indices.items():
             idxs = np.asarray(sorted(idxs))
             for i in range(seq_len, len(idxs)):
                 end_pos = idxs[i]
@@ -527,7 +528,7 @@ class PerDayDataset(torch.utils.data.Dataset):
                     continue
                 d = panel.iloc[end_pos]["date"]
                 samples_by_date.setdefault(d.value, []).append(
-                    (window, lab_arr[end_pos], d))
+                    (window, lab_arr[end_pos], d, tkr_arr[end_pos]))
 
         # Build per-day regime context lookup (if HMM labels provided)
         regime_map: dict[int, str] | None = None
@@ -543,6 +544,7 @@ class PerDayDataset(torch.utils.data.Dataset):
                 "past_values": torch.from_numpy(np.stack([s[0] for s in samples])),
                 "labels": torch.tensor([s[1] for s in samples], dtype=torch.float32),
                 "dates": np.array([s[2].value for s in samples], dtype="int64"),
+                "tickers": np.array([s[3] for s in samples], dtype=object),
             }
             if regime_map is not None:
                 regime = regime_map.get(int(d_ns), RegimeLabel.BULL_CALM.value)  # fallback

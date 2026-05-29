@@ -235,8 +235,10 @@ class DumpValPredsTask(Task):
                 if "regime_context" in day:
                     fwd_kwargs["regime_context"] = day["regime_context"].to(device)
                 outputs = ctx.model(**fwd_kwargs)
+                tickers = day.get("tickers")
                 for i, d in enumerate(day["dates"]):
                     row = {"date": pd.Timestamp(d),
+                           "ticker": (str(tickers[i]) if tickers is not None else None),
                            "pred": float(outputs["score"][i].cpu()),
                            "label": float(day["labels"][i])}
                     if "loc" in outputs:
