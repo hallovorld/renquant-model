@@ -11,3 +11,4 @@ build/
 artifacts/
 data/
 _hf_trainer/
+/data
