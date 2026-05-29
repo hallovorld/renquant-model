@@ -53,11 +53,11 @@ Full Phase 0 (5 levers × 5 cuts × 1 seed × ~20 min @4ep) ≈ 8 GPU-hours; par
 across cuts/configs. Phase 2 (5 seeds × 8ep) is the expensive part — only on the winner.
 
 ## Where the code + data live (consolidated 2026-05-28 — work HERE, not the archived shell)
-- **CODE — all in this repo's `renquant_model_patchtst`** (self-contained): `hf_trainer.py`
-  (the real trainer), `research.py` (this harness), `training.py` (pipeline adapter),
-  and the formerly-umbrella data-side deps now lifted in-package:
-  `walk_forward_splits.py`, `hmm_regime_labels.py`, `config_consistency.py`. The trainer
-  no longer imports `kernel.*` for code. (NOTE: the archived standalone
+- **CODE — model-specific code in this repo's `renquant_model_patchtst`**: `hf_trainer.py`
+  (the real trainer), `research.py` (this harness), `training.py` (pipeline adapter).
+  **Shared code is IMPORTED from `renquant-common`** (not duplicated):
+  `renquant_common.walk_forward_splits` / `.hmm_regime_labels` / `.config_consistency`.
+  The trainer imports no `kernel.*`. (NOTE: the archived standalone
   `renquant-model-patchtst` repo is an empty pre-merge shell — RFC P3 merged everything
   into renquant-model; do NOT work there.)
 - **DATA — `renquant-model/data/`** (gitignored symlink → the umbrella's `RenQuant/data/`,
