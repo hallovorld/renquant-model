@@ -28,7 +28,7 @@ patchtst = ["torch>=2.2", "transformers>=4.40"]
 # renquant_common.load_scorer (RFC §"Cross-Repo Contracts → Scorer Protocol").
 [project.entry-points."renquant_common.scorers"]
 panel_ltr_xgboost = "renquant_model_gbdt.scorer:load"
-# patchtst_panel registered once the sequence scorer lands (P-future).
+patchtst_panel = "renquant_model_patchtst.scorer:load"
 
 [tool.setuptools.packages.find]
 where = ["src"]
