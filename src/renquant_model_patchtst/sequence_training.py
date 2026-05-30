@@ -367,7 +367,7 @@ class RecordTrainingRunTask(Task):
     README's Latest-Models block. Best-effort (warnings only, never fatal)."""
 
     def run(self, ctx: SequenceTrainingContext) -> bool | None:
-        import os, sqlite3, subprocess, sys, datetime as _dt  # noqa: PLC0415
+        import os, sqlite3, subprocess, sys, datetime as _dt, uuid  # noqa: PLC0415
         from pathlib import Path as _Path  # noqa: PLC0415
         # Derive DB path from RENQUANT_STRATEGY_DIR when set (preferred over a
         # machine-specific hardcode); env var still wins.
@@ -380,30 +380,42 @@ class RecordTrainingRunTask(Task):
         a = ctx.args
         s = ctx.summary or {}
         try:
-            from renquant_pipeline.kernel.persistence import (  # noqa: PLC0415
-                record_training_run,
-            )
             conn = sqlite3.connect(str(db))
-            record_training_run(
-                conn,
-                run_date=_dt.datetime.utcnow(),
-                strategy=os.environ.get("RENQUANT_STRATEGY_NAME", "renquant_104"),
-                artifact_type="hf_patchtst",
-                oos_mean_ic=ctx.best_val_ic,
-                n_features=s.get("n_features"),
-                n_tickers=s.get("trained_watchlist_n"),
-                artifact_path=str(ctx.out_dir) if ctx.out_dir else None,
-                elapsed_sec=None,
-                trigger=os.environ.get("RENQUANT_TRAIN_TRIGGER", "manual"),
-                device=getattr(a, "device", "n/a"),
-                deterministic=False,  # MPS / torch — not bit-reproducible
-                notes=(f"cut={a.cut} seed={a.seed} epochs={a.epochs} "
-                       f"cross_stock={getattr(a,'cross_stock_attn',False)} "
-                       f"film={getattr(a,'film_regime_cond',False)}"),
-                training_window_years=getattr(a, "training_window_years", None),
-                also_log_jsonl=False,
-            )
-            conn.commit(); conn.close()
+            try:
+                cols = {
+                    row[1] for row in conn.execute("PRAGMA table_info(training_runs)").fetchall()
+                }
+                if cols:
+                    run_date = _dt.datetime.utcnow()
+                    row = {
+                        "run_id": f"{run_date.strftime('%Y%m%d%H%M%S')}-hf_patchtst-{uuid.uuid4().hex[:6]}",
+                        "run_date": run_date.isoformat(),
+                        "strategy": os.environ.get("RENQUANT_STRATEGY_NAME", "renquant_104"),
+                        "artifact_type": "hf_patchtst",
+                        "config_json": json.dumps(ctx.config_contract or {}, default=str),
+                        "oos_mean_ic": ctx.best_val_ic,
+                        "n_features": s.get("n_features"),
+                        "n_tickers": s.get("trained_watchlist_n"),
+                        "artifact_path": str(ctx.out_dir) if ctx.out_dir else None,
+                        "elapsed_sec": None,
+                        "trigger": os.environ.get("RENQUANT_TRAIN_TRIGGER", "manual"),
+                        "device": getattr(a, "device", "n/a"),
+                        "deterministic": 0,  # MPS / torch is not bit-reproducible.
+                        "training_window_years": getattr(a, "training_window_years", None),
+                        "notes": (f"cut={a.cut} seed={a.seed} epochs={a.epochs} "
+                                  f"cross_stock={getattr(a,'cross_stock_attn',False)} "
+                                  f"film={getattr(a,'film_regime_cond',False)}"),
+                    }
+                    insert_cols = [col for col in row if col in cols]
+                    if insert_cols:
+                        placeholders = ", ".join("?" for _ in insert_cols)
+                        conn.execute(
+                            f"INSERT INTO training_runs ({', '.join(insert_cols)}) VALUES ({placeholders})",
+                            [row[col] for col in insert_cols],
+                        )
+                        conn.commit()
+            finally:
+                conn.close()
         except Exception as exc:  # noqa: BLE001
             hf.log.warning("record_training_run skipped: %s", exc)
         # Refresh README
