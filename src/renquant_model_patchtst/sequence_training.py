@@ -26,7 +26,7 @@ import numpy as np
 import pandas as pd
 import torch
 
-from renquant_common import Job, Pipeline, Task
+from renquant_common import Job, Pipeline, Task, record_training_run
 
 from . import hf_trainer as hf
 
@@ -369,12 +369,10 @@ class RecordTrainingRunTask(Task):
     README's Latest-Models block. Best-effort (warnings only, never fatal)."""
 
     def run(self, ctx: SequenceTrainingContext) -> bool | None:
-        import datetime as _dt  # noqa: PLC0415
         import os  # noqa: PLC0415
         import sqlite3  # noqa: PLC0415
         import subprocess  # noqa: PLC0415
         import sys  # noqa: PLC0415
-        import uuid  # noqa: PLC0415
         from pathlib import Path as _Path  # noqa: PLC0415
         # Derive DB path from RENQUANT_STRATEGY_DIR when set (preferred over a
         # machine-specific hardcode); env var still wins.
@@ -390,68 +388,47 @@ class RecordTrainingRunTask(Task):
         try:
             conn = sqlite3.connect(str(db))
             try:
-                cols = {
-                    row[1] for row in conn.execute("PRAGMA table_info(training_runs)").fetchall()
-                }
-                if cols:
-                    run_date = _dt.datetime.utcnow()
-                    feature_cols = list(ctx.feat_cols or s.get("feature_cols") or [])
+                feature_cols = list(ctx.feat_cols or s.get("feature_cols") or [])
+                n_rows = s.get("n_rows")
+                if n_rows is None and ctx.panel is not None:
                     try:
-                        commit_sha = subprocess.check_output(
-                            ["git", "-C", str(repo), "rev-parse", "--short", "HEAD"],
-                            text=True,
-                            timeout=2,
-                        ).strip() or None
+                        n_rows = int(len(ctx.panel))
+                    except TypeError:
+                        n_rows = None
+                n_dates = s.get("n_dates")
+                if n_dates is None and ctx.panel is not None and hasattr(ctx.panel, "columns"):
+                    try:
+                        if "date" in ctx.panel.columns:
+                            n_dates = int(ctx.panel["date"].nunique())
                     except Exception:  # noqa: BLE001
-                        commit_sha = None
-                    n_rows = s.get("n_rows")
-                    if n_rows is None and ctx.panel is not None:
-                        try:
-                            n_rows = int(len(ctx.panel))
-                        except TypeError:
-                            n_rows = None
-                    n_dates = s.get("n_dates")
-                    if n_dates is None and ctx.panel is not None and hasattr(ctx.panel, "columns"):
-                        try:
-                            if "date" in ctx.panel.columns:
-                                n_dates = int(ctx.panel["date"].nunique())
-                        except Exception:  # noqa: BLE001
-                            n_dates = None
-                    train_ic = s.get("train_ic")
-                    if train_ic is None:
-                        train_ic = (ctx.final_metrics or {}).get("train_ic")
-                    row = {
-                        "run_id": f"{run_date.strftime('%Y%m%d%H%M%S')}-hf_patchtst-{uuid.uuid4().hex[:6]}",
-                        "run_date": run_date.isoformat(),
-                        "strategy": os.environ.get("RENQUANT_STRATEGY_NAME", "renquant_104"),
-                        "artifact_type": "hf_patchtst",
-                        "config_json": json.dumps(ctx.config_contract or {}, default=str),
-                        "oos_mean_ic": ctx.best_val_ic,
-                        "train_ic": train_ic,
-                        "n_rows": n_rows,
-                        "feature_cols": json.dumps(feature_cols) if feature_cols else None,
-                        "n_features": s.get("n_features", len(feature_cols)),
-                        "n_tickers": s.get("trained_watchlist_n"),
-                        "n_dates": n_dates,
-                        "artifact_path": str(ctx.out_dir) if ctx.out_dir else None,
-                        "commit_sha": commit_sha,
-                        "elapsed_sec": None,
-                        "trigger": os.environ.get("RENQUANT_TRAIN_TRIGGER", "manual"),
-                        "device": getattr(a, "device", "n/a"),
-                        "deterministic": 0,  # MPS / torch is not bit-reproducible.
-                        "training_window_years": getattr(a, "training_window_years", None),
-                        "notes": (f"cut={a.cut} seed={a.seed} epochs={a.epochs} "
-                                  f"cross_stock={getattr(a,'cross_stock_attn',False)} "
-                                  f"film={getattr(a,'film_regime_cond',False)}"),
-                    }
-                    insert_cols = [col for col in row if col in cols]
-                    if insert_cols:
-                        placeholders = ", ".join("?" for _ in insert_cols)
-                        conn.execute(
-                            f"INSERT INTO training_runs ({', '.join(insert_cols)}) VALUES ({placeholders})",
-                            [row[col] for col in insert_cols],
-                        )
-                        conn.commit()
+                        n_dates = None
+                train_ic = s.get("train_ic")
+                if train_ic is None:
+                    train_ic = (ctx.final_metrics or {}).get("train_ic")
+                record_training_run(
+                    conn,
+                    strategy=os.environ.get("RENQUANT_STRATEGY_NAME", "renquant_104"),
+                    artifact_type="hf_patchtst",
+                    config_snapshot=ctx.config_contract or {},
+                    oos_mean_ic=ctx.best_val_ic,
+                    train_ic=train_ic,
+                    n_rows=n_rows,
+                    feature_cols=feature_cols or None,
+                    artifact_path=str(ctx.out_dir) if ctx.out_dir else None,
+                    elapsed_sec=None,
+                    trigger=os.environ.get("RENQUANT_TRAIN_TRIGGER", "manual"),
+                    n_tickers=s.get("trained_watchlist_n"),
+                    n_dates=n_dates,
+                    n_features=s.get("n_features", len(feature_cols)),
+                    device=getattr(a, "device", "n/a"),
+                    deterministic=False,
+                    training_window_years=getattr(a, "training_window_years", None),
+                    notes=(f"cut={a.cut} seed={a.seed} epochs={a.epochs} "
+                           f"cross_stock={getattr(a,'cross_stock_attn',False)} "
+                           f"film={getattr(a,'film_regime_cond',False)}"),
+                    also_log_jsonl=False,
+                    repo_dir=repo,
+                )
             finally:
                 conn.close()
         except Exception as exc:  # noqa: BLE001
