@@ -23,7 +23,8 @@ def test_pipeline_has_four_ordered_jobs() -> None:
     p = build_sequence_training_pipeline()
     assert p.name == "patchtst-sequence-training"
     assert [type(j).__name__ for j in p.jobs] == [
-        "DataPrepJob", "TrainJob", "EvaluateJob", "PersistModelJob"]
+        "DataPrepJob", "TrainJob", "EvaluateJob", "PersistModelJob",
+        "RecordTrainingRunJob"]
 
 
 def test_jobs_decompose_into_single_responsibility_tasks() -> None:

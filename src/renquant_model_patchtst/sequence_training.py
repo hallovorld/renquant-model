@@ -362,10 +362,75 @@ class PersistModelJob(Job):
         return [PersistModelTask()]
 
 
+class RecordTrainingRunTask(Task):
+    """Write a row to ``data/sim_runs.db::training_runs`` + refresh renquant-model
+    README's Latest-Models block. Best-effort (warnings only, never fatal)."""
+
+    def run(self, ctx: SequenceTrainingContext) -> bool | None:
+        import os, sqlite3, subprocess, sys, datetime as _dt  # noqa: PLC0415
+        from pathlib import Path as _Path  # noqa: PLC0415
+        db = _Path(os.environ.get(
+            "RENQUANT_TRAINING_DB",
+            "/Users/renhao/git/github/RenQuant/data/sim_runs.db"))
+        if not db.exists():
+            return True
+        a = ctx.args
+        s = ctx.summary or {}
+        try:
+            from renquant_pipeline.kernel.persistence import (  # noqa: PLC0415
+                record_training_run,
+            )
+            conn = sqlite3.connect(str(db))
+            record_training_run(
+                conn,
+                run_date=_dt.datetime.utcnow(),
+                strategy=os.environ.get("RENQUANT_STRATEGY_NAME", "renquant_104"),
+                artifact_type="hf_patchtst",
+                oos_mean_ic=ctx.best_val_ic,
+                n_features=s.get("n_features"),
+                n_tickers=s.get("trained_watchlist_n"),
+                artifact_path=str(ctx.out_dir) if ctx.out_dir else None,
+                elapsed_sec=None,
+                trigger=os.environ.get("RENQUANT_TRAIN_TRIGGER", "manual"),
+                device=getattr(a, "device", "n/a"),
+                deterministic=False,  # MPS / torch — not bit-reproducible
+                notes=(f"cut={a.cut} seed={a.seed} epochs={a.epochs} "
+                       f"cross_stock={getattr(a,'cross_stock_attn',False)} "
+                       f"film={getattr(a,'film_regime_cond',False)}"),
+                also_log_jsonl=False,
+            )
+            conn.commit(); conn.close()
+        except Exception as exc:  # noqa: BLE001
+            hf.log.warning("record_training_run skipped: %s", exc)
+        # Refresh README
+        readme_refresh = (_Path(__file__).resolve().parents[3]
+                          / "scripts" / "refresh_readme_latest_models.py")
+        readme = _Path(__file__).resolve().parents[3] / "README.md"
+        if readme_refresh.exists() and readme.exists():
+            try:
+                subprocess.run(
+                    [sys.executable, str(readme_refresh),
+                     "--db", str(db), "--readme", str(readme)],
+                    check=False, timeout=30,
+                )
+            except Exception as exc:  # noqa: BLE001
+                hf.log.warning("README refresh skipped: %s", exc)
+        return True
+
+
+class RecordTrainingRunJob(Job):
+    """Persist training_runs DB row + auto-refresh README; non-fatal."""
+
+    @property
+    def tasks(self) -> list[Task]:
+        return [RecordTrainingRunTask()]
+
+
 def build_sequence_training_pipeline() -> Pipeline:
-    """The full single-run PatchTST training Pipeline (data → model → eval → persist)."""
+    """The full single-run PatchTST training Pipeline (data → model → eval → persist → record)."""
     return Pipeline(
-        [DataPrepJob(), TrainJob(), EvaluateJob(), PersistModelJob()],
+        [DataPrepJob(), TrainJob(), EvaluateJob(), PersistModelJob(),
+         RecordTrainingRunJob()],
         name="patchtst-sequence-training",
     )
 
