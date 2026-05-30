@@ -369,9 +369,12 @@ class RecordTrainingRunTask(Task):
     def run(self, ctx: SequenceTrainingContext) -> bool | None:
         import os, sqlite3, subprocess, sys, datetime as _dt  # noqa: PLC0415
         from pathlib import Path as _Path  # noqa: PLC0415
-        db = _Path(os.environ.get(
-            "RENQUANT_TRAINING_DB",
-            "/Users/renhao/git/github/RenQuant/data/sim_runs.db"))
+        # Derive DB path from RENQUANT_STRATEGY_DIR when set (preferred over a
+        # machine-specific hardcode); env var still wins.
+        strat = os.environ.get("RENQUANT_STRATEGY_DIR")
+        default_db = (_Path(strat).resolve().parent.parent / "data" / "sim_runs.db"
+                      if strat else _Path("data") / "sim_runs.db")
+        db = _Path(os.environ.get("RENQUANT_TRAINING_DB", str(default_db)))
         if not db.exists():
             return True
         a = ctx.args
