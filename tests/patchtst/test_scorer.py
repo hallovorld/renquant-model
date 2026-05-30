@@ -79,3 +79,38 @@ def test_feature_fingerprint_changes_with_seq_len() -> None:
     a = _make(seq_len=8, feats=["x", "y"]).feature_fingerprint()
     b = _make(seq_len=16, feats=["x", "y"]).feature_fingerprint()
     assert a != b
+
+
+def test_requires_history_advertised() -> None:
+    # The WF gate's _score_manifest_sanity dispatches on this attribute.
+    assert PatchTstStatefulScorer.requires_history is True
+
+
+def test_score_with_history_returns_one_score_per_ready_ticker() -> None:
+    import pandas as pd
+    s = _make(seq_len=3, feats=["a", "b"])
+    # AAPL has 3 days of history (== seq_len → ready); MSFT only has 2 (cold)
+    history = pd.DataFrame([
+        {"date": "2024-01-01", "ticker": "AAPL", "a": 0.1, "b": 0.2},
+        {"date": "2024-01-02", "ticker": "AAPL", "a": 0.3, "b": 0.4},
+        {"date": "2024-01-03", "ticker": "AAPL", "a": 0.5, "b": 0.6},
+        {"date": "2024-01-02", "ticker": "MSFT", "a": 1.1, "b": 1.2},
+        {"date": "2024-01-03", "ticker": "MSFT", "a": 1.3, "b": 1.4},
+    ])
+    out = s.score_with_history(history, ["AAPL", "MSFT"])
+    assert set(out) == {"AAPL"}
+    assert isinstance(out["AAPL"], float)
+
+
+def test_score_with_history_independent_of_predict_rows_buffer() -> None:
+    """The history path must not consume / mutate the rolling buffer state."""
+    import pandas as pd
+    s = _make(seq_len=2, feats=["a"])
+    s.predict_rows({"AAPL": {"a": 1.0}})  # warms predict_rows buffer to 1
+    history = pd.DataFrame([
+        {"date": "2024-01-01", "ticker": "AAPL", "a": 5.0},
+        {"date": "2024-01-02", "ticker": "AAPL", "a": 6.0},
+    ])
+    s.score_with_history(history, ["AAPL"])
+    # buffer should still be at 1 (history call is stateless w.r.t. buffer)
+    assert s.buffer_state()["AAPL"] == 1

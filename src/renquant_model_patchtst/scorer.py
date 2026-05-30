@@ -35,6 +35,11 @@ import torch
 class PatchTstStatefulScorer:
     """Implements ``renquant_common.contracts.Scorer`` with a rolling per-ticker buffer."""
 
+    #: Signals to ``run_wf_gate._score_manifest_sanity`` that this scorer needs
+    #: panel history (last ``seq_len`` trading days per ticker) to score a target
+    #: date, rather than a single point-in-time row.
+    requires_history: bool = True
+
     feature_cols: list[str]
 
     def __init__(
@@ -86,6 +91,60 @@ class PatchTstStatefulScorer:
     ) -> dict[str, float] | None:
         # V0: σ-head exists but is not surfaced until per-regime σ-aware Kelly is wired.
         return None
+
+    # ─── History-aware scoring (consumed by run_wf_gate sanity battery) ────
+
+    @torch.no_grad()
+    def score_with_history(self, history: Any, tickers: list[str]) -> dict[str, float]:
+        """Score the latest trading day for each ticker, using the prior
+        ``seq_len`` rows of ``history`` as the model's input window.
+
+        ``history`` is a pandas DataFrame with columns ``date``, ``ticker`` and
+        every name in ``self.feature_cols``. Tickers with fewer than ``seq_len``
+        rows are omitted (cold-start) — the caller treats a missing score as
+        "no signal" (matches the Protocol's ``predict_rows`` contract).
+
+        Independent of the rolling buffer that ``predict_rows`` maintains: each
+        call to ``score_with_history`` is stateless w.r.t. previous calls, which
+        is what the manifest sanity loop needs (per-date / per-ticker scoring
+        against a strict cutoff window).
+        """
+        try:
+            import pandas as pd  # noqa: PLC0415
+        except ImportError as exc:
+            raise RuntimeError("score_with_history requires pandas") from exc
+
+        out: dict[str, float] = {}
+        # Group history by ticker once
+        groups = history.groupby("ticker", sort=False)
+        windows: list[np.ndarray] = []
+        ready_tkrs: list[str] = []
+        for tkr in tickers:
+            try:
+                rows = groups.get_group(tkr)
+            except KeyError:
+                continue
+            rows = rows.sort_values("date")
+            if len(rows) < self.seq_len:
+                continue
+            # Take the most recent seq_len rows; pull feature_cols in scorer order
+            window = (
+                rows[self.feature_cols]
+                .tail(self.seq_len)
+                .astype(np.float32)
+                .fillna(0.0)
+                .to_numpy()
+            )
+            if window.shape != (self.seq_len, len(self.feature_cols)):
+                continue
+            windows.append(window)
+            ready_tkrs.append(tkr)
+        if not ready_tkrs:
+            return out
+        x = torch.from_numpy(np.stack(windows)).to(self.device)
+        outputs = self.model(past_values=x)
+        scores = outputs["score"].detach().cpu().numpy()
+        return {t: float(s) for t, s in zip(ready_tkrs, scores)}
 
     # ─── Diagnostics (not part of Protocol) ─────────────────────────────────
 
