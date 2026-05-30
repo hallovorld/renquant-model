@@ -11,8 +11,6 @@ import pandas as pd
 
 from renquant_common import ArtifactManifest
 
-from .feature_transform import transform_feature_frame
-
 
 @dataclass
 class PanelLtrXgboostScorer:
@@ -22,8 +20,6 @@ class PanelLtrXgboostScorer:
     booster: Any
     feature_cols: list[str]
     _feature_fingerprint: str
-    source_space: str = "raw"
-    clip: float = 5.0
 
     def feature_fingerprint(self) -> str:
         return self._feature_fingerprint
@@ -32,13 +28,10 @@ class PanelLtrXgboostScorer:
         if not rows:
             return {}
         frame = pd.DataFrame.from_dict(rows, orient="index")
-        matrix = transform_feature_frame(
-            frame,
-            self.feature_cols,
-            self.artifact,
-            source_space=self.source_space,
-            clip=self.clip,
-        )
+        missing = [col for col in self.feature_cols if col not in frame.columns]
+        if missing:
+            raise KeyError(f"PanelLtrXgboostScorer.predict_rows missing columns: {missing}")
+        matrix = frame[self.feature_cols]
         import xgboost as xgb  # noqa: PLC0415
 
         preds = self.booster.predict(xgb.DMatrix(matrix.values.astype(float)))
@@ -65,14 +58,12 @@ def load(manifest: ArtifactManifest) -> PanelLtrXgboostScorer:
     import xgboost as xgb  # noqa: PLC0415
 
     booster = xgb.Booster()
-    booster.load_model(bytearray(raw_json, "utf-8"))
+    booster.load_model(bytearray(raw_json.encode("utf-8")))
     return PanelLtrXgboostScorer(
         artifact=artifact,
         booster=booster,
         feature_cols=feature_cols,
         _feature_fingerprint=manifest.feature_fingerprint,
-        source_space=str(artifact.get("inference_feature_source_space") or "raw"),
-        clip=float(artifact.get("inference_clip", 5.0)),
     )
 
 

@@ -64,7 +64,8 @@ class LoadPanelTask(Task):
 
     def run(self, ctx: SequenceTrainingContext) -> bool | None:
         a = ctx.args
-        torch.manual_seed(a.seed); np.random.seed(a.seed)
+        torch.manual_seed(a.seed)
+        np.random.seed(a.seed)
         ctx.panel, ctx.feat_cols = hf.load_panel_with_split(
             Path(a.dataset), a.cut, a.label,
             val_tail_pct=getattr(a, "val_tail_pct", 0.10),
@@ -158,7 +159,8 @@ class BuildTrainerTask(Task):
             metric_for_best = "eval_loss"
             greater_is_better = False
         ctx.metric_for_best = metric_for_best
-        ctx.out_dir = Path(a.output_dir); ctx.out_dir.mkdir(parents=True, exist_ok=True)
+        ctx.out_dir = Path(a.output_dir)
+        ctx.out_dir.mkdir(parents=True, exist_ok=True)
         ctx.total_steps = a.epochs * max(1, len(ctx.train_ds))
         ctx.warmup_steps = int(a.warmup_ratio * ctx.total_steps)
         training_args = hf.TrainingArguments(
@@ -367,7 +369,12 @@ class RecordTrainingRunTask(Task):
     README's Latest-Models block. Best-effort (warnings only, never fatal)."""
 
     def run(self, ctx: SequenceTrainingContext) -> bool | None:
-        import os, sqlite3, subprocess, sys, datetime as _dt, uuid  # noqa: PLC0415
+        import datetime as _dt  # noqa: PLC0415
+        import os  # noqa: PLC0415
+        import sqlite3  # noqa: PLC0415
+        import subprocess  # noqa: PLC0415
+        import sys  # noqa: PLC0415
+        import uuid  # noqa: PLC0415
         from pathlib import Path as _Path  # noqa: PLC0415
         # Derive DB path from RENQUANT_STRATEGY_DIR when set (preferred over a
         # machine-specific hardcode); env var still wins.
@@ -379,6 +386,7 @@ class RecordTrainingRunTask(Task):
             return True
         a = ctx.args
         s = ctx.summary or {}
+        repo = _Path(__file__).resolve().parents[3]
         try:
             conn = sqlite3.connect(str(db))
             try:
@@ -387,6 +395,31 @@ class RecordTrainingRunTask(Task):
                 }
                 if cols:
                     run_date = _dt.datetime.utcnow()
+                    feature_cols = list(ctx.feat_cols or s.get("feature_cols") or [])
+                    try:
+                        commit_sha = subprocess.check_output(
+                            ["git", "-C", str(repo), "rev-parse", "--short", "HEAD"],
+                            text=True,
+                            timeout=2,
+                        ).strip() or None
+                    except Exception:  # noqa: BLE001
+                        commit_sha = None
+                    n_rows = s.get("n_rows")
+                    if n_rows is None and ctx.panel is not None:
+                        try:
+                            n_rows = int(len(ctx.panel))
+                        except TypeError:
+                            n_rows = None
+                    n_dates = s.get("n_dates")
+                    if n_dates is None and ctx.panel is not None and hasattr(ctx.panel, "columns"):
+                        try:
+                            if "date" in ctx.panel.columns:
+                                n_dates = int(ctx.panel["date"].nunique())
+                        except Exception:  # noqa: BLE001
+                            n_dates = None
+                    train_ic = s.get("train_ic")
+                    if train_ic is None:
+                        train_ic = (ctx.final_metrics or {}).get("train_ic")
                     row = {
                         "run_id": f"{run_date.strftime('%Y%m%d%H%M%S')}-hf_patchtst-{uuid.uuid4().hex[:6]}",
                         "run_date": run_date.isoformat(),
@@ -394,9 +427,14 @@ class RecordTrainingRunTask(Task):
                         "artifact_type": "hf_patchtst",
                         "config_json": json.dumps(ctx.config_contract or {}, default=str),
                         "oos_mean_ic": ctx.best_val_ic,
-                        "n_features": s.get("n_features"),
+                        "train_ic": train_ic,
+                        "n_rows": n_rows,
+                        "feature_cols": json.dumps(feature_cols) if feature_cols else None,
+                        "n_features": s.get("n_features", len(feature_cols)),
                         "n_tickers": s.get("trained_watchlist_n"),
+                        "n_dates": n_dates,
                         "artifact_path": str(ctx.out_dir) if ctx.out_dir else None,
+                        "commit_sha": commit_sha,
                         "elapsed_sec": None,
                         "trigger": os.environ.get("RENQUANT_TRAIN_TRIGGER", "manual"),
                         "device": getattr(a, "device", "n/a"),
@@ -419,9 +457,8 @@ class RecordTrainingRunTask(Task):
         except Exception as exc:  # noqa: BLE001
             hf.log.warning("record_training_run skipped: %s", exc)
         # Refresh README
-        readme_refresh = (_Path(__file__).resolve().parents[3]
-                          / "scripts" / "refresh_readme_latest_models.py")
-        readme = _Path(__file__).resolve().parents[3] / "README.md"
+        readme_refresh = repo / "scripts" / "refresh_readme_latest_models.py"
+        readme = repo / "README.md"
         if readme_refresh.exists() and readme.exists():
             try:
                 subprocess.run(
