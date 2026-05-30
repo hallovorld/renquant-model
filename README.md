@@ -44,3 +44,16 @@ never import this package directly.
 Depends on `renquant-common`, `renquant-base-data`, `renquant-artifacts`.
 Must not import `renquant-pipeline`, `renquant-execution`, or
 `renquant-backtesting`.
+
+<!-- LATEST_MODELS:START -->
+## Latest trained models
+
+_Auto-generated from `data/sim_runs.db::training_runs` by `scripts/refresh_readme_latest_models.py`._
+
+| run_id | when | family | OOS IC | features | tickers | device | took | trigger | commit |
+|---|---|---|---|---|---|---|---|---|---|
+| `5770ccc3` | 2026-05-29T16:35:00Z | hf_patchtst | +0.0182 | 169 | 142 | mps | 34.0m | manual | `b863da9b` |
+| `a1bd9d1d` | 2026-05-29T16:02:37Z | panel_ltr_xgboost | +0.0456 | 169 | — | cpu | 1.1m | manual | `b863da9b` |
+
+_last refreshed: 2026-05-30T05:47:36.754838Z_
+<!-- LATEST_MODELS:END -->
