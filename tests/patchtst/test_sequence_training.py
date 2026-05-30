@@ -7,12 +7,19 @@ can't silently regress to a monolith.
 from __future__ import annotations
 
 import argparse
+import json
+import sqlite3
+import subprocess
+from pathlib import Path
+
+import pandas as pd
 
 import renquant_model_patchtst.hf_trainer as hf
 from renquant_model_patchtst.sequence_training import (
     DataPrepJob,
     EvaluateJob,
     PersistModelJob,
+    RecordTrainingRunTask,
     SequenceTrainingContext,
     TrainJob,
     build_sequence_training_pipeline,
@@ -49,3 +56,98 @@ def test_train_one_is_a_thin_delegate_to_the_pipeline() -> None:
     assert "run_sequence_training" in hf.train_one.__code__.co_names
     import inspect
     assert len(inspect.getsource(hf.train_one).splitlines()) < 15
+
+
+def test_record_training_run_writes_canonical_training_columns(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    db = tmp_path / "sim_runs.db"
+    _make_training_runs_db(db)
+    monkeypatch.setenv("RENQUANT_TRAINING_DB", str(db))
+    monkeypatch.setenv("RENQUANT_STRATEGY_NAME", "renquant_104")
+    monkeypatch.setenv("RENQUANT_TRAIN_TRIGGER", "unit")
+    monkeypatch.setattr(subprocess, "check_output", lambda *a, **kw: "abc1234\n")
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *a, **kw: subprocess.CompletedProcess(a[0], 0, "", ""),
+    )
+
+    ctx = SequenceTrainingContext(
+        args=argparse.Namespace(
+            device="mps",
+            cut="cut1_covid",
+            seed=42,
+            epochs=3,
+            cross_stock_attn=True,
+            film_regime_cond=False,
+            training_window_years=5.0,
+        ),
+        panel=pd.DataFrame({
+            "date": pd.to_datetime(["2024-01-01", "2024-01-01", "2024-01-02"]),
+            "ticker": ["AAPL", "MSFT", "AAPL"],
+        }),
+        feat_cols=["alpha_1", "alpha_2"],
+        out_dir=tmp_path / "out",
+        best_val_ic=0.123,
+        final_metrics={"train_ic": 0.456},
+        config_contract={"config_fingerprint": "sha256:config"},
+        summary={"n_features": 2, "trained_watchlist_n": 2},
+    )
+
+    assert RecordTrainingRunTask().run(ctx) is True
+
+    conn = sqlite3.connect(str(db))
+    try:
+        row = conn.execute(
+            """SELECT commit_sha, train_ic, n_rows, feature_cols, n_dates,
+                      n_features, n_tickers, trigger, deterministic,
+                      training_window_years
+               FROM training_runs"""
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row is not None
+    (
+        commit_sha,
+        train_ic,
+        n_rows,
+        feature_cols,
+        n_dates,
+        n_features,
+        n_tickers,
+        trigger,
+        deterministic,
+        years,
+    ) = row
+    assert commit_sha == "abc1234"
+    assert train_ic == 0.456
+    assert n_rows == 3
+    assert json.loads(feature_cols) == ["alpha_1", "alpha_2"]
+    assert n_dates == 2
+    assert n_features == 2
+    assert n_tickers == 2
+    assert trigger == "unit"
+    assert deterministic == 0
+    assert years == 5.0
+
+
+def _make_training_runs_db(path: Path) -> None:
+    conn = sqlite3.connect(str(path))
+    try:
+        conn.execute("""
+            CREATE TABLE training_runs (
+                run_id TEXT PRIMARY KEY,
+                run_date TIMESTAMP NOT NULL,
+                strategy TEXT, artifact_type TEXT, config_json TEXT,
+                oos_mean_ic REAL, train_ic REAL, n_rows INTEGER,
+                feature_cols TEXT, artifact_path TEXT, commit_sha TEXT,
+                elapsed_sec REAL, trigger TEXT, n_tickers INTEGER,
+                n_dates INTEGER, n_features INTEGER, device TEXT,
+                deterministic INTEGER, training_window_years REAL, notes TEXT
+            )
+        """)
+        conn.commit()
+    finally:
+        conn.close()

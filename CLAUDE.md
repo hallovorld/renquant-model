@@ -43,6 +43,19 @@ pip install -e .[gbdt]       # XGBoost backend
 pip install -e .[patchtst]   # torch + transformers backend
 ```
 
+**Lint / type-check: none is wired up.** There is no `ruff`/`mypy` config (not in
+`pyproject.toml`, no standalone config), and neither this Makefile nor the sibling
+`renquant-common` Makefile has a `lint` target — both define only `test` and `doctor`.
+`ruff` (in the RenQuant venv, not on `PATH`) has been run ad hoc with its **default
+ruleset**: source carries `# noqa: PLC0415` / `# noqa: E402` annotations, so treat
+ruff defaults as the de-facto style and keep those annotations. Both packages ship
+`py.typed` markers, but `mypy` is **not** installed in the venv — there is no enforced
+type-check step.
+
+```bash
+../RenQuant/.venv/bin/ruff check src tests   # de-facto lint (default rules, unconfigured)
+```
+
 PatchTST CLIs (need the sibling pins on `PYTHONPATH` — run via the Makefile env or set
 it manually; they also need `data/` present):
 
@@ -105,11 +118,10 @@ golden — do **not** reintroduce a float32 cast or a `DEFAULT_PARAMS` merge.
    `renquant_common.load_scorer` against the `renquant_common.scorers` entry-point group
    declared in `pyproject.toml`.
 
-> **Known gap:** `pyproject.toml` declares the entry point
-> `panel_ltr_xgboost = "renquant_model_gbdt.scorer:load"`, but `scorer.py` does **not
-> exist yet** (the runtime scorer code is still being ported in slices). The PatchTST
-> scorer is likewise unregistered. `make doctor` only checks the training-pipeline import,
-> so it passes despite this. Don't assume the scorer module is present.
+The registered scorer modules are expected to exist and load through
+`renquant_common.load_scorer`: `panel_ltr_xgboost` for GBDT and both
+`patchtst_panel` / `hf_patchtst` for PatchTST. If a scorer contract breaks, fix the
+model-family scorer here rather than importing downstream pipeline code.
 
 ## Porting work (lifting from the umbrella)
 
