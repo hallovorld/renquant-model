@@ -29,6 +29,10 @@ patchtst = ["torch>=2.2", "transformers>=4.40"]
 [project.entry-points."renquant_common.scorers"]
 panel_ltr_xgboost = "renquant_model_gbdt.scorer:load"
 patchtst_panel = "renquant_model_patchtst.scorer:load"
+# Alias: matches sidecars stamped with kind="hf_patchtst" (the arch name) so
+# load_scorer dispatches identically whether the manifest names the family or
+# the runtime adapter.
+hf_patchtst = "renquant_model_patchtst.scorer:load"
 
 [tool.setuptools.packages.find]
 where = ["src"]
