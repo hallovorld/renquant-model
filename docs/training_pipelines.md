@@ -92,7 +92,7 @@ build_sequence_training_pipeline()
   └─ RecordTrainingRunJob: RecordTrainingRunTask
 ```
 
-Driven either by `hf_trainer.main()` (CLI) or `renquant_orchestrator.train_patchtst`
+Driven by `hf_trainer.main()` (CLI). The `orchestrator/train_patchtst.py` wrapper was removed 2026-05-30 (D7 audit confirmed zero callers — see `doc/arch/duplicates-audit.md` §A1)
 (orchestrated). The research harness `renquant_model_patchtst.research` calls
 `train_one(args)` in-process across cuts × seeds × configs.
 
