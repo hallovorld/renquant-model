@@ -725,6 +725,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--shuffle-labels", action="store_true",
                    help="§5.2 placebo: globally permute the label before training. "
                         "A leak-free / non-overfit run must score pooled IC ≈ 0.")
+    p.add_argument("--training-window-years", type=float, default=None,
+                   help="Diagnostic: width of the training window in years. "
+                        "Stamped into training_runs.training_window_years for "
+                        "post-hoc analysis; does NOT change training behaviour.")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--device", default="cpu", choices=["cpu", "mps", "cuda"])
     p.add_argument("--save-model", action="store_true")

@@ -400,6 +400,7 @@ class RecordTrainingRunTask(Task):
                 notes=(f"cut={a.cut} seed={a.seed} epochs={a.epochs} "
                        f"cross_stock={getattr(a,'cross_stock_attn',False)} "
                        f"film={getattr(a,'film_regime_cond',False)}"),
+                training_window_years=getattr(a, "training_window_years", None),
                 also_log_jsonl=False,
             )
             conn.commit(); conn.close()
