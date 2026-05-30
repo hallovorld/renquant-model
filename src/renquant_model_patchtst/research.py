@@ -134,7 +134,7 @@ def run_one(hf, configs, name, cut, seed, epochs, device, out_root) -> dict:
         argv = (["--cut", cut, "--seed", str(seed), "--epochs", str(epochs),
                  "--device", device, "--output-dir", str(out)] + extra)
         try:
-            summary = hf.train_one(hf.build_parser().parse_args(argv))
+            summary = hf.train_single_run(hf.build_parser().parse_args(argv))
         except Exception as e:  # noqa: BLE001
             return {"error": str(e)[:300]}
         vp = list(out.glob(f"hf_patchtst_{cut}_seed{seed}_val_preds.parquet"))

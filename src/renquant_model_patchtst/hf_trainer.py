@@ -647,7 +647,7 @@ class PerRegimeICCallback(TrainerCallback):
 
 # ─── Train entrypoint ───────────────────────────────────────────────────────
 
-def train_one(args: argparse.Namespace) -> dict:
+def train_single_run(args: argparse.Namespace) -> dict:
     """Train one PatchTST run via the decomposed sequence-training Pipeline.
 
     The body is split into single-responsibility Tasks in ``sequence_training``
@@ -742,7 +742,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main():
     args = build_parser().parse_args()
-    print(json.dumps(train_one(args), indent=2, default=str))
+    print(json.dumps(train_single_run(args), indent=2, default=str))
+
+
+# Back-compat alias (D6 rename 2026-05-30) — external callers can still use train_one.
+train_one = train_single_run
 
 
 if __name__ == "__main__":

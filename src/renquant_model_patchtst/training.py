@@ -93,7 +93,7 @@ def sequence_loader(manifest: dict[str, Any]) -> dict[str, Any]:
 def sequence_trainer(sequence_frame: Any, model_config: dict[str, Any],
                      output_dir: Path) -> tuple[dict[str, Any], dict[str, Any]]:
     args = build_args(model_config, output_dir)
-    summary = hf_trainer.train_one(args)
+    summary = hf_trainer.train_single_run(args)
     checkpoint = summary_to_checkpoint(summary, model_config)
     calibration = {
         "artifact_id": f"{checkpoint['artifact_id']}-calibrator",
