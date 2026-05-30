@@ -52,8 +52,14 @@ _Auto-generated from `data/sim_runs.db::training_runs` by `scripts/refresh_readm
 
 | run_id | when | family | OOS IC | features | tickers | device | took | trigger | commit |
 |---|---|---|---|---|---|---|---|---|---|
-| `5770ccc3` | 2026-05-29T16:35:00Z | hf_patchtst | +0.0182 | 169 | 142 | mps | 34.0m | manual | `b863da9b` |
-| `a1bd9d1d` | 2026-05-29T16:02:37Z | panel_ltr_xgboost | +0.0456 | 169 | — | cpu | 1.1m | manual | `b863da9b` |
+| `20260530085443-hf_patchtst-95373a` | 2026-05-30T08:54:43.713636 | hf_patchtst | -0.0814 | 169 | 142 | mps | — | manual | `dbec047` |
+| `20260530083720-hf_patchtst-ea9013` | 2026-05-30T08:37:20.527692 | hf_patchtst | -0.0509 | 169 | 142 | mps | — | manual | `423cf68` |
+| `20260530081449-hf_patchtst-fe31d3` | 2026-05-30T08:14:49.501296 | hf_patchtst | -0.0385 | 169 | 142 | mps | — | manual | `550c328` |
+| `20260530075326-hf_patchtst-3674ad` | 2026-05-30T07:53:26.997435 | hf_patchtst | -0.1024 | 169 | 142 | mps | — | manual | `d86027a` |
+| `20260530073808-hf_patchtst-bc239c` | 2026-05-30T07:38:08.060957 | hf_patchtst | +0.0304 | 169 | 142 | mps | — | manual | `1be8c8d` |
+| `20260530071930-hf_patchtst-21e1c5` | 2026-05-30T07:19:30.614108 | hf_patchtst | +0.0841 | 169 | 142 | mps | — | manual | `1be8c8d` |
+| `20260530070205-hf_patchtst-8b2c44` | 2026-05-30T07:02:05.152369 | hf_patchtst | -0.0366 | 169 | 142 | mps | — | manual | `6ca88db` |
+| `20260530064929-hf_patchtst-759431` | 2026-05-30T06:49:29.023165 | hf_patchtst | -0.0604 | 169 | 142 | mps | — | manual | `67bf666` |
 
-_last refreshed: 2026-05-30T05:47:36.754838Z_
+_last refreshed: 2026-05-30T18:30:43.902414Z_
 <!-- LATEST_MODELS:END -->
