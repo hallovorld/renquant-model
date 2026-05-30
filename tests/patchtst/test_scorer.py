@@ -114,3 +114,83 @@ def test_score_with_history_independent_of_predict_rows_buffer() -> None:
     s.score_with_history(history, ["AAPL"])
     # buffer should still be at 1 (history call is stateless w.r.t. buffer)
     assert s.buffer_state()["AAPL"] == 1
+
+
+# ─── bootstrap_from_history (D5) ───────────────────────────────────────────
+
+def test_bootstrap_from_history_warms_buffer_to_seq_len_minus_one() -> None:
+    """After bootstrap, next predict_rows call produces a score immediately."""
+    import pandas as pd
+    s = _make(seq_len=5, feats=["a", "b"])
+    history = pd.DataFrame([
+        {"date": f"2024-01-{i:02d}", "ticker": "AAPL", "a": 0.1 * i, "b": 0.2 * i}
+        for i in range(1, 11)
+    ])
+    state = s.bootstrap_from_history(history)
+    # Warmed with seq_len - 1 = 4 rows (the most recent)
+    assert state["AAPL"] == 4
+    assert s.buffer_state()["AAPL"] == 4
+    # Next predict_rows call produces a score (cold-start eliminated)
+    out = s.predict_rows({"AAPL": {"a": 1.1, "b": 2.2}})
+    assert "AAPL" in out
+
+
+def test_bootstrap_with_insufficient_history_stays_cold() -> None:
+    """A ticker with fewer than seq_len - 1 history rows remains cold."""
+    import pandas as pd
+    s = _make(seq_len=5, feats=["a"])
+    history = pd.DataFrame([
+        {"date": "2024-01-01", "ticker": "AAPL", "a": 1.0},
+        {"date": "2024-01-02", "ticker": "AAPL", "a": 2.0},
+    ])
+    state = s.bootstrap_from_history(history)
+    assert state["AAPL"] == 2
+    # Next predict_rows: buffer goes 2 -> 3, still not seq_len (5)
+    out = s.predict_rows({"AAPL": {"a": 3.0}})
+    assert "AAPL" not in out
+
+
+def test_bootstrap_only_warms_tickers_present_in_history() -> None:
+    import pandas as pd
+    s = _make(seq_len=3, feats=["a"])
+    history = pd.DataFrame([
+        {"date": "2024-01-01", "ticker": "AAPL", "a": 1.0},
+        {"date": "2024-01-02", "ticker": "AAPL", "a": 2.0},
+    ])
+    state = s.bootstrap_from_history(history)
+    assert set(state) == {"AAPL"}
+    # MSFT was absent from history → no buffer entry
+    assert "MSFT" not in s.buffer_state()
+
+
+def test_bootstrap_uses_most_recent_rows() -> None:
+    """Out-of-order history rows must be sorted by date before warming."""
+    import pandas as pd
+    s = _make(seq_len=3, feats=["a"])
+    history = pd.DataFrame([
+        {"date": "2024-01-03", "ticker": "AAPL", "a": 30.0},
+        {"date": "2024-01-01", "ticker": "AAPL", "a": 10.0},  # oldest, should be dropped
+        {"date": "2024-01-02", "ticker": "AAPL", "a": 20.0},
+        {"date": "2024-01-04", "ticker": "AAPL", "a": 40.0},  # newest
+    ])
+    s.bootstrap_from_history(history)
+    # Buffer is seq_len - 1 = 2 rows; should contain the 2 NEWEST
+    buf_list = list(s._buffers["AAPL"])
+    assert buf_list[-1][0] == pytest.approx(40.0)
+    assert buf_list[-2][0] == pytest.approx(30.0)
+
+
+def test_bootstrap_clears_existing_buffer() -> None:
+    """Pre-existing predict_rows state is overwritten by bootstrap."""
+    import pandas as pd
+    s = _make(seq_len=3, feats=["a"])
+    s.predict_rows({"AAPL": {"a": 999.0}})  # noise: 1 row in buffer
+    history = pd.DataFrame([
+        {"date": "2024-01-01", "ticker": "AAPL", "a": 1.0},
+        {"date": "2024-01-02", "ticker": "AAPL", "a": 2.0},
+    ])
+    s.bootstrap_from_history(history)
+    buf_list = list(s._buffers["AAPL"])
+    assert len(buf_list) == 2
+    # Should NOT contain 999.0 (cleared first)
+    assert all(row[0] != pytest.approx(999.0) for row in buf_list)

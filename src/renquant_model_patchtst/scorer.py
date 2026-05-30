@@ -146,6 +146,53 @@ class PatchTstStatefulScorer:
         scores = outputs["score"].detach().cpu().numpy()
         return {t: float(s) for t, s in zip(ready_tkrs, scores)}
 
+    # ─── Buffer bootstrap (callers warm explicitly post-load) ──────────────
+
+    def bootstrap_from_history(self, history: Any) -> dict[str, int]:
+        """Pre-warm per-ticker buffers from historical feature rows.
+
+        Without this, the daily cron loses ``seq_len - 1`` days of signal: the
+        first ``predict_rows`` call per ticker only fills slot 1 of the buffer
+        so no score is emitted. By pre-loading up to ``seq_len - 1`` historical
+        rows per ticker, the very next ``predict_rows`` call appends the
+        current bar and immediately produces a score.
+
+        Parameters
+        ----------
+        history : pandas.DataFrame
+            Must have columns ``date``, ``ticker``, plus every name in
+            ``self.feature_cols``. Tickers absent from the frame are left
+            cold; tickers with fewer than ``seq_len - 1`` rows are warmed with
+            whatever is available (still cold until enough days accumulate).
+
+        Returns
+        -------
+        dict[str, int]
+            ``{ticker: rows_in_buffer_after_warm}`` for the daily run trace.
+            A ticker is "ready" when ``len(buf) >= seq_len - 1``; that means
+            the next ``predict_rows`` for it produces a score.
+        """
+        from collections import deque  # noqa: PLC0415
+        target_len = max(0, self.seq_len - 1)
+        state: dict[str, int] = {}
+        if target_len == 0:
+            return state
+        for tkr, rows in history.groupby("ticker", sort=False):
+            rows = rows.sort_values("date")
+            warm = (
+                rows[self.feature_cols]
+                .tail(target_len)
+                .astype(np.float32)
+                .fillna(0.0)
+                .to_numpy()
+            )
+            buf = self._buffers.setdefault(tkr, deque(maxlen=self.seq_len))
+            buf.clear()
+            for row in warm:
+                buf.append(row)
+            state[tkr] = len(buf)
+        return state
+
     # ─── Diagnostics (not part of Protocol) ─────────────────────────────────
 
     def buffer_state(self) -> dict[str, int]:
