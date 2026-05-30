@@ -67,11 +67,14 @@ def test_record_training_run_writes_canonical_training_columns(
     monkeypatch.setenv("RENQUANT_TRAINING_DB", str(db))
     monkeypatch.setenv("RENQUANT_STRATEGY_NAME", "renquant_104")
     monkeypatch.setenv("RENQUANT_TRAIN_TRIGGER", "unit")
-    monkeypatch.setattr(subprocess, "check_output", lambda *a, **kw: "abc1234\n")
+    def fake_run(args, **kwargs):
+        stdout = "abc1234\n" if "rev-parse" in args else ""
+        return subprocess.CompletedProcess(args, 0, stdout, "")
+
     monkeypatch.setattr(
         subprocess,
         "run",
-        lambda *a, **kw: subprocess.CompletedProcess(a[0], 0, "", ""),
+        fake_run,
     )
 
     ctx = SequenceTrainingContext(

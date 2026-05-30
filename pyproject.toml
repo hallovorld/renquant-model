@@ -9,7 +9,7 @@ description = "RenQuant model families (GBDT panel-LTR + PatchTST sequence) in o
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-  "renquant-common>=0.2,<0.3",
+  "renquant-common>=0.3,<0.4",
   "renquant-base-data>=0.1.0",
   "renquant-artifacts>=0.1.0",
   "numpy>=1.26",
@@ -21,7 +21,7 @@ dependencies = [
 #   pip install renquant-model[gbdt]      → XGBoost backend
 #   pip install renquant-model[patchtst]  → torch + transformers backend
 [project.optional-dependencies]
-gbdt = ["xgboost>=2.1"]
+gbdt = ["xgboost>=2.1", "pyarrow>=15"]
 patchtst = ["torch>=2.2", "transformers>=4.40"]
 
 # Scorer entry points — consumers reach these only via
