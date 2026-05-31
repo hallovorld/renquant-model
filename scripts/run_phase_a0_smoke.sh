@@ -1,54 +1,70 @@
 #!/usr/bin/env bash
-# Phase A.0 smoke runner — first kill-gate experiment from the merged
-# research plan (docs/patchtst_capability_research_proposal.md §"Phase
-# A.0: Gate Smoke").
+# Phase A.0 placebo + data-machinery smoke runner.
 #
 # Runs the actual research_pipeline ExperimentPipeline on the small
 # synthetic fixture committed at tests/data/smoke_panel.parquet. This is
 # the smallest end-to-end exercise of:
-#   * detector_version plumbing (PR #12)
+#
 #   * placebo cross-split-leak fix (PR #9)
-#   * regime-contract gate (RegimeDetectorContractTask)
+#   * detector_version plumbing (PR #12)
+#   * trainer-surface validation + trial argv assembly
 #   * the full Task/Job/Pipeline machinery
+#
+# What this smoke does NOT exercise (intentional scope):
+#
+#   * RegimeDetectorContractTask — this script passes --no-regime-contract
+#     because the synthetic SPY won't pass the canonical golden-window
+#     check against real-history calm_2017 / covid_crash / q2_2022_bear
+#     windows. Validating the detector itself is the job of the real-data
+#     Phase A.0 run against the umbrella's full SPY parquet.
+#   * PerRegimeICCallback — the trainer doesn't receive --spy-path here
+#     (the B_tuned config doesn't forward it; only D_film does), so
+#     per-regime IC will be empty. That's expected; per-regime
+#     attribution is a real-data concern.
+#   * Best-model selection via eval_min_regime_ic — falls back to
+#     eval_loss when SPY isn't wired into the trainer. The smoke is
+#     validating data-machinery + placebos, not best-model selection.
 #
 # Wall-clock target: < 5 minutes on CPU. If it takes longer, something
 # regressed in the data path or the trainer.
 #
 # Kill criteria (per merged plan):
-#   - regime contract fails           → STOP, debug detector
 #   - shuffle placebo IC > threshold  → STOP, debug shuffle path
 #   - timeshift placebo IC > threshold → STOP, debug shift path
 #   - any subprocess SystemExit → STOP, fix trainer surface
+#   - any artifact assembly failure → STOP, debug contract
 #
 # Usage (run from renquant-model repo root):
 #
 #     ./scripts/run_phase_a0_smoke.sh
-#
-# Or directly:
-#
-#     PYTHONPATH=src python -m renquant_model_patchtst.research \
-#         --phase range_find --configs B_tuned --cuts all \
-#         --seeds 42 --epochs 2 --device cpu \
-#         --dataset tests/data/smoke_panel.parquet \
-#         --spy-path tests/data/smoke_spy.parquet \
-#         --out-dir artifacts/phase_a0_smoke \
-#         --no-regime-contract \
-#         --label fwd_5d_excess \
-#         --label-lookahead-days 5 \
-#         --embargo-days 5 \
-#         --val-tail-pct 0.15 \
-#         --label-shift-days 5
 
-set -euo pipefail
+# Note: NO `set -e` — we explicitly handle the research command's exit
+# code (which is 2 on `invalid_experiment`, a meaningful verdict we want
+# to print). `set -u` and `set -o pipefail` are still on for unset-var
+# safety.
+set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$REPO_ROOT"
+cd "$REPO_ROOT" || { echo "ERROR: cannot cd to $REPO_ROOT" >&2; exit 1; }
 
-# Allow override of the Python interpreter (CI / venv flexibility).
-PYTHON="${PYTHON:-../RenQuant/.venv/bin/python}"
-if [ ! -x "$PYTHON" ]; then
-    PYTHON="${PYTHON:-python3}"
+# Python interpreter resolution. Honors $PYTHON if set + executable;
+# else tries the umbrella's sibling venv; else falls back to system
+# python3. The previous version had a fallback bug (re-using
+# ${PYTHON:-python3} after PYTHON was already set) — this version
+# checks explicitly.
+if [ -n "${PYTHON:-}" ] && [ -x "$PYTHON" ]; then
+    :   # respect explicit operator override
+elif [ -x "../RenQuant/.venv/bin/python" ]; then
+    PYTHON="../RenQuant/.venv/bin/python"
+else
+    PYTHON="$(command -v python3 || true)"
 fi
+if [ -z "${PYTHON:-}" ] || [ ! -x "$PYTHON" ]; then
+    echo "ERROR: no usable python interpreter found (set \$PYTHON, install" >&2
+    echo "       ../RenQuant/.venv, or have python3 on PATH)." >&2
+    exit 1
+fi
+echo "using interpreter: $PYTHON"
 
 # Ensure sibling subrepos are on PYTHONPATH so renquant_common etc. resolve.
 export PYTHONPATH="src:../renquant-common/src:../renquant-pipeline/src:../renquant-artifacts/src:../renquant-base-data/src:${PYTHONPATH:-}"
@@ -57,14 +73,20 @@ OUT_DIR="${OUT_DIR:-artifacts/phase_a0_smoke}"
 rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR"
 
+# Committed smoke strategy config — minimal stub so build_config_contract()
+# in BuildSummaryTask doesn't fall back to the umbrella's strategy file
+# (which doesn't exist in this repo).
+SMOKE_STRATEGY_CONFIG="tests/data/smoke_strategy_config.json"
+if [ ! -f "$SMOKE_STRATEGY_CONFIG" ]; then
+    echo "ERROR: smoke strategy config missing at $SMOKE_STRATEGY_CONFIG" >&2
+    exit 1
+fi
+
 echo "[$(date)] Phase A.0 smoke starting → $OUT_DIR"
 
-# The 'all' cut is the fixture's natural unit (no walk-forward cuts apply to
-# the synthetic 200-day fixture). val_tail_pct=0.15 + embargo_days=5 +
-# label_lookahead_days=5 leaves enough train rows for a competent ranker.
-# --no-regime-contract because the synthetic SPY won't pass the canonical
-# golden-window check; this smoke is about placebo gate + machinery, not
-# about real-world regime detection.
+# Run the research command WITHOUT `set -e` so we can handle exit code 2
+# (invalid_experiment is a meaningful verdict, not a script failure).
+set +e
 "$PYTHON" -m renquant_model_patchtst.research \
     --phase range_find \
     --configs B_tuned \
@@ -74,6 +96,7 @@ echo "[$(date)] Phase A.0 smoke starting → $OUT_DIR"
     --device cpu \
     --dataset tests/data/smoke_panel.parquet \
     --spy-path tests/data/smoke_spy.parquet \
+    --strategy-config "$SMOKE_STRATEGY_CONFIG" \
     --out-dir "$OUT_DIR" \
     --no-regime-contract \
     --label fwd_5d_excess \
@@ -82,10 +105,15 @@ echo "[$(date)] Phase A.0 smoke starting → $OUT_DIR"
     --val-tail-pct 0.15 \
     --label-shift-days 5 \
     --detector-version v2026-05-31
-
 RC=$?
+set -e
+
 echo "[$(date)] research run exit code: $RC"
 
+# Exit code policy:
+#   0 → verdict produced (any verdict except invalid_experiment)
+#   2 → verdict was invalid_experiment (NOT a script failure)
+#   other → real failure
 if [ "$RC" -ne 0 ] && [ "$RC" -ne 2 ]; then
     echo "ERROR: research command returned unexpected exit code $RC" >&2
     exit "$RC"
