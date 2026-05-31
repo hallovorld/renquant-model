@@ -26,6 +26,7 @@ import pandas as pd
 from scipy.stats import spearmanr
 
 from renquant_common import Job, Pipeline, Task, run_parallel
+from renquant_common.contracts.regime import RegimeLabel
 from renquant_common.stats import deflated_sharpe, pbo_cscv
 
 from .splits import (
@@ -47,7 +48,18 @@ Verdict = Literal[
 
 DEFAULT_BASELINE_CONFIG = "B_tuned"
 DEFAULT_LABEL_SHIFT_DAYS = 10
-NON_DEFENSIVE_REGIMES = frozenset({"BULL_CALM", "BULL_VOLATILE", "BULL_STRONG", "CHOPPY"})
+# Non-defensive regimes — bull/choppy phases where strategy should produce
+# positive selection IC. BEAR is excluded (legitimate selectively-short /
+# defensive territory). BULL_STRONG is config-legacy phantom retained for
+# compatibility with older strategy_config files. RegimeLabel.<>.value
+# rather than raw literals so the contract stays single-sourced (renquant-
+# common's repo-wide test_no_raw_regime_strings guard).
+NON_DEFENSIVE_REGIMES = frozenset({
+    RegimeLabel.BULL_CALM.value,
+    RegimeLabel.BULL_VOLATILE.value,
+    RegimeLabel.BULL_STRONG.value,
+    RegimeLabel.CHOPPY.value,
+})
 DEFAULT_TRIAL_TIMEOUTS_SEC = {
     "real": 4 * 60 * 60,
     "shuffle_placebo": 4 * 60 * 60,
@@ -66,21 +78,21 @@ REGIME_GOLDEN_WINDOWS = (
         "name": "covid_crash",
         "start": "2020-02-20",
         "end": "2020-04-30",
-        "allowed_majority": ("BEAR", "CHOPPY"),
+        "allowed_majority": (RegimeLabel.BEAR.value, RegimeLabel.CHOPPY.value),
         "mode": "any_coverage",
     },
     {
         "name": "q2_2022_bear",
         "start": "2022-04-01",
         "end": "2022-06-30",
-        "allowed_majority": ("BEAR",),
+        "allowed_majority": (RegimeLabel.BEAR.value,),
         "mode": "majority",
     },
     {
         "name": "calm_2017",
         "start": "2017-01-01",
         "end": "2017-12-31",
-        "allowed_majority": ("BULL_CALM",),
+        "allowed_majority": (RegimeLabel.BULL_CALM.value,),
         "mode": "majority",
     },
 )
