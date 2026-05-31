@@ -76,11 +76,26 @@ mkdir -p "$OUT_DIR"
 # Committed smoke strategy config — minimal stub so build_config_contract()
 # in BuildSummaryTask doesn't fall back to the umbrella's strategy file
 # (which doesn't exist in this repo).
-SMOKE_STRATEGY_CONFIG="tests/data/smoke_strategy_config.json"
+#
+# MUST be an absolute path. build_config_contract() resolves relative
+# strategy_config paths against hf.REPO (= renquant-model/src in package
+# mode), which would look for src/tests/data/smoke_strategy_config.json
+# and fail. Absolute path bypasses that resolution.
+SMOKE_STRATEGY_CONFIG="$REPO_ROOT/tests/data/smoke_strategy_config.json"
 if [ ! -f "$SMOKE_STRATEGY_CONFIG" ]; then
     echo "ERROR: smoke strategy config missing at $SMOKE_STRATEGY_CONFIG" >&2
     exit 1
 fi
+# Same for dataset + spy-path: hf_trainer's REPO-relative resolution
+# would otherwise look under src/. Use absolute paths.
+SMOKE_DATASET="$REPO_ROOT/tests/data/smoke_panel.parquet"
+SMOKE_SPY_PATH="$REPO_ROOT/tests/data/smoke_spy.parquet"
+for path in "$SMOKE_DATASET" "$SMOKE_SPY_PATH"; do
+    if [ ! -f "$path" ]; then
+        echo "ERROR: smoke fixture missing at $path" >&2
+        exit 1
+    fi
+done
 
 echo "[$(date)] Phase A.0 smoke starting → $OUT_DIR"
 
@@ -94,8 +109,8 @@ set +e
     --seeds 42 \
     --epochs 2 \
     --device cpu \
-    --dataset tests/data/smoke_panel.parquet \
-    --spy-path tests/data/smoke_spy.parquet \
+    --dataset "$SMOKE_DATASET" \
+    --spy-path "$SMOKE_SPY_PATH" \
     --strategy-config "$SMOKE_STRATEGY_CONFIG" \
     --out-dir "$OUT_DIR" \
     --no-regime-contract \
@@ -131,33 +146,89 @@ echo ""
 echo "=== experiment_dir ==="
 echo "$EXP_DIR"
 echo ""
-echo "=== verdict ==="
-if [ -f "$EXP_DIR/analysis.json" ]; then
-    "$PYTHON" -c "
+echo "=== experiment summary ==="
+# Print the summary AND determine the gate-pass exit code in one shot.
+# A run that ended with all 3 trials failed (FileNotFoundError, etc.) is
+# NOT a green smoke even though the harness recorded an `invalid_experiment`
+# verdict — operator should see RC≠0 and know to investigate.
+"$PYTHON" - "$EXP_DIR" <<'PY'
 import json
-d = json.load(open('$EXP_DIR/analysis.json'))
-print(f\"verdict: {d.get('verdict')}\")
-vi = d.get('verdict_inputs', {})
-for k in ('delta_vs_baseline', 'se_pooled_ic', 'worst_cut_ic',
-          'min_non_defensive_regime_ic', 'has_non_defensive_evidence',
-          'dsr', 'pbo'):
-    if k in vi:
-        print(f\"  {k}: {vi[k]}\")
-"
-elif [ -f "$EXP_DIR/invalid_experiment.json" ]; then
-    "$PYTHON" -c "
-import json
-d = json.load(open('$EXP_DIR/invalid_experiment.json'))
-print(f\"verdict: invalid_experiment\")
-pg = d.get('placebo_gate', {})
-for kind in ('shuffle_placebo', 'timeshift_placebo'):
-    g = pg.get(kind, {})
-    print(f\"  {kind}: passed={g.get('passed')}, real_ic={g.get('real_ic_mean')}, placebo_ic={g.get('placebo_ic_mean')}, threshold={g.get('threshold')}\")
-"
-else
-    echo "ERROR: no analysis.json or invalid_experiment.json in $EXP_DIR" >&2
-    ls "$EXP_DIR/" >&2
-    exit 1
+import sys
+from pathlib import Path
+
+exp_dir = Path(sys.argv[1])
+gates_failed: list[str] = []
+
+# Aggregate completeness — same surface ValidateResultCompletenessTask writes.
+agg_path = exp_dir / "aggregate_results.json"
+n_failed = 0
+n_missing = 0
+n_planned = 0
+if agg_path.exists():
+    agg = json.loads(agg_path.read_text())
+    comp = agg.get("completeness", {})
+    n_failed = int(comp.get("n_failed", 0))
+    n_missing = int(comp.get("n_missing", 0))
+    n_planned = int(comp.get("planned", 0))
+    print(f"completeness: {n_planned - n_failed - n_missing}/{n_planned} ok "
+          f"(failed={n_failed}, missing={n_missing})")
+    if n_failed > 0:
+        gates_failed.append(f"{n_failed} trials failed")
+        ids = comp.get("failed_trial_ids", [])
+        if ids:
+            print(f"  failed_trial_ids: {ids}")
+    if n_missing > 0:
+        gates_failed.append(f"{n_missing} trials missing")
+
+# Placebo gates — same surface PlaceboGateJob writes.
+placebo_path = exp_dir / "placebo_gate.json"
+if placebo_path.exists():
+    pg = json.loads(placebo_path.read_text())
+    for kind in ("shuffle_placebo", "timeshift_placebo"):
+        g = pg.get(kind, {})
+        passed = g.get("passed")
+        print(f"placebo {kind}: passed={passed} "
+              f"real_ic={g.get('real_ic_mean')} placebo_ic={g.get('placebo_ic_mean')} "
+              f"threshold={g.get('threshold')} "
+              f"(n_real={g.get('n_real')}/n_placebo={g.get('n_placebo')})")
+        if g.get("hard_gate", True) and not passed:
+            gates_failed.append(f"{kind} did not pass")
+
+# Verdict
+if (exp_dir / "analysis.json").exists():
+    a = json.loads((exp_dir / "analysis.json").read_text())
+    print(f"verdict: {a.get('verdict')}")
+    vi = a.get("verdict_inputs", {})
+    for k in ("delta_vs_baseline", "se_pooled_ic", "worst_cut_ic",
+              "min_non_defensive_regime_ic", "has_non_defensive_evidence",
+              "dsr", "pbo"):
+        if k in vi:
+            print(f"  {k}: {vi[k]}")
+elif (exp_dir / "invalid_experiment.json").exists():
+    d = json.loads((exp_dir / "invalid_experiment.json").read_text())
+    print(f"verdict: invalid_experiment")
+    gates_failed.append("verdict = invalid_experiment")
+else:
+    print("ERROR: no analysis.json or invalid_experiment.json — broken artifact assembly", file=sys.stderr)
+    sys.exit(3)
+
+if gates_failed:
+    print("", file=sys.stderr)
+    print("SMOKE FAILED — gates that did not pass:", file=sys.stderr)
+    for g in gates_failed:
+        print(f"  - {g}", file=sys.stderr)
+    sys.exit(2)
+
+print("")
+print("All smoke gates passed.")
+PY
+SUMMARY_RC=$?
+
+if [ "$SUMMARY_RC" -ne 0 ]; then
+    # Non-zero summary exit means a gate didn't pass; operator must
+    # investigate before treating this as a green smoke.
+    echo "Phase A.0 smoke INCOMPLETE — see gate failures above." >&2
+    exit "$SUMMARY_RC"
 fi
 echo ""
 echo "Phase A.0 smoke complete."
