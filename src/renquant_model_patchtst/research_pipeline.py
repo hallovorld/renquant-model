@@ -364,6 +364,12 @@ class ValidateTrainerSurfaceTask(Task):
             "label",
             "embargo_days",
             "val_tail_pct",
+            # PR #12 review M1: _trial_argv unconditionally emits
+            # --detector-version, so a trainer parser that doesn't accept it
+            # would SystemExit inside the trial subprocess, bypassing the
+            # normal failed-trial-persistence path. Catch it here so the
+            # operator sees a clean ValueError up-front.
+            "detector_version",
         }
         if ctx.spec.require_placebos and not ctx.spec.allow_ungated_smoke:
             required |= {"shuffle_labels", "label_shift_days"}
@@ -391,6 +397,8 @@ class RegimeDetectorContractTask(Task):
             BEAR_RET_5D_THR,
             BEAR_VOL_20D_THR,
             BEAR_VOL_5D_THR,
+            BULL_CALM_DRIFT_THR,
+            BULL_CALM_VOL_THR,
             CHOPPY_DRIFT_TH,
             CHOPPY_VOL_RATIO,
             HURST_TREND_THR,
@@ -439,6 +447,11 @@ class RegimeDetectorContractTask(Task):
                 "CHOPPY_VOL_RATIO": CHOPPY_VOL_RATIO,
                 "CHOPPY_DRIFT_TH": CHOPPY_DRIFT_TH,
                 "HURST_TREND_THR": HURST_TREND_THR,
+                # v2026-05-31 vol-based BULL_CALM thresholds — material for
+                # decision attribution when detector_version="v2026-05-31".
+                # PR #12 review M3.
+                "BULL_CALM_VOL_THR": BULL_CALM_VOL_THR,
+                "BULL_CALM_DRIFT_THR": BULL_CALM_DRIFT_THR,
             },
         }
         if failures:

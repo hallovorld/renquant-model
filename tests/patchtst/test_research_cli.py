@@ -178,3 +178,23 @@ def test_research_cli_detector_version_independent_of_regime_contract(
     assert rc == 0
     assert spec.detector_version == "v2026-05-31"   # default still applies
     assert spec.require_regime_contract is False
+
+
+def test_research_cli_rejects_unknown_detector_version(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """PR #12 review M2: typos / unknown versions must fail at argparse,
+    not silently propagate into artifacts. Choices come from renquant-common
+    constants so adding a new version is one edit, not three."""
+    argv = [
+        "--phase", "range_find",
+        "--configs", "B_tuned",
+        "--cuts", "cut1_covid",
+        "--seeds", "42",
+        "--epochs", "1",
+        "--device", "cpu",
+        "--out-dir", str(tmp_path),
+        "--detector-version", "v2099-not-a-version",
+    ]
+    with pytest.raises(SystemExit):
+        _capture_spec_from_main(argv, monkeypatch)

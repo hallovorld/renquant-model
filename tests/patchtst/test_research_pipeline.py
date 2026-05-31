@@ -536,6 +536,61 @@ def test_load_regime_labels_threads_detector_version(
     assert captured["detector_version"] == "legacy"
 
 
+def test_trainer_surface_validation_requires_detector_version(tmp_path: Path) -> None:
+    """PR #12 review M1: _trial_argv unconditionally emits --detector-version,
+    so ValidateTrainerSurfaceTask must require it. A parser missing the flag
+    would otherwise SystemExit inside the trial subprocess, bypassing the
+    failed-trial-persistence path."""
+    from renquant_model_patchtst.research_pipeline import (
+        ValidateTrainerSurfaceTask,
+    )
+
+    def parser_without_detector_version() -> argparse.ArgumentParser:
+        p = argparse.ArgumentParser()
+        # Every required flag EXCEPT --detector-version.
+        for flag in ("--cut", "--seed", "--epochs", "--device", "--output-dir",
+                     "--dataset", "--label", "--embargo-days", "--val-tail-pct"):
+            p.add_argument(flag)
+        p.add_argument("--shuffle-labels", action="store_true")
+        p.add_argument("--label-shift-days", type=int, default=0)
+        return p
+
+    ctx = ExperimentContext(spec=_spec(tmp_path, require_placebos=True))
+    with pytest.raises(ValueError, match="detector_version"):
+        ValidateTrainerSurfaceTask(parser_without_detector_version).run(ctx)
+
+
+def test_regime_contract_stamps_v2026_thresholds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """PR #12 review M3: regime_contract.thresholds must include the v2026
+    constants (BULL_CALM_VOL_THR / BULL_CALM_DRIFT_THR), since they're
+    material for decision attribution when detector_version='v2026-05-31'."""
+    from renquant_model_patchtst import research_pipeline as rp
+
+    spy = tmp_path / "spy.parquet"
+    spy.write_bytes(b"")
+
+    def fake_compute(spy_path, *, detector_version=None):
+        dates = pd.date_range("2017-01-01", "2023-12-31", freq="B")
+        return pd.DataFrame({"date": dates, "regime": ["BULL_CALM"] * len(dates)})
+
+    monkeypatch.setattr(
+        "renquant_common.hmm_regime_labels.compute_hmm_regime_labels",
+        fake_compute,
+    )
+
+    spec = _spec(tmp_path, spy_path=spy, require_regime_contract=True)
+    ctx = ExperimentContext(spec=spec, trial_plan=[])
+    rp.RegimeDetectorContractTask().run(ctx)
+    thresholds = ctx.regime_contract["thresholds"]
+    assert "BULL_CALM_VOL_THR" in thresholds
+    assert "BULL_CALM_DRIFT_THR" in thresholds
+    # legacy constants still present for audit completeness
+    assert "BEAR_VOL_20D_THR" in thresholds
+    assert "HURST_TREND_THR" in thresholds
+
+
 def test_regime_contract_task_stamps_detector_version(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -747,7 +747,13 @@ def build_parser() -> argparse.ArgumentParser:
                         "baseline.")
     p.add_argument("--spy-path", default="data/ohlcv/SPY/1d.parquet",
                    help="SPY OHLCV parquet for HMM regime labels")
-    p.add_argument("--detector-version", default="v2026-05-31",
+    from renquant_common.hmm_regime_labels import (  # noqa: PLC0415
+        DETECTOR_VERSION_LEGACY,
+        DETECTOR_VERSION_V20260531,
+    )
+    p.add_argument("--detector-version",
+                   default=DETECTOR_VERSION_V20260531,
+                   choices=[DETECTOR_VERSION_LEGACY, DETECTOR_VERSION_V20260531],
                    help="HMM regime detector version "
                         "(renquant_common.hmm_regime_labels). 'v2026-05-31' "
                         "uses the corrected vol-based BULL_CALM path; "
