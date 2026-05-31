@@ -267,6 +267,48 @@ def test_trainer_shuffle_label_placebo_runs_without_error(tmp_path: Path) -> Non
     # not a trainer concern. Just assert the run completes.
 
 
+# ---- research-CLI config contract (PR #15 review regression) -------------
+
+
+def test_canonical_dlinear_config_uses_upstream_kernel_size() -> None:
+    """PR #15 review regression guard. The canonical ``L_dlinear`` config
+    must NOT override the upstream-faithful default kernel_size=25 (pinned
+    by PR #14 from LTSF-Linear@0c11366). If a smaller kernel is wanted,
+    it must be a named ablation (``L_dlinear_k5`` / ``L_dlinear_k3``) so
+    experiment labels are scientifically honest.
+    """
+    from renquant_model_linear.research import configs
+
+    cfg_map = configs()
+    canonical = cfg_map["L_dlinear"]
+    # Either explicit --kernel-size 25 OR no --kernel-size at all (relies
+    # on trainer default which is also 25 post-PR-#14).
+    if "--kernel-size" in canonical:
+        idx = canonical.index("--kernel-size")
+        assert canonical[idx + 1] == "25", (
+            f"L_dlinear sets --kernel-size {canonical[idx + 1]!r}; the "
+            f"canonical baseline MUST use 25 to match pinned upstream. "
+            f"Use L_dlinear_k<N> naming for smaller-kernel ablations."
+        )
+
+    # Smaller-kernel ablations must be named with the L_dlinear_k<N> suffix.
+    for name, args in cfg_map.items():
+        if name in {"L_dlinear", "L_nlinear"}:
+            continue
+        if "--kernel-size" in args:
+            idx = args.index("--kernel-size")
+            kernel = args[idx + 1]
+            assert name.startswith("L_dlinear_k"), (
+                f"config {name!r} sets --kernel-size {kernel} but isn't "
+                f"named with the L_dlinear_k<N> ablation convention"
+            )
+            expected_suffix = f"k{kernel}"
+            assert name.endswith(expected_suffix), (
+                f"config {name!r} sets --kernel-size {kernel} but name "
+                f"doesn't end with {expected_suffix!r} — label drift risk"
+            )
+
+
 # ---- main() CLI sanity ---------------------------------------------------
 
 

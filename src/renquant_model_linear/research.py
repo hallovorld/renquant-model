@@ -49,13 +49,25 @@ _LINEAR_CONFIG_TUNED: list[str] = [
 
 def configs() -> dict[str, list[str]]:
     """Linear-baseline configurations, in the same shape as patchtst.research.
-    Each maps to a set of CLI args appended to the trainer invocation."""
+    Each maps to a set of CLI args appended to the trainer invocation.
+
+    Naming convention: the canonical ``L_dlinear`` runs the trainer default
+    ``--kernel-size 25`` (matches pinned upstream LTSF-Linear) so the
+    primary falsification baseline is the same DLinear hypothesis the
+    paper measures. Smaller-kernel variants are named ``L_dlinear_k<N>``
+    so experiment labels stay scientifically honest — a ``--configs
+    L_dlinear`` run is upstream-faithful; ``L_dlinear_k5`` / ``L_dlinear_k3``
+    are explicit ablations.
+    """
     return {
-        "L_dlinear":          _LINEAR_CONFIG_TUNED + ["--model", "dlinear", "--kernel-size", "5"],
-        "L_nlinear":          _LINEAR_CONFIG_TUNED + ["--model", "nlinear"],
-        # Smaller-kernel DLinear variant — useful when seq_len is short
-        # (kernel_size=5 over seq_len=8 over-smooths the trend).
-        "L_dlinear_k3":       _LINEAR_CONFIG_TUNED + ["--model", "dlinear", "--kernel-size", "3"],
+        # Upstream-faithful DLinear (kernel=25 default from trainer). The
+        # primary falsification baseline per the merged plan.
+        "L_dlinear":     _LINEAR_CONFIG_TUNED + ["--model", "dlinear"],
+        "L_nlinear":     _LINEAR_CONFIG_TUNED + ["--model", "nlinear"],
+        # Smaller-kernel ablations — useful when seq_len is short
+        # (kernel_size=25 over seq_len=10 over-smooths the trend).
+        "L_dlinear_k5":  _LINEAR_CONFIG_TUNED + ["--model", "dlinear", "--kernel-size", "5"],
+        "L_dlinear_k3":  _LINEAR_CONFIG_TUNED + ["--model", "dlinear", "--kernel-size", "3"],
     }
 
 
