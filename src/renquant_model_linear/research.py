@@ -85,6 +85,8 @@ def main(argv: list[str] | None = None) -> int:
                    choices=["auto", "cpu", "mps", "cuda"],
                    help="Linear models run fast on CPU; MPS gives no real "
                         "speedup for such small parameter counts.")
+    # Scheduler — see _force_linear_scheduler() docstring for why linear
+    # is the only safe choice today for the linear baselines.
     p.add_argument("--scheduler", default="auto",
                    choices=["auto", "linear", "parallel"])
     p.add_argument("--max-workers", type=int, default=None)
@@ -130,6 +132,8 @@ def main(argv: list[str] | None = None) -> int:
     out_dir = Path(args.out).parent if args.out else Path(args.out_dir)
     config_args = {name: all_configs[name] for name in selected_configs}
 
+    scheduler = _force_linear_scheduler(args.scheduler)
+
     spec = ExperimentSpec(
         phase=phase,
         configs=selected_configs,
@@ -142,7 +146,7 @@ def main(argv: list[str] | None = None) -> int:
         strategy_config=Path(args.strategy_config) if args.strategy_config else None,
         out_dir=out_dir,
         device=args.device,
-        scheduler=args.scheduler,
+        scheduler=scheduler,
         config_args=config_args,
         max_workers=args.max_workers,
         resume=not args.no_resume,
@@ -170,6 +174,42 @@ def main(argv: list[str] | None = None) -> int:
         flush=True,
     )
     return 2 if ctx.verdict == "invalid_experiment" else 0
+
+
+def _force_linear_scheduler(requested: str) -> str:
+    """Force ``scheduler="linear"`` for linear-baseline research.
+
+    The linear trainer's ``train_single_run`` mutates process-global RNGs
+    (``torch.manual_seed`` / ``np.random.seed`` / ``random.seed``) and the
+    research pipeline's ``run_parallel`` is thread-based on CPU. Two
+    concurrent trials in the same process therefore race on the global RNG:
+    trial A sets seed S_A, trial B sets seed S_B, then trial A constructs
+    its model / shuffles labels under seed S_B. The persisted artifact is
+    no longer determined by ``TrialSpec.seed`` — the scientific evidence
+    contract that "same cut+seed ⇒ same artifact bytes" is broken.
+
+    Reviewer reproduced this empirically on PR #15: sequential seeds 1..4
+    produced stable val-pred hashes; five thread-parallel repetitions all
+    mismatched the sequential artifacts.
+
+    Until per-trial RNG isolation lands (passing ``torch.Generator`` /
+    ``np.random.Generator`` through the trainer), we force linear scheduling
+    here so the default research path stays honest. Users who explicitly
+    ask for ``--scheduler parallel`` get a clear warning rather than a
+    silent override.
+
+    Long-term fix tracked in ``docs/p1_linear_research_known_limitations.md``.
+    """
+    if requested in ("auto", "parallel"):
+        import logging  # noqa: PLC0415
+        logging.getLogger(__name__).warning(
+            "linear-research scheduler=%r downgraded to 'linear' due to "
+            "thread-parallel seed-leakage bug (PR #15 review). See "
+            "docs/p1_linear_research_known_limitations.md.",
+            requested,
+        )
+        return "linear"
+    return requested
 
 
 def _parse_phase(raw: str) -> str:

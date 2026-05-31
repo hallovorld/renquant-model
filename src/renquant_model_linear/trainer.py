@@ -24,6 +24,7 @@ import json
 import logging
 import os
 import random
+import threading
 from pathlib import Path
 from typing import Any, Callable
 
@@ -43,6 +44,27 @@ _MODEL_REGISTRY: dict[str, Callable[..., nn.Module]] = {
     "dlinear": DLinearRanker,
     "nlinear": NLinearRanker,
 }
+
+
+# Process-wide lock around train_single_run.
+#
+# train_single_run mutates global RNG state (torch.manual_seed,
+# np.random.seed, random.seed) and downstream calls (shuffle_labels
+# permutation in load_panel_with_split, model weight init, training-loop
+# dropout) all consume that state. Two concurrent calls in the same
+# process race on the global RNG — trial A's model construction picks up
+# trial B's seed, breaking the "same cut+seed ⇒ same artifact bytes"
+# evidence contract.
+#
+# The research CLI (renquant_model_linear.research) already forces
+# scheduler=linear (see ``_force_linear_scheduler``) so the harness path
+# is safe. This lock is defense-in-depth for direct callers (ad-hoc
+# concurrent driver scripts, Optuna trials wired against the trainer).
+#
+# Long-term fix: thread per-trial ``torch.Generator`` / ``np.random.Generator``
+# through the trainer so true CPU parallelism becomes safe. Tracked in
+# ``docs/p1_linear_research_known_limitations.md``.
+_TRAINER_LOCK = threading.Lock()
 
 
 def _set_seed(seed: int) -> None:
@@ -177,7 +199,21 @@ def _build_model(name: str, n_features: int, seq_len: int, kernel_size: int) -> 
 def train_single_run(args: argparse.Namespace) -> dict[str, Any]:
     """Drop-in for hf_trainer.train_single_run — same input contract, same
     output shape. The research harness calls this transparently when
-    ``--model dlinear|nlinear`` selects the linear trainer."""
+    ``--model dlinear|nlinear`` selects the linear trainer.
+
+    Thread-safety: serialized behind a module-level lock (see
+    ``_TRAINER_LOCK`` above). This is defense-in-depth — the linear
+    research CLI already forces scheduler=linear so the harness path
+    is single-threaded; the lock protects ad-hoc concurrent callers.
+    True per-trial RNG isolation requires plumbing torch.Generator
+    through the trainer, tracked in
+    ``docs/p1_linear_research_known_limitations.md``.
+    """
+    with _TRAINER_LOCK:
+        return _train_single_run_unlocked(args)
+
+
+def _train_single_run_unlocked(args: argparse.Namespace) -> dict[str, Any]:
     _set_seed(int(args.seed))
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)

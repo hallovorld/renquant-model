@@ -327,3 +327,137 @@ def test_main_with_inline_dataset(tmp_path: Path) -> None:
     assert rc == 0
     # Summary persisted at the expected path.
     assert (out / "dlinear_all_seed42_summary.json").exists()
+
+
+# ---- PR #15 review BLOCKER: seed-leakage race condition guards ---------
+#
+# Reviewer reproduced thread-parallel determinism failure: with
+# scheduler=auto + device=cpu the research pipeline uses thread-based
+# run_parallel, and the trainer's _set_seed mutates global RNGs. Two
+# concurrent trials in the same process race on the global RNG so
+# artifacts are no longer determined by TrialSpec.seed.
+#
+# Contained by:
+#   (1) research CLI forces scheduler=linear (test below)
+#   (2) trainer wraps train_single_run in a process-wide lock (test below)
+#
+# Long-term fix tracked in docs/p1_linear_research_known_limitations.md.
+
+
+@pytest.mark.parametrize("requested", ["auto", "parallel"])
+def test_linear_research_cli_forces_linear_scheduler(
+    requested: str, tmp_path: Path,
+) -> None:
+    """``--scheduler {auto,parallel}`` MUST be downgraded to ``"linear"``
+    in the ExperimentSpec built by the linear research CLI.
+
+    Without this guard, the linear trainer's process-global RNG mutation
+    races under thread-based run_parallel (PR #15 reviewer repro)."""
+    from renquant_model_linear import research as linear_research
+
+    # Run the CLI argv-parsing path up to spec construction by monkey-
+    # patching run_experiment to capture the spec instead of executing.
+    captured: dict = {}
+
+    def fake_run(spec, *, trainer_runner, parser_builder):  # noqa: ARG001
+        captured["scheduler"] = spec.scheduler
+        # Minimal stub ctx with the verdict field that main() inspects.
+        class _Ctx:
+            verdict = "ok"
+            experiment_dir = tmp_path
+        return _Ctx()
+
+    import renquant_model_patchtst.research_pipeline as rp
+    original = rp.run_experiment
+    rp.run_experiment = fake_run
+    # Also patch the symbol the linear research module imported by name.
+    linear_research.run_experiment = fake_run
+    try:
+        argv = [
+            "--phase", "range_find",
+            "--configs", "L_dlinear",
+            "--cuts", "all",
+            "--seeds", "42",
+            "--epochs", "1",
+            "--scheduler", requested,
+            "--dataset", "data/never_loaded.parquet",
+            "--spy-path", "data/ohlcv/SPY/1d.parquet",
+            "--out-dir", str(tmp_path),
+        ]
+        rc = linear_research.main(argv)
+    finally:
+        rp.run_experiment = original
+        linear_research.run_experiment = original
+    assert rc == 0
+    assert captured["scheduler"] == "linear", (
+        f"linear research must force scheduler=linear; got "
+        f"{captured['scheduler']!r} when --scheduler={requested}")
+
+
+def test_linear_research_cli_passes_explicit_linear_through() -> None:
+    """``--scheduler linear`` (explicit) should remain ``"linear"``
+    without warning churn."""
+    assert linear_trainer is not None  # silence ruff unused-import on CI
+    from renquant_model_linear import research as linear_research
+
+    assert linear_research._force_linear_scheduler("linear") == "linear"
+    assert linear_research._force_linear_scheduler("auto") == "linear"
+    assert linear_research._force_linear_scheduler("parallel") == "linear"
+
+
+def test_train_single_run_holds_trainer_lock(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    """Defense-in-depth: even if a caller bypasses the research CLI and
+    invokes ``train_single_run`` directly from multiple threads, the
+    module-level lock serializes the body.
+
+    We verify by monkey-patching the unlocked body to record overlap; if
+    the lock is held, end timestamps strictly succeed start timestamps."""
+    import threading
+    import time
+
+    from renquant_model_linear import trainer as lt
+
+    overlap_detected = {"value": False}
+    in_flight = {"count": 0}
+    state_lock = threading.Lock()
+
+    def fake_unlocked(args):  # noqa: ARG001
+        with state_lock:
+            in_flight["count"] += 1
+            if in_flight["count"] > 1:
+                overlap_detected["value"] = True
+        time.sleep(0.05)
+        with state_lock:
+            in_flight["count"] -= 1
+        return {"ok": True}
+
+    monkeypatch.setattr(lt, "_train_single_run_unlocked", fake_unlocked)
+    monkeypatch.setattr(lt, "_TRAINER_LOCK", threading.Lock())  # fresh lock
+    # Re-bind train_single_run's closure-captured lock by re-importing the
+    # function from the patched module to ensure the patched lock is used.
+    # (Python closures capture by name; the global-lookup inside
+    # train_single_run resolves _TRAINER_LOCK from the module at call time.)
+
+    args = argparse.Namespace()
+    threads = [
+        threading.Thread(target=lambda: lt.train_single_run(args))
+        for _ in range(4)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert not overlap_detected["value"], (
+        "train_single_run executed concurrently — _TRAINER_LOCK not held")
+
+
+def test_known_limitations_doc_references_lock_and_scheduler_guards() -> None:
+    """Pins that the limitations doc names the two guards by their exact
+    symbol names — so future code changes that rename either guard force
+    an update to the doc (or vice versa)."""
+    doc = (Path(__file__).resolve().parents[2] / "docs"
+           / "p1_linear_research_known_limitations.md").read_text()
+    assert "_force_linear_scheduler" in doc
+    assert "_TRAINER_LOCK" in doc
