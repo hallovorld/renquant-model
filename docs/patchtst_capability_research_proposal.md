@@ -160,7 +160,9 @@ the Transformer path.
 
 ## P2: PatchTST Capability Improvements
 
-These are second after P0 and P1.
+Implementation prep can run in parallel with P0/P1 after the shared pipeline
+interfaces are stable. Decision experiments for these changes must still wait
+for P0 gates and the cheap P1 baselines.
 
 - Add a market/factor token variant: aggregate same-day market, sector, and
   style context into explicit tokens before the rank head. This is the smallest
@@ -177,7 +179,8 @@ These are second after P0 and P1.
 
 ## P3: Data Expansion And Alternative Models
 
-Increase data only after the measurement surface is stable.
+Data-engineering and reference-audit work can run in parallel. Model decisions
+on expanded data should wait until the measurement surface is stable.
 
 - Expand the universe through `renquant-base-data` with point-in-time membership
   snapshots, not current constituents backfilled into history.
@@ -233,6 +236,61 @@ Reference shortlist:
 Every implementation PR should include a source note with paper URL, repo URL,
 license, pinned commit/version, deviations from the reference, and adapter tests
 showing expected tensor shapes and deterministic smoke behavior.
+
+## Implementation And Delivery Plan
+
+Parallelization rule: build code and contracts in parallel; run decision
+experiments sequentially through the gates. No expensive matrix should run until
+the cheaper gate before it has passed.
+
+Workstreams:
+
+| Stream | Scope | Can run in parallel? | Blocks |
+|---|---|---|---|
+| W0 Evidence gate | Detector version plumbing, placebo smoke fixture, structured trial registry, label-lineage audit | Starts first; others can prepare against its interfaces | All decision experiments |
+| W1 Cheap baselines | DLinear/NLinear and PatchTSMixer/TSMixer adapters under the same `ExperimentPipeline` contract | Yes, after W0 schema is drafted; synthetic tests do not need A.0 | Baseline comparison |
+| W2 PatchTST upgrades | Market/factor token, multi-horizon heads, selection-metric ablation, FiLM retest path | Yes, code prep only; decision runs wait for A.0/A.1 | PatchTST architecture sweep |
+| W3 Data contracts | Point-in-time universe manifests, feature-group manifests, longer-history inventory | Yes, validation-only work can proceed in `renquant-base-data` | Expanded-data runs |
+| W4 Alternative models | StockMixer/MASTER reference audit, license review, minimal adapter design | Yes for source audit; implementation waits for P1 result | P3 model sweep |
+| W5 Execution | A.0, A.1, A.2, B, C, D run orchestration and reports | No; gate-ordered | Promotion decisions |
+
+Recommended PR sequence:
+
+1. `model-p0-evidence-contract`: add `--detector-version`, registry fields,
+   metric definitions, evidence status, and tests that legacy pre-PR #9 imports
+   are marked `suspect_pre_pr9_placebo_bug`.
+2. `model-p0-placebo-smoke`: add the A.0 smoke fixture, label-lineage audit,
+   structured ledger writes, and report fields. Run only `make test` plus a
+   short smoke command.
+3. `model-p1-linear-baselines`: add DLinear/NLinear and PatchTSMixer/TSMixer
+   adapters with synthetic tensor-shape tests and deterministic smoke tests.
+4. `model-p2-patchtst-prep`: add market/factor token and multi-horizon code
+   paths behind explicit config flags; do not run full decision compute in this
+   PR.
+5. `base-data-p3-manifests`: add point-in-time universe and feature-group
+   manifests in `renquant-base-data`; model repo consumes only fingerprints.
+6. `model-p3-stockmixer-master-spike`: after P1 results, port or wrap the
+   minimum StockMixer/MASTER blocks from pinned official sources.
+
+Scheduling policy:
+
+- MPS: run one training job at a time. Use `run_parallel` only for CPU-light
+  analysis or non-MPS workloads.
+- CPU: allow cut/seed parallelism for DLinear/NLinear and report aggregation,
+  with per-worker thread caps recorded in the scheduler plan.
+- CUDA/multi-GPU: parallelize independent `(config, cut, seed, trial_kind)` jobs
+  only after W0 confirms placebos and detector contracts.
+- Every run must persist the selected scheduler plan, worker count, device,
+  thread caps, and skipped/resumed trials.
+
+Definition of done per implementation PR:
+
+- Has a source note when model code is added or ported.
+- Has import-boundary tests and synthetic adapter tests.
+- Writes registry-compatible artifacts.
+- Preserves old CLI behavior unless the PR explicitly migrates it.
+- Does not create a new live experimental branch without a deletion or
+  canonicalization plan.
 
 ## Proposed Experiment Matrix
 
