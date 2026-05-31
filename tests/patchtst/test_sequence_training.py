@@ -298,3 +298,106 @@ def _make_training_runs_db(path: Path) -> None:
         conn.commit()
     finally:
         conn.close()
+
+
+# ---- PR #17 review BLOCKERS — model-aware artifact identity ------------
+
+
+def test_model_kind_from_args_known_choices() -> None:
+    from renquant_model_patchtst.sequence_training import (
+        MODEL_KIND_PATCHTST,
+        MODEL_KIND_PATCHTSMIXER,
+        model_kind_from_args,
+    )
+    assert model_kind_from_args(argparse.Namespace(model="patchtst")) == MODEL_KIND_PATCHTST
+    assert model_kind_from_args(argparse.Namespace(model="patchtsmixer")) == MODEL_KIND_PATCHTSMIXER
+    # Missing attr → default PatchTST (back-compat).
+    assert model_kind_from_args(argparse.Namespace()) == MODEL_KIND_PATCHTST
+
+
+def test_model_kind_from_args_rejects_unknown() -> None:
+    import pytest as _pytest
+    from renquant_model_patchtst.sequence_training import model_kind_from_args
+    with _pytest.raises(ValueError, match="unknown --model"):
+        model_kind_from_args(argparse.Namespace(model="lstm_typo"))
+
+
+def test_compute_regime_labels_does_not_require_spy_for_patchtsmixer(
+    tmp_path: Path,
+) -> None:
+    """PR #17 review HIGH-2: ``--film-regime-cond`` is PatchTST-only.
+    For PatchTSMixer the flag should be accepted-but-ignored, NOT raise
+    FileNotFoundError when SPY parquet is missing."""
+    from renquant_model_patchtst.sequence_training import (
+        ComputeRegimeLabelsTask, SequenceTrainingContext)
+    missing_spy = tmp_path / "definitely_does_not_exist.parquet"
+    ctx = SequenceTrainingContext(args=argparse.Namespace(
+        spy_path=str(missing_spy),
+        film_regime_cond=True,         # would historically raise
+        model="patchtsmixer",          # but mixer ignores FiLM
+        detector_version="v2026-05-31",
+    ))
+    # Monkey-patch hf.REPO so spy_path resolves under tmp_path (still missing).
+    monkey = type("M", (), {"REPO": tmp_path})
+    import renquant_model_patchtst.hf_trainer as _hf
+    real_repo = _hf.REPO
+    _hf.REPO = tmp_path
+    try:
+        assert ComputeRegimeLabelsTask().run(ctx) is True
+    finally:
+        _hf.REPO = real_repo
+    # No SPY → no labels — that's fine for patchtsmixer
+    assert ctx.hmm_labels is None
+
+
+def test_compute_regime_labels_still_requires_spy_for_patchtst_film() -> None:
+    """Counter-check: PatchTST + FiLM + missing SPY must STILL raise."""
+    import pytest as _pytest
+    from renquant_model_patchtst.sequence_training import (
+        ComputeRegimeLabelsTask, SequenceTrainingContext)
+    ctx = SequenceTrainingContext(args=argparse.Namespace(
+        spy_path="/tmp/never_exists.parquet",
+        film_regime_cond=True,
+        model="patchtst",
+        detector_version="v2026-05-31",
+    ))
+    import renquant_model_patchtst.hf_trainer as _hf
+    real_repo = _hf.REPO
+    _hf.REPO = Path("/")
+    try:
+        with _pytest.raises(FileNotFoundError, match="FiLM regime"):
+            ComputeRegimeLabelsTask().run(ctx)
+    finally:
+        _hf.REPO = real_repo
+
+
+def test_research_planning_uses_model_aware_filenames(tmp_path: Path) -> None:
+    """PR #17 review BLOCKER-1: TrialSpec.val_preds_path / summary_path
+    must use the model-kind prefix (hf_patchtsmixer for G_patchtsmixer)
+    so PatchTSMixer artifacts don't collide with PatchTST in the same
+    trial dir AND so the harness can locate them post-train."""
+    from renquant_model_patchtst.research_pipeline import _model_kind_for_extras
+    from renquant_model_patchtst.sequence_training import (
+        MODEL_KIND_PATCHTST, MODEL_KIND_PATCHTSMIXER)
+
+    assert _model_kind_for_extras(["--lr", "1e-3"]) == MODEL_KIND_PATCHTST
+    assert _model_kind_for_extras(["--model", "patchtst", "--lr", "1e-3"]) == MODEL_KIND_PATCHTST
+    assert _model_kind_for_extras(["--lr", "1e-3", "--model", "patchtsmixer"]) == MODEL_KIND_PATCHTSMIXER
+    import pytest as _pytest
+    with _pytest.raises(ValueError, match="unsupported --model"):
+        _model_kind_for_extras(["--model", "lstm_typo"])
+
+
+def test_research_configs_include_patchtsmixer() -> None:
+    """PR #17 review HIGH-3: research CLI must expose PatchTSMixer
+    through ExperimentPipeline so placebos / DSR/PBO / promotion gates
+    apply to the baseline."""
+    from renquant_model_patchtst.research import configs as research_configs
+    cfgs = research_configs(spy_path="dummy.parquet")
+    assert "G_patchtsmixer" in cfgs, (
+        "research.configs must expose G_patchtsmixer so the harness can "
+        "compare PatchTSMixer head-to-head with the PatchTST family")
+    extras = cfgs["G_patchtsmixer"]
+    assert "--model" in extras
+    idx = extras.index("--model")
+    assert extras[idx + 1] == "patchtsmixer"

@@ -480,6 +480,11 @@ class ExpandTrialMatrixTask(Task):
         trials: list[TrialSpec] = []
         for config_name in sorted(spec.configs):
             extra = list(spec.config_args.get(config_name, []))
+            # PR #17 review BLOCKER-1: filenames must reflect the actual
+            # model selected by --model in the config's extras; otherwise
+            # PatchTSMixer configs would collide with PatchTST artifacts in
+            # the same trial directory and the harness couldn't locate them.
+            model_kind = _model_kind_for_extras(extra)
             for cut in sorted(spec.cuts):
                 for seed in sorted(spec.seeds):
                     for kind in kinds:
@@ -495,13 +500,39 @@ class ExpandTrialMatrixTask(Task):
                                 trial_kind=kind,
                                 argv=argv,
                                 out_dir=out_dir,
-                                val_preds_path=out_dir / f"hf_patchtst_{cut}_seed{seed}_val_preds.parquet",
-                                summary_path=out_dir / f"hf_patchtst_{cut}_seed{seed}_summary.json",
+                                val_preds_path=out_dir / f"{model_kind}_{cut}_seed{seed}_val_preds.parquet",
+                                summary_path=out_dir / f"{model_kind}_{cut}_seed{seed}_summary.json",
                                 timeout_seconds=float(DEFAULT_TRIAL_TIMEOUTS_SEC[kind]),
                             )
                         )
         ctx.trial_plan = trials
         return True
+
+
+def _model_kind_for_extras(extra: list[str]) -> str:
+    """Scan a per-config ``extra`` argv list for ``--model``; return the
+    canonical kind string used in artifact filenames + checkpoint `kind`.
+
+    Mirrors ``sequence_training.model_kind_from_args`` but operates on a
+    plain argv list (the spec hasn't been parsed by the trainer at this
+    point yet, so argparse isn't available)."""
+    # Lazy import — avoid loading sequence_training when only the matrix
+    # is being expanded (e.g. in --check-promotion mode).
+    from .sequence_training import (  # noqa: PLC0415
+        MODEL_KIND_PATCHTST,
+        MODEL_KIND_PATCHTSMIXER,
+    )
+    for i, tok in enumerate(extra):
+        if tok == "--model" and i + 1 < len(extra):
+            choice = extra[i + 1]
+            if choice == "patchtsmixer":
+                return MODEL_KIND_PATCHTSMIXER
+            if choice == "patchtst":
+                return MODEL_KIND_PATCHTST
+            raise ValueError(
+                f"unsupported --model {choice!r} in extras; "
+                f"expected one of {{'patchtst', 'patchtsmixer'}}")
+    return MODEL_KIND_PATCHTST  # default = legacy behavior
 
 
 class ValidateSplitterEmbargoTask(Task):

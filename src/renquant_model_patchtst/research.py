@@ -37,6 +37,14 @@ def configs(spy_path: str) -> dict[str, list[str]]:
             "mean_sentiment,n_articles_log,sentiment_pos_share",
         ],
         "F_fwd20d": _TUNED + ["--label", "fwd_20d_excess"],
+        # P1 W1 baseline: PatchTSMixer (HF transformers MLP-mixer) under
+        # identical data/loss/eval/placebos. If this matches or beats the
+        # tuned PatchTST family the attention investment pauses (per the
+        # merged research plan §"P1 Low-Cost Decision Baselines"). The
+        # mixer ignores PatchTST-only flags by construction (see
+        # HFPatchTSMixerRanker docstring); summary stamps effective flag
+        # values, not requested, so the artifact contract stays honest.
+        "G_patchtsmixer": _TUNED + ["--model", "patchtsmixer"],
     }
 
 
@@ -54,7 +62,12 @@ def run_one(hf, config_args, name, cut, seed, epochs, device, out_root) -> dict:
         "--output-dir", str(out),
     ] + list(config_args[name])
     summary = hf.train_single_run(hf.build_parser().parse_args(argv))
-    pred_paths = list(out.glob(f"hf_patchtst_{cut}_seed{seed}_val_preds.parquet"))
+    # Model-aware glob: PatchTST writes hf_patchtst_*_val_preds.parquet,
+    # PatchTSMixer writes hf_patchtsmixer_*_val_preds.parquet.
+    pred_paths = (
+        list(out.glob(f"hf_patchtst_{cut}_seed{seed}_val_preds.parquet"))
+        + list(out.glob(f"hf_patchtsmixer_{cut}_seed{seed}_val_preds.parquet"))
+    )
     pooled_ic = None
     if pred_paths:
         pooled_ic = _pooled_ic(pred_paths[0])

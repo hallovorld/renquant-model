@@ -248,3 +248,89 @@ def test_bootstrap_clears_existing_buffer() -> None:
     assert len(buf_list) == 2
     # Should NOT contain 999.0 (cleared first)
     assert all(row[0] != pytest.approx(999.0) for row in buf_list)
+
+
+# ---- PR #17 review BLOCKER-1: scorer kind-dispatch -----------------------
+
+
+def test_scorer_load_dispatches_on_kind_patchtsmixer(tmp_path) -> None:
+    """A checkpoint stamped with ``kind="hf_patchtsmixer"`` must load via
+    HFPatchTSMixerRanker — NOT HFPatchTSTRanker (which the legacy scorer
+    did unconditionally, causing PR #17's BLOCKER-1 load failure)."""
+    import torch
+    from renquant_model_patchtst.patchtsmixer_ranker import (
+        HFPatchTSMixerRanker, build_default_config)
+    from renquant_model_patchtst.scorer import load
+
+    # seq_len must be > patch_length (default patch_length=8) so use 16.
+    cfg = build_default_config(seq_len=16, n_channels=3)
+    model = HFPatchTSMixerRanker(cfg)
+    ckpt_path = tmp_path / "hf_patchtsmixer_test_seed42_model.pt"
+    torch.save({
+        "kind": "hf_patchtsmixer",
+        "state_dict": model.state_dict(),
+        "config_dict": cfg.to_dict(),
+        "feature_cols": ["a", "b", "c"],
+        "seq_len": 16,
+        "label_col": "fwd_60d_excess",
+        "uses_csranknorm_preprocessing": True,
+    }, ckpt_path)
+
+    class _M:
+        local_artifact_path = str(ckpt_path)
+    scorer = load(_M())
+    # Reconstructed model should be HFPatchTSMixerRanker, not HFPatchTSTRanker.
+    assert type(scorer.model).__name__ == "HFPatchTSMixerRanker"
+    assert scorer.feature_cols == ["a", "b", "c"]
+    assert scorer.seq_len == 16
+
+
+def test_scorer_load_defaults_unstamped_to_patchtst(tmp_path) -> None:
+    """Legacy checkpoints (without `kind` field) load as PatchTST — every
+    artifact persisted before PR #17 was PatchTST so this preserves
+    backward compat."""
+    import torch
+    from transformers import PatchTSTConfig
+    from renquant_model_patchtst.hf_trainer import HFPatchTSTRanker
+    from renquant_model_patchtst.scorer import load
+
+    cfg = PatchTSTConfig(
+        num_input_channels=3, context_length=8, patch_length=2, patch_stride=2)
+    # Construct without dist_head to match the default trainer args
+    # (--distributional-head defaults False); legacy fallback in scorer
+    # also defaults to False when the key is absent, so this matches.
+    model = HFPatchTSTRanker(cfg, use_distributional_head=False)
+    ckpt_path = tmp_path / "legacy_model.pt"
+    torch.save({
+        # NB: NO "kind" field — simulating a legacy checkpoint.
+        "state_dict": model.state_dict(),
+        "config_dict": cfg.to_dict(),
+        "feature_cols": ["a", "b", "c"],
+        "seq_len": 8,
+        "uses_csranknorm_preprocessing": False,
+    }, ckpt_path)
+
+    class _M:
+        local_artifact_path = str(ckpt_path)
+    scorer = load(_M())
+    assert type(scorer.model).__name__ == "HFPatchTSTRanker"
+
+
+def test_scorer_load_rejects_unknown_kind(tmp_path) -> None:
+    """Defense: unknown `kind` should fail loud, not silently load as
+    PatchTST (which would silently mis-reconstruct the model)."""
+    import torch
+    ckpt_path = tmp_path / "alien.pt"
+    torch.save({
+        "kind": "tensorflow_swarm_v9",  # noqa: invented
+        "state_dict": {},
+        "config_dict": {},
+        "feature_cols": [],
+        "seq_len": 1,
+    }, ckpt_path)
+
+    class _M:
+        local_artifact_path = str(ckpt_path)
+    from renquant_model_patchtst.scorer import load
+    with pytest.raises(ValueError, match="cannot load checkpoint kind"):
+        load(_M())

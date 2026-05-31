@@ -30,6 +30,34 @@ from renquant_common import Job, Pipeline, Task, record_training_run
 
 from . import hf_trainer as hf
 
+# Artifact identity strings — every persisted filename, summary `arch`/`kind`,
+# metadata `kind` field, and training_runs.artifact_type uses one of these.
+# PR #17 review BLOCKER-1: without model-aware identity, PatchTSMixer
+# artifacts were written as hf_patchtst_* and were unloadable by the scorer
+# (which unconditionally reconstructed HFPatchTSTRanker from the checkpoint).
+MODEL_KIND_PATCHTST = "hf_patchtst"
+MODEL_KIND_PATCHTSMIXER = "hf_patchtsmixer"
+
+_MODEL_KIND_BY_ARG = {
+    "patchtst": MODEL_KIND_PATCHTST,
+    "patchtsmixer": MODEL_KIND_PATCHTSMIXER,
+}
+
+
+def model_kind_from_args(args: argparse.Namespace) -> str:
+    """Resolve the canonical model-kind string from CLI args.
+
+    Backward-compat: if ``args.model`` is missing entirely (older callers),
+    defaults to PatchTST so existing scripts keep working byte-identically.
+    """
+    choice = getattr(args, "model", "patchtst") or "patchtst"
+    try:
+        return _MODEL_KIND_BY_ARG[choice]
+    except KeyError as exc:
+        raise ValueError(
+            f"unknown --model {choice!r}; expected one of "
+            f"{sorted(_MODEL_KIND_BY_ARG)}") from exc
+
 
 @dataclass
 class SequenceTrainingContext:
@@ -44,6 +72,17 @@ class SequenceTrainingContext:
     val_ds: Any = None
     cfg: Any = None
     model: Any = None
+    # Canonical model identity ("hf_patchtst" / "hf_patchtsmixer") —
+    # stamped by BuildModelTask, threaded through every persistence
+    # filename + metadata field so artifacts are model-aware end-to-end.
+    model_kind: str | None = None
+    # Effective feature flags actually wired into the constructed model.
+    # PatchTSMixer ignores PatchTST-only flags (distributional head, FiLM,
+    # cross-stock attn) — we stamp EFFECTIVE values, not requested values
+    # in args.*, so persisted summary doesn't lie.
+    effective_distributional_head: bool = False
+    effective_film_regime: bool = False
+    effective_cross_stock_attn: bool = False
     n_params: int | None = None
     out_dir: Any = None
     total_steps: int | None = None
@@ -98,7 +137,13 @@ class ComputeRegimeLabelsTask(Task):
                 ctx.spy_path,
                 detector_version=detector_version,
             )
-        elif a.film_regime_cond:
+        # FiLM regime conditioning is a PatchTST-only feature. For
+        # PatchTSMixer (PR #17 review HIGH-2) the flag is accepted-but-
+        # ignored — we must NOT fail the run on missing SPY when the
+        # selected model can't use FiLM anyway. Only enforce the
+        # SPY-required invariant when the selected model actually
+        # consumes FiLM conditioning.
+        elif a.film_regime_cond and model_kind_from_args(a) == MODEL_KIND_PATCHTST:
             raise FileNotFoundError(
                 f"FiLM regime conditioning requires SPY parquet at {ctx.spy_path}")
         return True
@@ -148,10 +193,17 @@ class BuildModelTask(Task):
             )
             ctx.model = HFPatchTSMixerRanker(ctx.cfg)
             ctx.n_params = sum(p.numel() for p in ctx.model.parameters())
+            ctx.model_kind = MODEL_KIND_PATCHTSMIXER
+            # PatchTSMixer doesn't consume any PatchTST-only flags.
+            # Effective values are False regardless of what args.* says.
+            ctx.effective_distributional_head = False
+            ctx.effective_film_regime = False
+            ctx.effective_cross_stock_attn = False
             hf.log.info(
-                "HFPatchTSMixerRanker n_params=%.2fM (PatchTST-only flags "
-                "ignored: dist_head=%s film=%s cross_stock=%s)",
-                ctx.n_params / 1e6,
+                "HFPatchTSMixerRanker n_params=%.2fM kind=%s "
+                "(PatchTST-only flags ignored: requested dist_head=%s "
+                "film=%s cross_stock=%s → effective=False)",
+                ctx.n_params / 1e6, ctx.model_kind,
                 a.distributional_head, a.film_regime_cond, a.cross_stock_attn,
             )
             return True
@@ -171,9 +223,15 @@ class BuildModelTask(Task):
                                         use_film_regime=a.film_regime_cond,
                                         use_cross_stock_attn=a.cross_stock_attn)
         ctx.n_params = sum(p.numel() for p in ctx.model.parameters())
-        hf.log.info("HFPatchTSTRanker n_params=%.2fM dist_head=%s film=%s cross_stock=%s",
-                    ctx.n_params / 1e6, a.distributional_head, a.film_regime_cond,
-                    a.cross_stock_attn)
+        ctx.model_kind = MODEL_KIND_PATCHTST
+        ctx.effective_distributional_head = bool(a.distributional_head)
+        ctx.effective_film_regime = bool(a.film_regime_cond)
+        ctx.effective_cross_stock_attn = bool(a.cross_stock_attn)
+        hf.log.info(
+            "HFPatchTSTRanker n_params=%.2fM kind=%s "
+            "dist_head=%s film=%s cross_stock=%s",
+            ctx.n_params / 1e6, ctx.model_kind,
+            a.distributional_head, a.film_regime_cond, a.cross_stock_attn)
         return True
 
 
@@ -291,7 +349,8 @@ class DumpValPredsTask(Task):
                         row["sigma"] = float(outputs["scale"][i].cpu())
                     rows.append(row)
         preds_df = pd.DataFrame(rows)
-        dump = ctx.out_dir / f"hf_patchtst_{a.cut}_seed{a.seed}_val_preds.parquet"
+        kind = ctx.model_kind or MODEL_KIND_PATCHTST
+        dump = ctx.out_dir / f"{kind}_{a.cut}_seed{a.seed}_val_preds.parquet"
         preds_df.to_parquet(dump, index=False)
         hf.log.info("preds dumped: %s (%d rows)", dump.name, len(preds_df))
         return True
@@ -303,15 +362,22 @@ class BuildSummaryTask(Task):
     def run(self, ctx: SequenceTrainingContext) -> bool | None:
         a = ctx.args
         tc, cc = ctx.training_contract, ctx.config_contract
+        kind = ctx.model_kind or MODEL_KIND_PATCHTST
         ctx.summary = {
-            "arch": "hf_patchtst", "kind": "hf_patchtst",
+            "arch": kind, "kind": kind,
             "cut": a.cut, "seed": a.seed,
             "best_val_ic": ctx.best_val_ic, "n_params": ctx.n_params,
             "feature_cols": ctx.feat_cols,
             "label_col": a.label,
             "lookahead_days": tc.get("lookahead_days"),
             "params": tc.get("hyperparameters", {}),
-            "n_features": len(ctx.feat_cols), "uses_distributional_head": a.distributional_head,
+            "n_features": len(ctx.feat_cols),
+            # Effective feature flags, not requested. PatchTSMixer's
+            # summary correctly shows uses_distributional_head=False
+            # even if the trial argv carried --distributional-head.
+            "uses_distributional_head": ctx.effective_distributional_head,
+            "uses_film_regime": ctx.effective_film_regime,
+            "uses_cross_stock_attn": ctx.effective_cross_stock_attn,
             "config_fingerprint": cc["config_fingerprint"],
             "config_fingerprint_fields": cc["config_fingerprint_fields"],
             "config_path": cc["config_path"],
@@ -321,7 +387,7 @@ class BuildSummaryTask(Task):
                               for k, v in ctx.final_metrics.items()
                               if k.startswith("eval_ic_")},
         }
-        (ctx.out_dir / f"hf_patchtst_{a.cut}_seed{a.seed}_summary.json").write_text(
+        (ctx.out_dir / f"{kind}_{a.cut}_seed{a.seed}_summary.json").write_text(
             json.dumps(ctx.summary, indent=2, default=str))
         return True
 
@@ -334,8 +400,12 @@ class PersistModelTask(Task):
     def run(self, ctx: SequenceTrainingContext) -> bool | None:
         a = ctx.args
         tc, cc = ctx.training_contract, ctx.config_contract
-        model_path = ctx.out_dir / f"hf_patchtst_{a.cut}_seed{a.seed}_model.pt"
+        kind = ctx.model_kind or MODEL_KIND_PATCHTST
+        model_path = ctx.out_dir / f"{kind}_{a.cut}_seed{a.seed}_model.pt"
         torch.save({
+            # `kind` is read by scorer.load to dispatch model reconstruction.
+            # Legacy checkpoints without it default to PatchTST for back-compat.
+            "kind": kind,
             "state_dict": ctx.model.state_dict(),
             "config_dict": ctx.cfg.to_dict(),
             "feature_cols": ctx.feat_cols,
@@ -349,9 +419,14 @@ class PersistModelTask(Task):
             "config_fingerprint_fields": cc["config_fingerprint_fields"],
             "config_path": cc["config_path"],
             "trained_watchlist_n": cc["trained_watchlist_n"],
-            "uses_distributional_head": a.distributional_head,
-            "uses_film_regime": a.film_regime_cond,
-            "uses_cross_stock_attn": a.cross_stock_attn,
+            # EFFECTIVE flags — what the model actually consumes —
+            # so the scorer's HFPatchTSTRanker reconstruction reads
+            # honest knobs (PR #17 review BLOCKER-1: PatchTSMixer
+            # was being stamped with use_*=True from the trial argv
+            # despite the model ignoring those flags).
+            "uses_distributional_head": ctx.effective_distributional_head,
+            "uses_film_regime": ctx.effective_film_regime,
+            "uses_cross_stock_attn": ctx.effective_cross_stock_attn,
             "uses_csranknorm_preprocessing": True,
             "uses_winsorize_label_preprocessing": True,
             "training_contract": tc,
@@ -451,7 +526,7 @@ class RecordTrainingRunTask(Task):
                 record_training_run(
                     conn,
                     strategy=os.environ.get("RENQUANT_STRATEGY_NAME", "renquant_104"),
-                    artifact_type="hf_patchtst",
+                    artifact_type=ctx.model_kind or MODEL_KIND_PATCHTST,
                     config_snapshot=ctx.config_contract or {},
                     oos_mean_ic=ctx.best_val_ic,
                     train_ic=train_ic,
