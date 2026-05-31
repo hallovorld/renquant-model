@@ -121,10 +121,42 @@ class BuildDatasetsTask(Task):
 # ─── TrainJob ────────────────────────────────────────────────────────────────
 
 class BuildModelTask(Task):
-    """Construct the PatchTST config + ranker model."""
+    """Construct the model config + ranker — dispatches on ``args.model``
+    to either HFPatchTSTRanker (default) or HFPatchTSMixerRanker (W1
+    MLP-mixer baseline). PatchTST-specific flags are accepted-but-ignored
+    for patchtsmixer per its source-note contract."""
 
     def run(self, ctx: SequenceTrainingContext) -> bool | None:
         a = ctx.args
+        model_choice = getattr(a, "model", "patchtst") or "patchtst"
+        if model_choice == "patchtsmixer":
+            from .patchtsmixer_ranker import (  # noqa: PLC0415
+                HFPatchTSMixerRanker,
+                build_default_config,
+            )
+            ctx.cfg = build_default_config(
+                seq_len=a.seq_len,
+                n_channels=len(ctx.feat_cols),
+                patch_length=a.patch_length,
+                patch_stride=a.patch_length,  # non-overlapping
+                d_model=a.d_model,
+                num_layers=a.n_layers,
+                # PatchTSMixerConfig's expansion_factor defaults to 2 —
+                # left at build_default_config's default so the mixer
+                # baseline keeps its own characteristic capacity ratio
+                # rather than inheriting PatchTST's attention-head geometry.
+            )
+            ctx.model = HFPatchTSMixerRanker(ctx.cfg)
+            ctx.n_params = sum(p.numel() for p in ctx.model.parameters())
+            hf.log.info(
+                "HFPatchTSMixerRanker n_params=%.2fM (PatchTST-only flags "
+                "ignored: dist_head=%s film=%s cross_stock=%s)",
+                ctx.n_params / 1e6,
+                a.distributional_head, a.film_regime_cond, a.cross_stock_attn,
+            )
+            return True
+
+        # Default: PatchTST family
         ctx.cfg = hf.PatchTSTConfig(
             num_input_channels=len(ctx.feat_cols),
             context_length=a.seq_len,
