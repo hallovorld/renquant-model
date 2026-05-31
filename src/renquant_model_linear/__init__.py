@@ -16,9 +16,12 @@ from .dlinear import (
     MovingAverageDecomposition,
     NLinearRanker,
 )
+from .trainer import build_parser, train_single_run
 
 __all__ = [
     "DLinearRanker",
     "MovingAverageDecomposition",
     "NLinearRanker",
+    "build_parser",
+    "train_single_run",
 ]
