@@ -358,6 +358,90 @@ def test_robustness_task_feeds_negative_regime_into_verdict(tmp_path: Path) -> N
     assert ctx.verdict == "reject"
 
 
+# --- PR #8 follow-up findings -----------------------------------------------
+#
+# Finding 1 (HIGH) — `--no-regime-contract` paired with missing SPY produced
+# empty `min_non_defensive_regime_ic_by_config`. Pre-fix, DecideVerdictTask
+# would then SKIP the negative-regime check and could promote on DSR/PBO with
+# zero per-regime evidence (PRIME DIRECTIVE violation).
+#
+# Finding 2 (LOW) — `require_regime_contract` was not stamped into
+# `environment.json`; downstream audit dashboards couldn't tell which runs
+# ran with the bypass.
+
+
+def test_decide_verdict_needs_more_seeds_when_no_per_regime_evidence(
+    tmp_path: Path,
+) -> None:
+    """PRIME DIRECTIVE safety net: an empty per-regime evidence dict must
+    NOT promote even when delta/se/DSR/PBO all look strong. Pre-fix the
+    verdict went straight to promote_to_live; post-fix it goes to
+    needs_more_seeds with an explicit reason."""
+    ctx = _verdict_context(
+        tmp_path,
+        phase="confirm",
+        delta=0.06,
+        se=0.02,
+        worst_cut_ic=0.01,
+        dsr=0.7,        # would normally pass Tier-3 live gate
+        pbo=0.3,
+        min_non_defensive=None,  # ← empty robustness dict
+    )
+
+    DecideVerdictTask().run(ctx)
+
+    assert ctx.verdict == "needs_more_seeds", (
+        "no per-regime evidence MUST NOT promote, even with strong DSR/PBO/delta"
+    )
+    vi = ctx.analysis["verdict_inputs"]
+    assert vi["has_non_defensive_evidence"] is False
+    assert "needs_more_seeds_reason" in vi
+    assert "per-regime evidence" in vi["needs_more_seeds_reason"]
+
+
+def test_decide_verdict_keeps_strong_promote_when_evidence_present(
+    tmp_path: Path,
+) -> None:
+    """Sanity: the safety net does NOT degrade a run that does have evidence."""
+    ctx = _verdict_context(
+        tmp_path,
+        phase="confirm",
+        delta=0.06,
+        se=0.02,
+        worst_cut_ic=0.01,
+        dsr=0.7,
+        pbo=0.3,
+        min_non_defensive=0.02,  # positive evidence
+    )
+
+    DecideVerdictTask().run(ctx)
+
+    assert ctx.verdict == "promote_to_live"
+    assert ctx.analysis["verdict_inputs"]["has_non_defensive_evidence"] is True
+
+
+def test_environment_stamps_require_regime_contract(tmp_path: Path) -> None:
+    """The CLI bypass flag MUST appear in environment.json so downstream
+    audit dashboards can attribute degraded runs to the operator opt-in.
+    Reviewer Finding 2."""
+    from renquant_model_patchtst.research_pipeline import StampEnvironmentTask
+
+    # Bypass run
+    ctx_bypass = ExperimentContext(spec=_spec(tmp_path, require_regime_contract=False))
+    StampEnvironmentTask().run(ctx_bypass)
+    assert ctx_bypass.environment["require_regime_contract"] is False
+
+    # Strict run
+    ctx_strict = ExperimentContext(spec=_spec(tmp_path, require_regime_contract=True))
+    StampEnvironmentTask().run(ctx_strict)
+    assert ctx_strict.environment["require_regime_contract"] is True
+
+    # Sibling switches also stamped for full audit
+    for ctx in (ctx_bypass, ctx_strict):
+        assert "require_placebos" in ctx.environment
+        assert "allow_ungated_smoke" in ctx.environment
+
+
 def test_splitter_contract_is_part_of_trial_fingerprint(tmp_path: Path) -> None:
     spec = _spec(tmp_path, configs=["B_tuned"], require_placebos=False)
     trial_a = _trial_spec(tmp_path, "B_tuned", "all", 42)
