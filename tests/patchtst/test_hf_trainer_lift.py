@@ -93,3 +93,102 @@ def test_placebo_label_mutation_keeps_validation_labels_aligned(tmp_path: Path):
     base_val = base.loc[base["split_label"].eq("val"), "fwd_60d_excess"].to_list()
     assert shifted.loc[shifted["split_label"].eq("val"), "fwd_60d_excess"].to_list() == base_val
     assert shuffled.loc[shuffled["split_label"].eq("val"), "fwd_60d_excess"].to_list() == base_val
+
+
+def test_timeshift_placebo_train_label_never_sourced_from_non_train_split(
+    tmp_path: Path,
+) -> None:
+    """Bug 2026-05-31 regression guard.
+
+    Before the fix, ``label_shift_days=N`` shifted train labels by N
+    positions in the NaN-dropped panel — but at the train/val boundary,
+    the shifted source row could land in val/embargo, so the "placebo"
+    actually trained on val labels. Placebo IC exceeded real IC and
+    blocked Tier-3 verdicts (`invalid_experiment`).
+
+    Strategy: load the panel with no shift to learn the splitter's actual
+    train/val partition. Rewrite the dataset so train-split rows have a
+    sentinel of 0.0 and non-train (embargo/val/test) rows have a sentinel
+    of 999.0. Then re-load WITH shift and verify no train row carries 999.
+    """
+    rows = []
+    for d in pd.date_range("2024-01-01", periods=40, freq="B"):
+        for i in range(5):
+            rows.append({
+                "date": d, "ticker": f"T{i}", "feature": float(i),
+                "fwd_60d_excess": 0.0,
+            })
+    dataset = tmp_path / "panel.parquet"
+    pd.DataFrame(rows).to_parquet(dataset, index=False)
+
+    # Pass 1: learn the splitter's partition.
+    base, _ = hf.load_panel_with_split(
+        dataset, "all", "fwd_60d_excess",
+        preprocess=False, val_tail_pct=0.25, embargo_days=5,
+    )
+    sentinel_label = base["split_label"].map(
+        lambda s: 0.0 if s == "train" else 999.0
+    )
+    base_with_sentinel = base.assign(fwd_60d_excess=sentinel_label.values)
+    base_with_sentinel.to_parquet(dataset, index=False)
+
+    # Pass 2: shift WITH the cross-split-leak guard. No train row should
+    # end up with the val sentinel.
+    shifted, _ = hf.load_panel_with_split(
+        dataset, "all", "fwd_60d_excess",
+        preprocess=False, val_tail_pct=0.25, embargo_days=5,
+        label_shift_days=10,
+    )
+    train_labels = shifted.loc[shifted["split_label"].eq("train"), "fwd_60d_excess"]
+    leaked = int((train_labels == 999.0).sum())
+    assert leaked == 0, (
+        f"timeshift placebo leaked non-train labels into train: "
+        f"{leaked}/{len(train_labels)} train rows carry val/embargo sentinel"
+    )
+
+
+def test_timeshift_placebo_preserves_within_train_decorrelation(
+    tmp_path: Path,
+) -> None:
+    """Sanity: even with the cross-split guard, the placebo still shifts
+    train labels by N positions WITHIN train rows that have a valid
+    in-train source. This is the intended semantics (break feature→label
+    alignment within train, then validate on real val labels)."""
+    rows = []
+    for d in pd.date_range("2024-01-01", periods=40, freq="B"):
+        for i in range(5):
+            rows.append({
+                "date": d,
+                "ticker": f"T{i}",
+                "feature": float(i),
+                "fwd_60d_excess": float(d.dayofyear * 10 + i),
+            })
+    dataset = tmp_path / "panel.parquet"
+    pd.DataFrame(rows).to_parquet(dataset, index=False)
+
+    base, _ = hf.load_panel_with_split(
+        dataset, "all", "fwd_60d_excess",
+        preprocess=False, val_tail_pct=0.25, embargo_days=5,
+    )
+    shifted, _ = hf.load_panel_with_split(
+        dataset, "all", "fwd_60d_excess",
+        preprocess=False, val_tail_pct=0.25, embargo_days=5,
+        label_shift_days=2,
+    )
+    # Within-train labels should differ between base and shifted (decorrelation
+    # happened), with at least SOME train rows surviving the cross-split guard.
+    base_train = base.loc[base["split_label"].eq("train"), "fwd_60d_excess"]
+    shifted_train = shifted.loc[shifted["split_label"].eq("train"), "fwd_60d_excess"]
+    assert len(shifted_train) > 0, "all train rows dropped — guard too aggressive"
+    assert len(shifted_train) <= len(base_train), (
+        "shifted train should be ≤ base train (some rows dropped at boundary)"
+    )
+    # At least one surviving train row should have a DIFFERENT label than its
+    # original (decorrelation actually happened, not a no-op).
+    aligned_dates = shifted.loc[shifted["split_label"].eq("train"), ["date", "ticker", "fwd_60d_excess"]]
+    base_indexed = base.set_index(["date", "ticker"])["fwd_60d_excess"]
+    differs = sum(
+        1 for _, row in aligned_dates.iterrows()
+        if base_indexed.get((row["date"], row["ticker"])) != row["fwd_60d_excess"]
+    )
+    assert differs > 0, "shifted train labels are byte-identical to base — placebo is a no-op"
