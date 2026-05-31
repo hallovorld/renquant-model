@@ -1,0 +1,16 @@
+{
+  "_comment": "Minimal strategy config for the Phase A.0 smoke runner. Pinned to ship with the smoke fixture so a clean renquant-model checkout can run scripts/run_phase_a0_smoke.sh without depending on the umbrella's backtesting/renquant_104/strategy_config.json (which doesn't exist in this repo). The fields below are the minimum BuildSummaryTask + build_config_contract() require; tune any real research-run knobs in the umbrella's full config, not here.",
+  "strategy_name": "smoke_dlinear_test",
+  "model_family": "patchtst",
+  "ranking": {
+    "panel_scoring": {
+      "metric_for_best_model": "eval_min_regime_ic"
+    }
+  },
+  "regime_params": {
+    "BULL_CALM": {},
+    "BULL_VOLATILE": {},
+    "BEAR": {},
+    "CHOPPY": {}
+  }
+}
