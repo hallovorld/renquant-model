@@ -44,13 +44,14 @@ from __future__ import annotations
 import datetime
 import logging
 import sqlite3
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
-log = logging.getLogger("kernel.challenger")
+log = logging.getLogger("renquant_model_common.challenger")
 
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -96,12 +97,18 @@ class ChallengerEvaluator:
         self.scorer = scorer
 
     @classmethod
-    def maybe_load(cls, config: dict, strategy_dir: Path) -> "ChallengerEvaluator | None":
+    def maybe_load(
+        cls,
+        config: dict,
+        strategy_dir: Path,
+        scorer_loader: Callable[[Path], Any] | None = None,
+    ) -> "ChallengerEvaluator | None":
         """Build an Evaluator from config + the artifact on disk, OR
         return None if the challenger is disabled / artifact missing.
 
         Returns None silently — challenger-not-enabled is the default
-        state and shouldn't fire warnings.
+        state and shouldn't fire warnings. Loading is injected by the caller
+        so this model package does not import downstream runtime packages.
         """
         cc = ChallengerConfig.from_strategy_config(config)
         if not cc.enabled:
@@ -109,13 +116,15 @@ class ChallengerEvaluator:
         if not cc.artifact_path:
             log.warning("challenger.enabled=true but no artifact_path; skipping")
             return None
-        from kernel.panel_pipeline.panel_scorer import PanelScorer  # noqa: PLC0415
         path = strategy_dir / cc.artifact_path
         if not path.exists():
             log.warning("challenger artifact missing: %s; skipping", path)
             return None
+        if scorer_loader is None:
+            log.warning("challenger artifact loader not provided; skipping")
+            return None
         try:
-            scorer = PanelScorer.load(path)
+            scorer = scorer_loader(path)
         except Exception as exc:
             log.warning("challenger artifact load failed (%s): %s", path, exc)
             return None
@@ -130,7 +139,15 @@ class ChallengerEvaluator:
         """
         if self.scorer is None or X is None or X.empty:
             return pd.Series(dtype=float, name="challenger_score")
-        return self.scorer.score(X).rename("challenger_score")
+        if hasattr(self.scorer, "score"):
+            return self.scorer.score(X).rename("challenger_score")
+        if hasattr(self.scorer, "predict_rows"):
+            scores = self.scorer.predict_rows(X.to_dict(orient="index"))
+            return pd.Series(scores, dtype=float, name="challenger_score")
+        raise TypeError(
+            "challenger scorer must expose either score(DataFrame) or "
+            "predict_rows(dict)"
+        )
 
 
 # ── DB persistence ────────────────────────────────────────────────────────────

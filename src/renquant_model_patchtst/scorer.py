@@ -27,6 +27,7 @@ import hashlib
 from collections import deque
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlparse
 
 import numpy as np
 import torch
@@ -50,12 +51,14 @@ class PatchTstStatefulScorer:
         *,
         device: str = "cpu",
         transform_version: str = "v1",
+        use_csranknorm_preprocessing: bool = False,
     ) -> None:
         self.model = model.to(device).eval()
         self.feature_cols = list(feature_cols)
         self.seq_len = int(seq_len)
         self.device = device
         self._transform_version = transform_version
+        self._use_csranknorm_preprocessing = bool(use_csranknorm_preprocessing)
         self._buffers: dict[str, deque[np.ndarray]] = {}
 
     # ─── Scorer Protocol ────────────────────────────────────────────────────
@@ -69,11 +72,8 @@ class PatchTstStatefulScorer:
     def predict_rows(self, rows: dict[str, dict[str, float]]) -> dict[str, float]:
         ready_tkrs: list[str] = []
         ready_windows: list[np.ndarray] = []
-        for tkr, feats in rows.items():
-            vec = np.fromiter(
-                (float(feats.get(c, 0.0)) for c in self.feature_cols),
-                dtype=np.float32, count=len(self.feature_cols),
-            )
+        current_tkrs, current_vectors = self._row_vectors(rows)
+        for tkr, vec in zip(current_tkrs, current_vectors):
             buf = self._buffers.setdefault(tkr, deque(maxlen=self.seq_len))
             buf.append(vec)
             if len(buf) == self.seq_len:
@@ -109,10 +109,7 @@ class PatchTstStatefulScorer:
         is what the manifest sanity loop needs (per-date / per-ticker scoring
         against a strict cutoff window).
         """
-        try:
-            import pandas as pd  # noqa: PLC0415
-        except ImportError as exc:
-            raise RuntimeError("score_with_history requires pandas") from exc
+        history = self._prepare_history(history)
 
         out: dict[str, float] = {}
         # Group history by ticker once
@@ -173,6 +170,8 @@ class PatchTstStatefulScorer:
             the next ``predict_rows`` for it produces a score.
         """
         from collections import deque  # noqa: PLC0415
+        history = self._prepare_history(history)
+
         target_len = max(0, self.seq_len - 1)
         state: dict[str, int] = {}
         if target_len == 0:
@@ -199,17 +198,55 @@ class PatchTstStatefulScorer:
         """How many rows each ticker has seen — useful for the daily run trace."""
         return {t: len(b) for t, b in self._buffers.items()}
 
+    def _row_vectors(self, rows: dict[str, dict[str, float]]) -> tuple[list[str], np.ndarray]:
+        tickers = [str(tkr) for tkr in rows]
+        if not tickers:
+            return [], np.empty((0, len(self.feature_cols)), dtype=np.float32)
+        values = np.asarray(
+            [
+                [float(feats.get(col, 0.0)) for col in self.feature_cols]
+                for feats in rows.values()
+            ],
+            dtype=np.float32,
+        )
+        if self._use_csranknorm_preprocessing:
+            try:
+                import pandas as pd  # noqa: PLC0415
+            except ImportError as exc:
+                raise RuntimeError("PatchTST rank-normalized scoring requires pandas") from exc
+            ranked = pd.DataFrame(values, columns=self.feature_cols).rank(pct=True) - 0.5
+            values = ranked.fillna(0.0).to_numpy(dtype=np.float32)
+        return tickers, values
+
+    def _prepare_history(self, history: Any) -> Any:
+        try:
+            import pandas as pd  # noqa: PLC0415
+        except ImportError as exc:
+            raise RuntimeError("score_with_history requires pandas") from exc
+
+        required = ["date", "ticker", *self.feature_cols]
+        missing = [col for col in required if col not in history.columns]
+        if missing:
+            raise KeyError(f"PatchTstStatefulScorer history missing columns: {missing}")
+        out = history.loc[:, required].copy()
+        out["date"] = pd.to_datetime(out["date"])
+        out[self.feature_cols] = out[self.feature_cols].apply(pd.to_numeric, errors="coerce")
+        if self._use_csranknorm_preprocessing:
+            out[self.feature_cols] = (
+                out.groupby("date")[self.feature_cols].rank(pct=True) - 0.5
+            )
+        out[self.feature_cols] = out[self.feature_cols].fillna(0.0)
+        return out
+
 
 # ─── Entry point ────────────────────────────────────────────────────────────
 
 def load(manifest: Any) -> PatchTstStatefulScorer:
     """Build the scorer from an artifact manifest.
 
-    Reads the ``.pt`` checkpoint pointed to by ``manifest.local_artifact_path`` (with
-    ``manifest.uri`` as the canonical fallback when ``file://`` scheme), rebuilds the
-    model from the embedded ``config_dict`` and feature-engineering flags, loads the
-    state dict, and returns a stateful scorer. The PyTorch checkpoint format is
-    produced by ``PersistModelTask`` (see ``sequence_training.PersistModelTask``).
+    Reads the ``.pt`` checkpoint pointed to by ``manifest.local_artifact_path`` when
+    present, otherwise the standard ``ArtifactManifest.artifact_uri`` / legacy ``uri``.
+    The PyTorch checkpoint format is produced by ``PersistModelTask``.
     """
     path = _resolve_path(manifest)
     ckpt = torch.load(path, map_location="cpu", weights_only=False)
@@ -228,17 +265,33 @@ def load(manifest: Any) -> PatchTstStatefulScorer:
         model,
         feature_cols=list(ckpt["feature_cols"]),
         seq_len=int(ckpt["seq_len"]),
+        use_csranknorm_preprocessing=bool(
+            ckpt.get("uses_csranknorm_preprocessing", False)
+        ),
     )
 
 
 def _resolve_path(manifest: Any) -> Path:
-    local = getattr(manifest, "local_artifact_path", None)
+    local = _manifest_value(manifest, "local_artifact_path")
     if local:
         return Path(local)
-    uri = getattr(manifest, "uri", None) or ""
-    if uri.startswith("file://"):
-        return Path(uri[len("file://"):])
+    uri = _manifest_value(manifest, "artifact_uri", "uri") or ""
+    parsed = urlparse(str(uri))
+    if parsed.scheme == "file":
+        return Path(unquote(parsed.path))
+    if parsed.scheme == "":
+        return Path(str(uri))
     raise ValueError(
         f"PatchTST scorer cannot resolve artifact: local_artifact_path missing and "
         f"uri scheme not supported ({uri!r})"
     )
+
+
+def _manifest_value(manifest: Any, *names: str) -> Any:
+    for name in names:
+        if isinstance(manifest, dict) and manifest.get(name):
+            return manifest[name]
+        value = getattr(manifest, name, None)
+        if value:
+            return value
+    return None

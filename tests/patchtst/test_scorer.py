@@ -13,13 +13,15 @@ only verify the scorer plumbing.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 import pytest
 import torch
 
+from renquant_common import ArtifactManifest, OOSEvidence
 from renquant_common.contracts import Scorer
-from renquant_model_patchtst.scorer import PatchTstStatefulScorer
+from renquant_model_patchtst.scorer import PatchTstStatefulScorer, _resolve_path
 
 
 class _MockModel(torch.nn.Module):
@@ -36,8 +38,18 @@ class _MockModel(torch.nn.Module):
         return {"score": past_values.mean(dim=(1, 2))}
 
 
-def _make(seq_len: int = 3, feats: list[str] | None = None) -> PatchTstStatefulScorer:
-    return PatchTstStatefulScorer(_MockModel(), feats or ["a", "b"], seq_len=seq_len)
+def _make(
+    seq_len: int = 3,
+    feats: list[str] | None = None,
+    *,
+    use_csranknorm_preprocessing: bool = False,
+) -> PatchTstStatefulScorer:
+    return PatchTstStatefulScorer(
+        _MockModel(),
+        feats or ["a", "b"],
+        seq_len=seq_len,
+        use_csranknorm_preprocessing=use_csranknorm_preprocessing,
+    )
 
 
 def test_protocol_compliance() -> None:
@@ -80,6 +92,47 @@ def test_feature_fingerprint_changes_with_seq_len() -> None:
     a = _make(seq_len=8, feats=["x", "y"]).feature_fingerprint()
     b = _make(seq_len=16, feats=["x", "y"]).feature_fingerprint()
     assert a != b
+
+
+def test_resolve_path_accepts_standard_artifact_manifest_uri(tmp_path) -> None:
+    path = tmp_path / "hf_patchtst.pt"
+    path.write_bytes(b"checkpoint")
+    manifest = ArtifactManifest(
+        kind="hf_patchtst",
+        family="patchtst",
+        artifact_uri=f"file://{path}",
+        feature_fingerprint="sha256:feature",
+        config_fingerprint="sha256:config",
+        training_data_fingerprint="sha256:data",
+        trained_at=datetime.now(timezone.utc),
+        lookahead_days=60,
+        oos_evidence=OOSEvidence(
+            mean_ic=0.01,
+            std_ic=0.0,
+            per_fold_ic=(),
+            cv_method="purged-walk-forward",
+            embargo_days=60,
+        ),
+        owner_repo="renquant-model",
+    )
+
+    assert _resolve_path(manifest) == path
+
+
+def test_resolve_path_accepts_legacy_uri_dict(tmp_path) -> None:
+    path = tmp_path / "legacy.pt"
+    path.write_bytes(b"checkpoint")
+
+    assert _resolve_path({"uri": f"file://{path}"}) == path
+
+
+def test_predict_rows_applies_csranknorm_when_checkpoint_declares_it() -> None:
+    s = _make(seq_len=1, feats=["a"], use_csranknorm_preprocessing=True)
+
+    out = s.predict_rows({"LOW": {"a": 10.0}, "HIGH": {"a": 20.0}})
+
+    assert out["LOW"] == pytest.approx(0.0)
+    assert out["HIGH"] == pytest.approx(0.5)
 
 
 def test_requires_history_advertised() -> None:
