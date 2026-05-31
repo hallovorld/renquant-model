@@ -42,6 +42,9 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--film-regime-cond", action="store_true")
     p.add_argument("--spy-path")
     p.add_argument("--exclude-features")
+    # W0.P0.2: _trial_argv unconditionally appends --detector-version to the
+    # subprocess argv, so the mock parser must accept it.
+    p.add_argument("--detector-version", default="v2026-05-31")
     return p
 
 
@@ -463,6 +466,108 @@ def test_splitter_contract_is_part_of_trial_fingerprint(tmp_path: Path) -> None:
     FingerprintTrialsTask().run(ctx_b)
 
     assert trial_a.fingerprint != trial_b.fingerprint
+
+
+def test_environment_stamps_detector_version(tmp_path: Path) -> None:
+    """W0.P0.2: detector_version must appear in environment.json so the
+    audit trail attributes per-regime IC numbers to the right detector
+    variant. Default vs explicit-legacy must both stamp correctly."""
+    from renquant_model_patchtst.research_pipeline import StampEnvironmentTask
+
+    # Default = v2026-05-31 (research-fix path)
+    ctx_default = ExperimentContext(spec=_spec(tmp_path))
+    StampEnvironmentTask().run(ctx_default)
+    assert ctx_default.environment["detector_version"] == "v2026-05-31"
+
+    # Explicit legacy opt-in
+    ctx_legacy = ExperimentContext(spec=_spec(tmp_path, detector_version="legacy"))
+    StampEnvironmentTask().run(ctx_legacy)
+    assert ctx_legacy.environment["detector_version"] == "legacy"
+
+
+def test_trial_argv_includes_detector_version(tmp_path: Path) -> None:
+    """W0.P0.2: the trial subprocess argv built by _trial_argv must include
+    --detector-version so hf_trainer's ComputeRegimeLabelsTask picks up the
+    right detector. Without this, the trainer reverts to its own default
+    and the spec's choice silently doesn't reach the subprocess."""
+    from renquant_model_patchtst.research_pipeline import _trial_argv
+
+    spec_default = _spec(tmp_path)
+    argv = _trial_argv(spec_default, [], cut="cut1_covid", seed=42,
+                       out_dir=tmp_path / "out", kind="real")
+    assert "--detector-version" in argv
+    assert argv[argv.index("--detector-version") + 1] == "v2026-05-31"
+
+    spec_legacy = _spec(tmp_path, detector_version="legacy")
+    argv_legacy = _trial_argv(spec_legacy, [], cut="cut1_covid", seed=42,
+                              out_dir=tmp_path / "out", kind="real")
+    assert argv_legacy[argv_legacy.index("--detector-version") + 1] == "legacy"
+
+
+def test_load_regime_labels_threads_detector_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """W0.P0.2: _load_regime_labels must pass spec.detector_version to
+    compute_hmm_regime_labels. Stub the library function and assert the
+    kwarg makes it through."""
+    from renquant_model_patchtst import research_pipeline as rp
+
+    spy = tmp_path / "spy.parquet"
+    spy.write_bytes(b"")  # any existing file; we stub the loader
+
+    captured: dict = {}
+
+    def fake_compute(spy_path, *, detector_version=None):
+        captured["spy_path"] = spy_path
+        captured["detector_version"] = detector_version
+        import pandas as pd
+        return pd.DataFrame({"date": [], "regime": []})
+
+    monkeypatch.setattr(
+        "renquant_common.hmm_regime_labels.compute_hmm_regime_labels",
+        fake_compute,
+    )
+
+    spec = _spec(tmp_path, spy_path=spy, detector_version="legacy")
+    ctx = ExperimentContext(spec=spec)
+    ctx.regime_contract = {"passed": True}
+    out = rp._load_regime_labels(ctx)
+    assert out is not None
+    assert captured["detector_version"] == "legacy"
+
+
+def test_regime_contract_task_stamps_detector_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """W0.P0.2: RegimeDetectorContractTask must stamp detector_version into
+    the regime_contract dict for audit, alongside passing it to
+    compute_hmm_regime_labels."""
+    from renquant_model_patchtst import research_pipeline as rp
+    import pandas as pd
+
+    spy = tmp_path / "spy.parquet"
+    spy.write_bytes(b"")
+
+    captured: dict = {}
+
+    def fake_compute(spy_path, *, detector_version=None):
+        captured["detector_version"] = detector_version
+        # Return labels covering the golden windows so the contract passes
+        dates = pd.date_range("2017-01-01", "2023-12-31", freq="B")
+        return pd.DataFrame({"date": dates, "regime": ["BULL_CALM"] * len(dates)})
+
+    monkeypatch.setattr(
+        "renquant_common.hmm_regime_labels.compute_hmm_regime_labels",
+        fake_compute,
+    )
+
+    spec = _spec(tmp_path, spy_path=spy, detector_version="v2026-05-31",
+                 require_regime_contract=True)
+    ctx = ExperimentContext(spec=spec, trial_plan=[])
+    rp.RegimeDetectorContractTask().run(ctx)
+
+    assert captured["detector_version"] == "v2026-05-31"
+    assert ctx.regime_contract["detector_version"] == "v2026-05-31"
 
 
 def test_trial_failure_is_persisted_and_check_promotion_returns_invalid(tmp_path: Path) -> None:

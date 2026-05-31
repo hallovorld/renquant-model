@@ -80,6 +80,14 @@ def main(argv: list[str] | None = None) -> int:
              "detector fix. Detector quality is a P0 invariant — bypass "
              "is temporary scaffolding, not a default.",
     )
+    p.add_argument(
+        "--detector-version", default="v2026-05-31",
+        help="HMM regime detector version (renquant_common.hmm_regime_labels). "
+             "Default 'v2026-05-31' uses the corrected vol-based BULL_CALM "
+             "path — research runs need the fix so calm_2017 doesn't hard-fail "
+             "the regime contract. 'legacy' preserves pre-2026-05-31 hurst-only "
+             "behavior for backward-compat experiments only.",
+    )
     p.add_argument("--label", default="fwd_60d_excess")
     p.add_argument("--label-lookahead-days", type=int, default=60)
     p.add_argument("--embargo-days", type=int, default=60)
@@ -122,6 +130,7 @@ def main(argv: list[str] | None = None) -> int:
         require_placebos=not args.no_placebos,
         allow_ungated_smoke=args.allow_ungated_smoke,
         require_regime_contract=not args.no_regime_contract,
+        detector_version=args.detector_version,
         label_col=args.label,
         label_lookahead_days=args.label_lookahead_days,
         embargo_days=args.embargo_days,

@@ -115,3 +115,66 @@ def test_phase_aliases_resolve() -> None:
     assert _parse_phase("range-find") == "range_find"
     with pytest.raises(SystemExit):
         _parse_phase("bogus")
+
+
+# ---- W0.P0.2: --detector-version plumbing (PR #11 implementation plan) ----
+
+
+def test_research_cli_default_detector_version_is_v20260531(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """Default CLI invocation must use the post-fix detector so Phase A.0
+    can run without the calm_2017 mislabel hard-failing the contract."""
+    argv = [
+        "--phase", "range_find",
+        "--configs", "B_tuned",
+        "--cuts", "cut1_covid",
+        "--seeds", "42",
+        "--epochs", "1",
+        "--device", "cpu",
+        "--out-dir", str(tmp_path),
+    ]
+    spec, rc = _capture_spec_from_main(argv, monkeypatch)
+    assert rc == 0
+    assert spec.detector_version == "v2026-05-31"
+
+
+def test_research_cli_can_explicitly_override_to_legacy(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """`--detector-version legacy` opts back into the pre-fix detector for
+    backward-compat experiments (e.g. reproducing pre-PR #3 numbers)."""
+    argv = [
+        "--phase", "range_find",
+        "--configs", "B_tuned",
+        "--cuts", "cut1_covid",
+        "--seeds", "42",
+        "--epochs", "1",
+        "--device", "cpu",
+        "--out-dir", str(tmp_path),
+        "--detector-version", "legacy",
+    ]
+    spec, rc = _capture_spec_from_main(argv, monkeypatch)
+    assert rc == 0
+    assert spec.detector_version == "legacy"
+
+
+def test_research_cli_detector_version_independent_of_regime_contract(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """`--no-regime-contract` and `--detector-version` are orthogonal —
+    bypassing the contract MUST NOT silently flip the detector version."""
+    argv = [
+        "--phase", "range_find",
+        "--configs", "B_tuned",
+        "--cuts", "cut1_covid",
+        "--seeds", "42",
+        "--epochs", "1",
+        "--device", "cpu",
+        "--out-dir", str(tmp_path),
+        "--no-regime-contract",
+    ]
+    spec, rc = _capture_spec_from_main(argv, monkeypatch)
+    assert rc == 0
+    assert spec.detector_version == "v2026-05-31"   # default still applies
+    assert spec.require_regime_contract is False
