@@ -5,39 +5,37 @@ Series Forecasting?", arXiv 2205.13504). Implementation Reference Policy:
 see ``docs/dlinear_source_note.md`` for pinned commit, license, and
 documented deviations.
 
-The original DLinear is a univariate forecasting model that decomposes the
-input into trend + seasonal series and applies separate linear projections
-to each. RenQuant's task is cross-sectional ranking, not future-value
-forecasting, so the architectural skeleton is preserved but the output
-head is a single scalar score per (ticker, date) sample instead of a
-multi-step forecast.
-
-The point of these baselines per the merged research plan is **decision-
-quality falsification**: if a model this simple matches or beats PatchTST
-on the same data + splits + placebos, the PatchTST investment should
-pause. The adaptation preserves the spirit (linear architecture, no
-attention, no recurrence) but routes it through RenQuant's cross-
-sectional contract.
-
 Architecture
 ------------
 
+Faithful to upstream's per-channel temporal pattern: the input
+``(batch, seq_len, n_channels)`` is decomposed into trend + seasonal,
+then a per-channel ``Linear(seq_len -> 1)`` produces a single forecast
+step per channel. The ``individual`` flag controls whether each channel
+gets its own weights (upstream-style, defensible per channel) or all
+channels share a single weight set (faster, fewer parameters).
+
+The only material deviation from upstream is the **output head**: we
+aggregate the per-channel forecasts to a single scalar score via a
+``Linear(n_channels -> 1)`` so the model fits RenQuant's
+cross-sectional ranking contract. The temporal modeling path is
+unchanged.
+
 DLinearRanker:
-  1. Per-timestep feature projection: Linear(n_features → 1)
-     Reduces multivariate input to univariate time-series per sample.
-  2. Trend/seasonal decomposition via moving-average kernel
+  1. Trend/seasonal decomposition via moving-average kernel
      (kernel_size configurable; default 5, matching LTSF-Linear).
-  3. Separate Linear(seq_len → 1) for each component.
-  4. Output: trend_out + seasonal_out → scalar score.
+  2. Per-channel temporal linear heads: trend_head + seasonal_head
+     each produce a 1-step "forecast" per channel.
+  3. Aggregate per-channel forecasts into a scalar ranking score.
 
 NLinearRanker:
-  1. Per-timestep feature projection: Linear(n_features → 1)
-  2. Subtract input[-1] (the most-recent step) from the series.
-  3. Linear(seq_len → 1).
-  4. Add input[-1] back.
-  5. Output: scalar score.
+  1. Per-channel residual normalization (subtract last timestep).
+  2. Per-channel ``Linear(seq_len -> 1)`` head.
+  3. Add the last value back; aggregate to scalar.
 
-Both have O(n_features × seq_len) parameters — tiny vs PatchTST (~70k).
+This keeps the upstream architectural skeleton intact, so a poor result
+genuinely falsifies the linear-baseline hypothesis (rather than
+falsifying a degenerate compressed variant).
 """
 from __future__ import annotations
 
@@ -48,7 +46,7 @@ import torch.nn as nn
 class MovingAverageDecomposition(nn.Module):
     """Trend extraction via centered moving-average pooling.
 
-    Faithful to LTSF-Linear's ``series_decomp.moving_avg`` — reflection-
+    Faithful to LTSF-Linear's ``series_decomp.moving_avg`` — replication-
     padded average pool with even/odd kernel_size both supported. The
     returned ``seasonal`` is ``x - trend``, preserving the
     ``x = trend + seasonal`` decomposition.
@@ -59,8 +57,6 @@ class MovingAverageDecomposition(nn.Module):
         if kernel_size < 1:
             raise ValueError(f"kernel_size must be ≥ 1, got {kernel_size}")
         self.kernel_size = int(kernel_size)
-        # AvgPool1d's stride=1 keeps the time dimension; padding is added
-        # manually below (replication) to keep the output length == input.
         self.avg = nn.AvgPool1d(
             kernel_size=self.kernel_size,
             stride=1,
@@ -68,8 +64,7 @@ class MovingAverageDecomposition(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        # x: (batch, seq_len, n_features) — last-dim time as in LTSF-Linear
-        # would require transpose; we follow PatchTST's (B, T, C) convention.
+        # x: (batch, seq_len, n_features) — PatchTST-style (B, T, C).
         if x.dim() != 3:
             raise ValueError(f"DLinear expects (batch, seq_len, n_features); got {x.shape}")
         # AvgPool1d expects (B, C, T). Transpose: (B, T, C) → (B, C, T).
@@ -84,6 +79,37 @@ class MovingAverageDecomposition(nn.Module):
         return seasonal, trend
 
 
+def _per_channel_temporal_linear(
+    series: torch.Tensor,
+    head: nn.Module,
+    individual: bool,
+) -> torch.Tensor:
+    """Apply Linear(T -> 1) per channel.
+
+    series : (B, T, C)
+    head   : either nn.Linear(T, 1) for shared, or nn.ModuleList of n_channels
+             Linear(T, 1) for individual=True.
+    returns: (B, C) — single-step forecast per channel.
+
+    Matches upstream LTSF-Linear's ``individual`` semantics:
+      individual=False → one ``Linear(T, 1)`` shared across all channels
+      individual=True  → ``ModuleList`` of n_channels ``Linear(T, 1)``
+                          producing per-channel learned dynamics.
+    """
+    if individual:
+        # head is ModuleList of length C.
+        out_per_channel = []
+        for c, layer in enumerate(head):
+            # (B, T) → (B, 1) → (B,)
+            out_per_channel.append(layer(series[:, :, c]).squeeze(-1))
+        return torch.stack(out_per_channel, dim=-1)  # (B, C)
+    # Shared head: apply Linear(T, 1) to every channel.
+    # Transpose so channels are batch-like: (B, C, T), apply, squeeze.
+    bct = series.transpose(1, 2)        # (B, C, T)
+    out = head(bct).squeeze(-1)          # (B, C, 1) → (B, C)
+    return out
+
+
 class DLinearRanker(nn.Module):
     """DLinear adapted for cross-sectional scalar ranking.
 
@@ -93,7 +119,7 @@ class DLinearRanker(nn.Module):
     Parameters
     ----------
     n_features
-        Number of feature columns per timestep.
+        Number of feature/channel columns per timestep.
     seq_len
         Number of historical timesteps consumed.
     kernel_size
@@ -101,11 +127,10 @@ class DLinearRanker(nn.Module):
         matches the LTSF-Linear/DLinear repo's default for non-ETT
         datasets.
     individual
-        If True, give each (post-projection) channel its own linear weights
-        (matches LTSF-Linear's ``individual=True`` mode). Since the
-        feature projection already reduces to 1 channel, this only affects
-        trend vs seasonal heads when both have multiple internal channels;
-        kept here for API parity with the upstream class. Default False.
+        If True, give each channel its own ``Linear(seq_len, 1)`` weights
+        (upstream-style per-channel dynamics). If False (default), all
+        channels share a single set of weights — fewer parameters,
+        bigger inductive bias.
     """
 
     def __init__(
@@ -124,34 +149,56 @@ class DLinearRanker(nn.Module):
         self.seq_len = int(seq_len)
         self.individual = bool(individual)
 
-        # Feature → univariate projection.
-        self.feature_proj = nn.Linear(self.n_features, 1, bias=False)
         # Trend + seasonal decomposition.
         self.decomp = MovingAverageDecomposition(kernel_size=kernel_size)
-        # Separate linear heads — output dimension 1 (single forecast step,
-        # acting as the scalar ranking score).
-        self.trend_head = nn.Linear(self.seq_len, 1)
-        self.seasonal_head = nn.Linear(self.seq_len, 1)
+
+        # Per-channel temporal heads. Shared (individual=False) uses a single
+        # Linear(T, 1); individual=True gives every channel its own weights —
+        # matches upstream LTSF-Linear's `individual=True` mode exactly.
+        if self.individual:
+            self.trend_head: nn.Module = nn.ModuleList(
+                [nn.Linear(self.seq_len, 1) for _ in range(self.n_features)]
+            )
+            self.seasonal_head: nn.Module = nn.ModuleList(
+                [nn.Linear(self.seq_len, 1) for _ in range(self.n_features)]
+            )
+        else:
+            self.trend_head = nn.Linear(self.seq_len, 1)
+            self.seasonal_head = nn.Linear(self.seq_len, 1)
+
+        # Final channel aggregation: per-channel forecasts → scalar score.
+        # This is the only path-deviation from upstream forecasting; the
+        # temporal modeling per channel above is faithful.
+        self.channel_aggregator = nn.Linear(self.n_features, 1, bias=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # x: (B, T, F) → project features to 1-d → decompose → linear heads.
-        proj = self.feature_proj(x)                # (B, T, 1)
-        seasonal, trend = self.decomp(proj)        # both (B, T, 1)
-        seasonal_in = seasonal.squeeze(-1)         # (B, T)
-        trend_in = trend.squeeze(-1)               # (B, T)
-        seasonal_out = self.seasonal_head(seasonal_in).squeeze(-1)  # (B,)
-        trend_out = self.trend_head(trend_in).squeeze(-1)            # (B,)
-        return seasonal_out + trend_out                              # (B,)
+        # x: (B, T, F) — decompose, per-channel temporal heads, aggregate.
+        seasonal, trend = self.decomp(x)              # both (B, T, F)
+        seasonal_out = _per_channel_temporal_linear(
+            seasonal, self.seasonal_head, self.individual,
+        )                                              # (B, F)
+        trend_out = _per_channel_temporal_linear(
+            trend, self.trend_head, self.individual,
+        )                                              # (B, F)
+        per_channel = seasonal_out + trend_out         # (B, F)
+        return self.channel_aggregator(per_channel).squeeze(-1)  # (B,)
 
 
 class NLinearRanker(nn.Module):
     """NLinear adapted for cross-sectional scalar ranking.
 
-    Strictly faithful to the LTSF-Linear NLinear except for the
-    cross-sectional output head (scalar instead of multi-step forecast).
+    Faithful per-channel residual structure from upstream LTSF-Linear:
+    subtract the last timestep value per channel, apply Linear(T, 1) per
+    channel, add the last value back. Aggregate per-channel scalars to a
+    single scalar score.
     """
 
-    def __init__(self, n_features: int, seq_len: int) -> None:
+    def __init__(
+        self,
+        n_features: int,
+        seq_len: int,
+        individual: bool = False,
+    ) -> None:
         super().__init__()
         if n_features < 1:
             raise ValueError(f"n_features must be ≥ 1, got {n_features}")
@@ -159,17 +206,25 @@ class NLinearRanker(nn.Module):
             raise ValueError(f"seq_len must be ≥ 1, got {seq_len}")
         self.n_features = int(n_features)
         self.seq_len = int(seq_len)
-        # Feature → univariate projection (same shape pipeline as DLinear).
-        self.feature_proj = nn.Linear(self.n_features, 1, bias=False)
-        # Single linear head over time dimension.
-        self.head = nn.Linear(self.seq_len, 1)
+        self.individual = bool(individual)
+
+        if self.individual:
+            self.head: nn.Module = nn.ModuleList(
+                [nn.Linear(self.seq_len, 1) for _ in range(self.n_features)]
+            )
+        else:
+            self.head = nn.Linear(self.seq_len, 1)
+
+        self.channel_aggregator = nn.Linear(self.n_features, 1, bias=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        proj = self.feature_proj(x).squeeze(-1)    # (B, T)
-        # NLinear normalization: subtract last timestep value (per sample).
-        last = proj[:, -1:].clone()                # (B, 1)
-        normalized = proj - last
-        out = self.head(normalized).squeeze(-1)    # (B,)
-        # Add the last-value scalar back so the head learns deviations
-        # rather than absolute level.
-        return out + last.squeeze(-1)
+        # x: (B, T, F)
+        # Per-channel last-value subtraction.
+        last = x[:, -1:, :].clone()                # (B, 1, F)
+        normalized = x - last                       # (B, T, F)
+        normalized_out = _per_channel_temporal_linear(
+            normalized, self.head, self.individual,
+        )                                           # (B, F)
+        # Add back per-channel last value (broadcast back to scalar per channel).
+        per_channel = normalized_out + last.squeeze(1)  # (B, F)
+        return self.channel_aggregator(per_channel).squeeze(-1)  # (B,)
