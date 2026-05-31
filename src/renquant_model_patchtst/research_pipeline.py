@@ -28,14 +28,26 @@ from scipy.stats import spearmanr
 from renquant_common import Job, Pipeline, Task, run_parallel
 from renquant_common.stats import deflated_sharpe, pbo_cscv
 
+from .splits import (
+    DEFAULT_ALL_VAL_TAIL_PCT,
+    SPLITTER_IMPLEMENTATION,
+    assign_patchtst_split,
+)
 
 Phase = Literal["range_find", "doe", "confirm"]
 TrialKind = Literal["real", "shuffle_placebo", "timeshift_placebo"]
 TrialStatus = Literal["ok", "skipped", "failed"]
-Verdict = Literal["promote_to_confirm", "needs_more_seeds", "reject", "invalid_experiment"]
+Verdict = Literal[
+    "promote_to_confirm",
+    "promote_to_live",
+    "needs_more_seeds",
+    "reject",
+    "invalid_experiment",
+]
 
 DEFAULT_BASELINE_CONFIG = "B_tuned"
 DEFAULT_LABEL_SHIFT_DAYS = 10
+NON_DEFENSIVE_REGIMES = frozenset({"BULL_CALM", "BULL_VOLATILE", "BULL_STRONG", "CHOPPY"})
 DEFAULT_TRIAL_TIMEOUTS_SEC = {
     "real": 4 * 60 * 60,
     "shuffle_placebo": 4 * 60 * 60,
@@ -98,6 +110,7 @@ class ExperimentSpec:
     label_col: str = "fwd_60d_excess"
     label_lookahead_days: int = 60
     embargo_days: int = 60
+    val_tail_pct: float = DEFAULT_ALL_VAL_TAIL_PCT
     label_shift_days: int = DEFAULT_LABEL_SHIFT_DAYS
     baseline_config: str = DEFAULT_BASELINE_CONFIG
     baseline_pooled_ic: float | None = None
@@ -265,6 +278,7 @@ class StampEnvironmentTask(Task):
             "label_col": spec.label_col,
             "label_lookahead_days": spec.label_lookahead_days,
             "embargo_days": spec.embargo_days,
+            "val_tail_pct": spec.val_tail_pct,
             "label_shift_days": spec.label_shift_days,
         }
         ctx.matrix_hash = _short_hash(seed_material)
@@ -322,6 +336,7 @@ class ValidateTrainerSurfaceTask(Task):
             "dataset",
             "label",
             "embargo_days",
+            "val_tail_pct",
         }
         if ctx.spec.require_placebos and not ctx.spec.allow_ungated_smoke:
             required |= {"shuffle_labels", "label_shift_days"}
@@ -451,7 +466,12 @@ class ValidateSplitterEmbargoTask(Task):
         panel = _read_panel_dates(spec.dataset, spec.label_col)
         failures: list[str] = []
         for cut in sorted(set(t.cut for t in ctx.trial_plan)):
-            split = _assign_split(panel, cut, spec.embargo_days)
+            split = _assign_split(
+                panel,
+                cut,
+                spec.embargo_days,
+                val_tail_pct=spec.val_tail_pct,
+            )
             dates = pd.to_datetime(panel["date"])
             val_dates = dates[split == "val"]
             if val_dates.empty:
@@ -475,9 +495,11 @@ class ValidateSplitterEmbargoTask(Task):
                     f"label_lookahead_days={spec.label_lookahead_days}"
                 )
         ctx.environment["splitter_contract"] = {
-            "implementation": "renquant_common.walk_forward_splits",
+            "implementation": SPLITTER_IMPLEMENTATION,
             "lookahead_days": spec.label_lookahead_days,
             "embargo_days": spec.embargo_days,
+            "all_cut_val_tail_pct": spec.val_tail_pct,
+            "cuts": sorted(set(t.cut for t in ctx.trial_plan)),
             "passed": not failures,
             "failures": failures,
         }
@@ -507,10 +529,12 @@ class FingerprintTrialsTask(Task):
                 "label_col": spec.label_col,
                 "label_lookahead_days": spec.label_lookahead_days,
                 "embargo_days": spec.embargo_days,
+                "val_tail_pct": spec.val_tail_pct,
                 "label_shift_days": spec.label_shift_days,
                 "git_head": ctx.environment.get("git_head"),
                 "git_dirty": ctx.environment.get("git_dirty"),
                 "regime_contract": ctx.regime_contract,
+                "splitter_contract": ctx.environment.get("splitter_contract"),
                 "gate_thresholds": GATE_THRESHOLDS,
             }
             trial.fingerprint = "sha256:" + _hash_json(payload)
@@ -669,6 +693,7 @@ class PrepareTrialTask(Task):
                 "trial_id": ctx.spec.trial_id,
                 "fingerprint": ctx.spec.fingerprint,
                 "gate_thresholds": GATE_THRESHOLDS,
+                "splitter_contract": ctx.experiment.environment.get("splitter_contract"),
             },
         )
         return True
@@ -972,7 +997,7 @@ class MultipleComparisonCorrectionTask(Task):
         ]
         best = _best_config(ctx)
         best_series = [r.pooled_ic for r in real_ok if r.config_name == best]
-        n_trials = len({t.config_name for t in ctx.trial_plan if t.trial_kind == "real"})
+        n_trials = sum(1 for t in ctx.trial_plan if t.trial_kind == "real")
         matrix = _returns_matrix(real_ok)
         ctx.analysis["multiple_comparison"] = {
             "n_trials": n_trials,
@@ -980,7 +1005,7 @@ class MultipleComparisonCorrectionTask(Task):
             "dsr": deflated_sharpe(best_series, n_trials=n_trials) if best_series else None,
             "pbo": pbo_cscv(matrix) if matrix is not None else None,
             "dsr_threshold": 0.5,
-            "dsr_threshold_source": "umbrella CLAUDE.md §7.4 Tier 3",
+            "dsr_threshold_source": "doc/research/promotion-methodology.md Tier 3",
             "pbo_reject_threshold": 0.5,
         }
         return True
@@ -990,13 +1015,45 @@ class RobustnessAndRiskTask(Task):
     def run(self, ctx: ExperimentContext) -> bool | None:
         real_ok = [
             r for r in ctx.trial_results
-            if r.trial_kind == "real" and r.status == "ok" and r.min_regime_ic is not None
+            if r.trial_kind == "real" and r.status == "ok"
         ]
+        non_defensive_by_config: dict[str, list[tuple[str, float]]] = {}
+        for result in real_ok:
+            for regime, ic in result.per_regime_ic.items():
+                if (
+                    regime in NON_DEFENSIVE_REGIMES
+                    and ic is not None
+                    and np.isfinite(float(ic))
+                ):
+                    non_defensive_by_config.setdefault(result.config_name, []).append(
+                        (regime, float(ic))
+                    )
         ctx.analysis["robustness"] = {
             "min_regime_ic_by_config": {
                 config: min(r.min_regime_ic for r in real_ok if r.config_name == config)
-                for config in sorted({r.config_name for r in real_ok})
-            }
+                for config in sorted(
+                    {
+                        r.config_name
+                        for r in real_ok
+                        if r.min_regime_ic is not None
+                    }
+                )
+            },
+            "non_defensive_regimes": sorted(NON_DEFENSIVE_REGIMES),
+            "min_non_defensive_regime_ic_by_config": {
+                config: min(ic for _, ic in values)
+                for config, values in sorted(non_defensive_by_config.items())
+                if values
+            },
+            "negative_non_defensive_regimes_by_config": {
+                config: {
+                    regime: ic
+                    for regime, ic in values
+                    if ic < 0.0
+                }
+                for config, values in sorted(non_defensive_by_config.items())
+                if any(ic < 0.0 for _, ic in values)
+            },
         }
         return True
 
@@ -1012,11 +1069,56 @@ class DecideVerdictTask(Task):
             return True
         best_stats = by_config.get(best, {})
         delta = best_stats.get("mean_delta_vs_baseline")
-        se = best_stats.get("se_pooled_ic") or 0.0
-        if delta is not None and delta > se:
-            ctx.verdict = "promote_to_confirm" if ctx.spec.phase != "confirm" else "needs_more_seeds"
+        se = best_stats.get("se_pooled_ic")
+        worst_cut_ic = best_stats.get("worst_cut_ic")
+        multiple = ctx.analysis.get("multiple_comparison", {})
+        robustness = ctx.analysis.get("robustness", {})
+        min_non_defensive = robustness.get("min_non_defensive_regime_ic_by_config", {}).get(best)
+        negative_non_defensive = robustness.get(
+            "negative_non_defensive_regimes_by_config", {}
+        ).get(best, {})
+
+        verdict_inputs = {
+            "best_config": best,
+            "phase": ctx.spec.phase,
+            "delta_vs_baseline": delta,
+            "se_pooled_ic": se,
+            "required_delta_gt": (2.0 * se if se is not None else None),
+            "worst_cut_ic": worst_cut_ic,
+            "min_non_defensive_regime_ic": min_non_defensive,
+            "negative_non_defensive_regimes": negative_non_defensive,
+            "dsr": multiple.get("dsr"),
+            "dsr_threshold": multiple.get("dsr_threshold", 0.5),
+            "pbo": multiple.get("pbo"),
+            "pbo_reject_threshold": multiple.get("pbo_reject_threshold", 0.5),
+        }
+        ctx.analysis["verdict_inputs"] = verdict_inputs
+
+        if delta is None or not _is_finite_number(delta) or delta <= 0.0:
+            ctx.verdict = "reject"
+        elif (
+            min_non_defensive is not None
+            and _is_finite_number(min_non_defensive)
+            and float(min_non_defensive) < 0.0
+        ):
+            ctx.verdict = "reject"
+        elif (
+            worst_cut_ic is None
+            or not _is_finite_number(worst_cut_ic)
+            or float(worst_cut_ic) <= 0.0
+        ):
+            ctx.verdict = "reject"
+        elif se is None or not _is_finite_number(se):
+            ctx.verdict = "needs_more_seeds"
+        elif float(delta) <= 2.0 * float(se):
+            ctx.verdict = "needs_more_seeds"
+        elif ctx.spec.phase != "confirm":
+            ctx.verdict = "promote_to_confirm"
+        elif _live_gate_passed(multiple):
+            ctx.verdict = "promote_to_live"
         else:
             ctx.verdict = "reject"
+        verdict_inputs["verdict"] = ctx.verdict
         return True
 
 
@@ -1116,13 +1218,30 @@ def check_promotion(experiment_dir: Path) -> int:
         verdict = _json_load(analysis).get("verdict")
     except Exception:
         return 3
-    if verdict == "promote_to_confirm":
+    if verdict in {"promote_to_confirm", "promote_to_live"}:
         return 0
     if verdict in {"needs_more_seeds", "reject"}:
         return 1
     if verdict == "invalid_experiment":
         return 2
     return 3
+
+
+def _is_finite_number(value: Any) -> bool:
+    try:
+        return bool(np.isfinite(float(value)))
+    except (TypeError, ValueError):
+        return False
+
+
+def _live_gate_passed(multiple: dict[str, Any]) -> bool:
+    dsr = multiple.get("dsr")
+    pbo = multiple.get("pbo")
+    dsr_threshold = float(multiple.get("dsr_threshold", 0.5))
+    pbo_threshold = float(multiple.get("pbo_reject_threshold", 0.5))
+    dsr_passed = _is_finite_number(dsr) and float(dsr) > dsr_threshold
+    pbo_passed = _is_finite_number(pbo) and float(pbo) < pbo_threshold
+    return bool(dsr_passed or pbo_passed)
 
 
 def _trial_argv(
@@ -1142,6 +1261,7 @@ def _trial_argv(
         "--dataset", str(spec.dataset),
         "--label", spec.label_col,
         "--embargo-days", str(spec.embargo_days),
+        "--val-tail-pct", str(spec.val_tail_pct),
     ] + list(extra)
     if spec.strategy_config is not None:
         argv += ["--strategy-config", str(spec.strategy_config)]
@@ -1211,26 +1331,19 @@ def _load_regime_labels(ctx: ExperimentContext) -> pd.DataFrame | None:
     return compute_hmm_regime_labels(ctx.spec.spy_path)
 
 
-def _assign_split(panel: pd.DataFrame, cut_name: str, embargo_days: int) -> pd.Series:
-    if cut_name == "all":
-        dates_sorted = sorted(pd.to_datetime(panel["date"]).unique())
-        n_val = max(1, int(len(dates_sorted) * 0.10))
-        val_start = pd.Timestamp(dates_sorted[-n_val])
-        train_end = val_start - pd.offsets.BDay(embargo_days)
-        out = pd.Series("train", index=panel.index, dtype="object")
-        dates = pd.to_datetime(panel["date"])
-        out.loc[(dates >= train_end) & (dates < val_start)] = "embargo"
-        out.loc[dates >= val_start] = "val"
-        return out
-    from renquant_common.walk_forward_splits import (  # noqa: PLC0415
-        assign_split_column,
-        build_default_cuts,
+def _assign_split(
+    panel: pd.DataFrame,
+    cut_name: str,
+    embargo_days: int,
+    *,
+    val_tail_pct: float = DEFAULT_ALL_VAL_TAIL_PCT,
+) -> pd.Series:
+    return assign_patchtst_split(
+        panel,
+        cut_name,
+        embargo_days=embargo_days,
+        val_tail_pct=val_tail_pct,
     )
-
-    cuts = {cut.name: cut for cut in build_default_cuts()}
-    if cut_name not in cuts:
-        raise ValueError(f"unknown cut {cut_name!r}; known: {sorted(cuts)}")
-    return assign_split_column(panel, cuts[cut_name], embargo_days=embargo_days)
 
 
 def _read_panel_dates(dataset: Path, label_col: str) -> pd.DataFrame:

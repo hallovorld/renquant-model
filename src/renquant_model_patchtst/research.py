@@ -75,6 +75,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--label", default="fwd_60d_excess")
     p.add_argument("--label-lookahead-days", type=int, default=60)
     p.add_argument("--embargo-days", type=int, default=60)
+    p.add_argument("--val-tail-pct", type=float, default=0.10)
     p.add_argument("--label-shift-days", type=int, default=10)
     p.add_argument("--baseline-pooled-ic", type=float, default=None)
     p.add_argument("--check-promotion", default=None, help="load experiment dir and return 0/1/2/3")
@@ -115,6 +116,7 @@ def main(argv: list[str] | None = None) -> int:
         label_col=args.label,
         label_lookahead_days=args.label_lookahead_days,
         embargo_days=args.embargo_days,
+        val_tail_pct=args.val_tail_pct,
         label_shift_days=args.label_shift_days,
         baseline_pooled_ic=args.baseline_pooled_ic,
     )

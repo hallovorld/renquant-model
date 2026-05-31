@@ -2,7 +2,7 @@
 """PatchTST cross-sectional ranker — HuggingFace Trainer + multi-task head.
 
 REPLACES hand-rolled training loop (376 LOC) with HF Trainer + canonical
-3rd-party machinery per CLAUDE.md §5.12 ("default to canonical references").
+3rd-party machinery per repository architecture guidance.
 
 Architecture (HF native + minimal custom):
   backbone : transformers.PatchTSTModel  (Nie 2023 ICLR)
@@ -92,6 +92,8 @@ log = logging.getLogger("patchtst-hf")
 # (BULL_STRONG is config-legacy phantom — detector doesn't emit it). RegimeLabel
 # is the single source of truth (renquant_common contract).
 from renquant_common.contracts.regime import RegimeLabel  # noqa: E402
+
+from renquant_model_patchtst.splits import assign_patchtst_split  # noqa: E402
 
 REGIMES = (RegimeLabel.BULL_CALM.value, RegimeLabel.BULL_VOLATILE.value,
            RegimeLabel.CHOPPY.value, RegimeLabel.BEAR.value)
@@ -316,9 +318,9 @@ def load_panel_with_split(dataset_path: Path, cut_name: str, label_col: str,
                           label_shift_days: int = 0) -> tuple[pd.DataFrame, list[str]]:
     """Load panel + assign train/val/test split.
 
-    cut_name = "all": full-data PROD training; last val_tail_pct dates → val.
-    cut_name = "cut1_covid" etc: walk-forward VALIDATION per
-                                   kernel.walk_forward_splits.
+    cut_name = "all": full-data PROD training; last val_tail_pct dates -> val.
+    cut_name = "cut1_covid" etc: walk-forward validation through
+                                   renquant_common.walk_forward_splits.
     """
     panel = pd.read_parquet(dataset_path)
     panel["date"] = pd.to_datetime(panel["date"])
@@ -339,23 +341,12 @@ def load_panel_with_split(dataset_path: Path, cut_name: str, label_col: str,
         panel.attrs["data_window_end_exclusive"] = str(end_ts.date())
     if cutoff_ts is not None:
         panel.attrs["train_cutoff_date"] = str(cutoff_ts.date())
-    if cut_name == "all":
-        dates_sorted = sorted(panel["date"].unique())
-        if val_tail_pct > 0:
-            n_val = max(1, int(len(dates_sorted) * val_tail_pct))
-            val_start = dates_sorted[-n_val]
-            train_end = val_start - pd.offsets.BDay(embargo_days)
-            panel["split_label"] = "train"
-            panel.loc[(panel["date"] >= train_end) &
-                      (panel["date"] < val_start), "split_label"] = "embargo"
-            panel.loc[panel["date"] >= val_start, "split_label"] = "val"
-        else:
-            panel["split_label"] = "train"
-    else:
-        from renquant_common.walk_forward_splits import (assign_split_column,  # noqa: PLC0415
-                                                 build_default_cuts)
-        cut = next(c for c in build_default_cuts() if c.name == cut_name)
-        panel["split_label"] = assign_split_column(panel, cut)
+    panel["split_label"] = assign_patchtst_split(
+        panel,
+        cut_name,
+        embargo_days=embargo_days,
+        val_tail_pct=val_tail_pct,
+    )
     _excluded = {"date", "ticker", "split_label",
                  "fwd_5d_excess", "fwd_20d_excess", "fwd_60d_excess"}
     _excluded.update(exclude_features or ())
@@ -378,7 +369,7 @@ def load_panel_with_split(dataset_path: Path, cut_name: str, label_col: str,
             label_shift_days, label_col, before - len(panel),
         )
     if shuffle_labels:
-        # §7.2 placebo: permute TRAIN labels only. Validation labels remain
+        # Train-only placebo: permute TRAIN labels only. Validation labels remain
         # aligned so the reported IC still measures the original target.
         train_idx = panel.index[panel["split_label"].eq("train")]
         panel.loc[train_idx, label_col] = np.random.permutation(
@@ -747,10 +738,11 @@ def build_parser() -> argparse.ArgumentParser:
                         "(mirrors GBDT exclude_features; e.g. the 3 sentiment "
                         "feats for the E_drop_senti lever)")
     p.add_argument("--shuffle-labels", action="store_true",
-                   help="§5.2 placebo: globally permute the label before training. "
-                        "A leak-free / non-overfit run must score pooled IC ≈ 0.")
+                   help="Train-only placebo from doc/research/promotion-methodology.md: "
+                        "permute train labels while validation labels stay aligned.")
     p.add_argument("--label-shift-days", type=int, default=0,
-                   help="§7.2 time-shift placebo: replace TRAIN labels with the "
+                   help="Time-shift placebo from doc/research/promotion-methodology.md: "
+                        "replace TRAIN labels with the "
                         "same ticker's label shifted by N business rows while "
                         "leaving validation labels aligned.")
     p.add_argument("--training-window-years", type=float, default=None,

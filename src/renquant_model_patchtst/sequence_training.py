@@ -1,7 +1,7 @@
 """PatchTST single-run training, decomposed into the Task/Job/Pipeline model.
 
 ``hf_trainer.train_one`` was a ~200-line monolith. This module splits that exact
-flow into single-responsibility Tasks (CLAUDE.md §1b/§1c) grouped into four Jobs:
+flow into single-responsibility Tasks grouped into four Jobs:
 
     DataPrepJob   : LoadPanel → ComputeRegimeLabels → BuildDatasets
     TrainJob      : BuildModel → BuildTrainer → RunTraining
