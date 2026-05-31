@@ -74,7 +74,8 @@ class LoadPanelTask(Task):
             data_end=getattr(a, "data_end", None),
             exclude_features=([s.strip() for s in a.exclude_features.split(",") if s.strip()]
                               if getattr(a, "exclude_features", None) else None),
-            shuffle_labels=getattr(a, "shuffle_labels", False))
+            shuffle_labels=getattr(a, "shuffle_labels", False),
+            label_shift_days=getattr(a, "label_shift_days", 0))
         return True
 
 

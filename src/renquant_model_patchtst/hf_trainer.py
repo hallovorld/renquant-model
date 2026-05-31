@@ -35,7 +35,6 @@ Usage::
 from __future__ import annotations
 import argparse
 import datetime as dt
-import hashlib
 import json
 import logging
 import os
@@ -52,9 +51,14 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from scipy.stats import spearmanr
-from transformers import (EarlyStoppingCallback, PatchTSTConfig, PatchTSTModel,
-                          Trainer, TrainerCallback, TrainingArguments)
+from transformers import (
+    EarlyStoppingCallback,  # noqa: F401 - re-exported for sequence_training
+    PatchTSTConfig,
+    PatchTSTModel,
+    Trainer,
+    TrainerCallback,
+    TrainingArguments,  # noqa: F401 - re-exported for sequence_training
+)
 
 # Strategy dir hosts the umbrella's data-side kernel.* deps (walk_forward_splits,
 # hmm_regime_labels, config_consistency) + strategy_config files that the deferred
@@ -308,7 +312,8 @@ def load_panel_with_split(dataset_path: Path, cut_name: str, label_col: str,
                           train_cutoff: str | None = None,
                           data_end: str | None = None,
                           exclude_features: list[str] | None = None,
-                          shuffle_labels: bool = False) -> tuple[pd.DataFrame, list[str]]:
+                          shuffle_labels: bool = False,
+                          label_shift_days: int = 0) -> tuple[pd.DataFrame, list[str]]:
     """Load panel + assign train/val/test split.
 
     cut_name = "all": full-data PROD training; last val_tail_pct dates → val.
@@ -360,12 +365,29 @@ def load_panel_with_split(dataset_path: Path, cut_name: str, label_col: str,
     if exclude_features:
         log.info("excluded %d feature(s): %s",
                  len(exclude_features), ",".join(exclude_features))
+    train_mask = panel["split_label"].eq("train")
+    if label_shift_days:
+        # Time-shift placebo: break the train feature→label alignment while
+        # preserving validation labels for honest IC computation.
+        shifted = panel.groupby("ticker", sort=False)[label_col].shift(-int(label_shift_days))
+        panel.loc[train_mask, label_col] = shifted.loc[train_mask]
+        before = len(panel)
+        panel = panel.loc[~(train_mask & panel[label_col].isna())].copy()
+        log.info(
+            "PLACEBO label_shift_days=%d: shifted train '%s'; dropped %d train rows",
+            label_shift_days, label_col, before - len(panel),
+        )
     if shuffle_labels:
-        # §5.2 placebo: globally permute the label, breaking the feature→label
-        # link. A leak-free, non-selection-inflated run must score IC ≈ 0 here.
-        panel[label_col] = np.random.permutation(panel[label_col].to_numpy())
-        log.info("PLACEBO shuffle_labels: permuted '%s' across %d rows (expect IC≈0)",
-                 label_col, len(panel))
+        # §7.2 placebo: permute TRAIN labels only. Validation labels remain
+        # aligned so the reported IC still measures the original target.
+        train_idx = panel.index[panel["split_label"].eq("train")]
+        panel.loc[train_idx, label_col] = np.random.permutation(
+            panel.loc[train_idx, label_col].to_numpy()
+        )
+        log.info(
+            "PLACEBO shuffle_labels: permuted train '%s' across %d rows (expect IC≈0)",
+            label_col, len(train_idx),
+        )
     if preprocess:
         panel = csrank_norm_per_day(panel, feat_cols)
         winsor_bounds = label_winsor_bounds(
@@ -488,6 +510,8 @@ def build_training_contract(args: argparse.Namespace, feat_cols: list[str],
             "film_regime_cond": args.film_regime_cond,
             "cross_stock_attn": args.cross_stock_attn,
             "device": args.device,
+            "shuffle_labels": bool(getattr(args, "shuffle_labels", False)),
+            "label_shift_days": int(getattr(args, "label_shift_days", 0)),
         },
         "selection": {
             "metric_for_best_model": metric_for_best,
@@ -725,6 +749,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--shuffle-labels", action="store_true",
                    help="§5.2 placebo: globally permute the label before training. "
                         "A leak-free / non-overfit run must score pooled IC ≈ 0.")
+    p.add_argument("--label-shift-days", type=int, default=0,
+                   help="§7.2 time-shift placebo: replace TRAIN labels with the "
+                        "same ticker's label shifted by N business rows while "
+                        "leaving validation labels aligned.")
     p.add_argument("--training-window-years", type=float, default=None,
                    help="Diagnostic: width of the training window in years. "
                         "Stamped into training_runs.training_window_years for "
