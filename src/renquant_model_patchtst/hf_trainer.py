@@ -521,6 +521,7 @@ def build_training_contract(args: argparse.Namespace, feat_cols: list[str],
             "device": args.device,
             "shuffle_labels": bool(getattr(args, "shuffle_labels", False)),
             "label_shift_days": int(getattr(args, "label_shift_days", 0)),
+            "detector_version": str(getattr(args, "detector_version", "v2026-05-31")),
         },
         "selection": {
             "metric_for_best_model": metric_for_best,
@@ -746,6 +747,20 @@ def build_parser() -> argparse.ArgumentParser:
                         "baseline.")
     p.add_argument("--spy-path", default="data/ohlcv/SPY/1d.parquet",
                    help="SPY OHLCV parquet for HMM regime labels")
+    from renquant_common.hmm_regime_labels import (  # noqa: PLC0415
+        DETECTOR_VERSION_LEGACY,
+        DETECTOR_VERSION_V20260531,
+    )
+    p.add_argument("--detector-version",
+                   default=DETECTOR_VERSION_V20260531,
+                   choices=[DETECTOR_VERSION_LEGACY, DETECTOR_VERSION_V20260531],
+                   help="HMM regime detector version "
+                        "(renquant_common.hmm_regime_labels). 'v2026-05-31' "
+                        "uses the corrected vol-based BULL_CALM path; "
+                        "'legacy' preserves pre-2026-05-31 hurst-only "
+                        "behavior. Research runs should keep the default; "
+                        "production callers may pass 'legacy' for parity "
+                        "with daily cron until task #28 default flip ships.")
     p.add_argument("--early-stopping-patience", type=int, default=2,
                    help="EarlyStopping patience (epochs); 0=disabled. "
                         "Stops training when eval_min_regime_ic doesn't improve "

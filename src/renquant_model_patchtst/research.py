@@ -5,7 +5,16 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from renquant_common.hmm_regime_labels import (
+    DETECTOR_VERSION_LEGACY,
+    DETECTOR_VERSION_V20260531,
+)
+
 from .research_pipeline import ExperimentSpec, check_promotion, run_experiment
+
+# Single source of truth for the detector-version choice set — pulled from
+# renquant-common so adding a new detector version is one edit, not three.
+_DETECTOR_VERSION_CHOICES = (DETECTOR_VERSION_LEGACY, DETECTOR_VERSION_V20260531)
 
 CUTS = ["cut1_covid", "cut2_fed", "cut3_inflpk", "cut4_svb", "cut5_unwind"]
 XGB_BASELINE = "+0.017 +/- 0.056 pooled, 3/5 (placebo-clean); ALL-minus-sentiment +0.0115"
@@ -80,6 +89,16 @@ def main(argv: list[str] | None = None) -> int:
              "detector fix. Detector quality is a P0 invariant — bypass "
              "is temporary scaffolding, not a default.",
     )
+    p.add_argument(
+        "--detector-version",
+        default=DETECTOR_VERSION_V20260531,
+        choices=list(_DETECTOR_VERSION_CHOICES),
+        help="HMM regime detector version (renquant_common.hmm_regime_labels). "
+             "Default 'v2026-05-31' uses the corrected vol-based BULL_CALM "
+             "path — research runs need the fix so calm_2017 doesn't hard-fail "
+             "the regime contract. 'legacy' preserves pre-2026-05-31 hurst-only "
+             "behavior for backward-compat experiments only.",
+    )
     p.add_argument("--label", default="fwd_60d_excess")
     p.add_argument("--label-lookahead-days", type=int, default=60)
     p.add_argument("--embargo-days", type=int, default=60)
@@ -122,6 +141,7 @@ def main(argv: list[str] | None = None) -> int:
         require_placebos=not args.no_placebos,
         allow_ungated_smoke=args.allow_ungated_smoke,
         require_regime_contract=not args.no_regime_contract,
+        detector_version=args.detector_version,
         label_col=args.label,
         label_lookahead_days=args.label_lookahead_days,
         embargo_days=args.embargo_days,

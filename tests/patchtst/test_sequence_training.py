@@ -58,6 +58,73 @@ def test_train_one_is_a_thin_delegate_to_the_pipeline() -> None:
     assert len(inspect.getsource(hf.train_one).splitlines()) < 15
 
 
+def test_compute_regime_labels_task_threads_detector_version(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    """W0.P0.2: ComputeRegimeLabelsTask must pass args.detector_version
+    through to compute_hmm_regime_labels. Without this the trainer-side
+    HMM labels would ignore the spec's detector choice."""
+    from renquant_model_patchtst.sequence_training import ComputeRegimeLabelsTask
+
+    spy = tmp_path / "spy.parquet"
+    spy.write_bytes(b"")
+
+    captured: dict = {}
+
+    def fake_compute(spy_path, *, detector_version=None):
+        captured["spy_path"] = spy_path
+        captured["detector_version"] = detector_version
+        return pd.DataFrame({"date": [], "regime": []})
+
+    monkeypatch.setattr(
+        "renquant_common.hmm_regime_labels.compute_hmm_regime_labels",
+        fake_compute,
+    )
+    # hf.REPO / a.spy_path is the resolved path; using an absolute SPY path
+    # via Path(...) lets us bypass the REPO prefix logic for this unit test.
+    monkeypatch.setattr(hf, "REPO", tmp_path)
+
+    ctx = SequenceTrainingContext(args=argparse.Namespace(
+        spy_path=spy.name,  # under tmp_path
+        detector_version="v2026-05-31",
+        film_regime_cond=False,
+    ))
+    assert ComputeRegimeLabelsTask().run(ctx) is True
+    assert captured["detector_version"] == "v2026-05-31"
+
+
+def test_compute_regime_labels_task_defaults_to_v20260531_when_missing(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    """Backward compat: older script entrypoints whose argparse doesn't
+    expose --detector-version (e.g. ad-hoc smoke runs) MUST still get the
+    research-correct detector by default, not legacy."""
+    from renquant_model_patchtst.sequence_training import ComputeRegimeLabelsTask
+
+    spy = tmp_path / "spy.parquet"
+    spy.write_bytes(b"")
+
+    captured: dict = {}
+
+    def fake_compute(spy_path, *, detector_version=None):
+        captured["detector_version"] = detector_version
+        return pd.DataFrame({"date": [], "regime": []})
+
+    monkeypatch.setattr(
+        "renquant_common.hmm_regime_labels.compute_hmm_regime_labels",
+        fake_compute,
+    )
+    monkeypatch.setattr(hf, "REPO", tmp_path)
+
+    # argparse.Namespace WITHOUT detector_version — simulating an old script.
+    ctx = SequenceTrainingContext(args=argparse.Namespace(
+        spy_path=spy.name,
+        film_regime_cond=False,
+    ))
+    assert ComputeRegimeLabelsTask().run(ctx) is True
+    assert captured["detector_version"] == "v2026-05-31"
+
+
 def test_record_training_run_writes_canonical_training_columns(
     tmp_path: Path,
     monkeypatch,

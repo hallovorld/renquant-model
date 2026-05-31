@@ -119,6 +119,14 @@ class ExperimentSpec:
     require_placebos: bool = True
     allow_ungated_smoke: bool = False
     require_regime_contract: bool = True
+    # Detector version used by RegimeDetectorContractTask + _load_regime_labels
+    # + the trainer-side PerRegimeICCallback. Default is the post-2026-05-31
+    # corrected detector ("v2026-05-31") so research runs don't need to remember
+    # the flag — `calm_2017` mislabels under "legacy" would otherwise force
+    # `--no-regime-contract` bypass on every run. renquant-common's library
+    # default stays "legacy" for production-cron parity per §1.5; flipping the
+    # library default is a separate task (#28).
+    detector_version: str = "v2026-05-31"
     label_col: str = "fwd_60d_excess"
     label_lookahead_days: int = 60
     embargo_days: int = 60
@@ -332,6 +340,7 @@ class StampEnvironmentTask(Task):
             "require_regime_contract": bool(spec.require_regime_contract),
             "require_placebos": bool(spec.require_placebos),
             "allow_ungated_smoke": bool(spec.allow_ungated_smoke),
+            "detector_version": str(spec.detector_version),
         }
         random.seed(first_seed)
         np.random.seed(first_seed)
@@ -355,6 +364,12 @@ class ValidateTrainerSurfaceTask(Task):
             "label",
             "embargo_days",
             "val_tail_pct",
+            # PR #12 review M1: _trial_argv unconditionally emits
+            # --detector-version, so a trainer parser that doesn't accept it
+            # would SystemExit inside the trial subprocess, bypassing the
+            # normal failed-trial-persistence path. Catch it here so the
+            # operator sees a clean ValueError up-front.
+            "detector_version",
         }
         if ctx.spec.require_placebos and not ctx.spec.allow_ungated_smoke:
             required |= {"shuffle_labels", "label_shift_days"}
@@ -382,13 +397,18 @@ class RegimeDetectorContractTask(Task):
             BEAR_RET_5D_THR,
             BEAR_VOL_20D_THR,
             BEAR_VOL_5D_THR,
+            BULL_CALM_DRIFT_THR,
+            BULL_CALM_VOL_THR,
             CHOPPY_DRIFT_TH,
             CHOPPY_VOL_RATIO,
             HURST_TREND_THR,
             compute_hmm_regime_labels,
         )
 
-        labels = compute_hmm_regime_labels(spec.spy_path)
+        labels = compute_hmm_regime_labels(
+            spec.spy_path,
+            detector_version=spec.detector_version,
+        )
         labels["date"] = pd.to_datetime(labels["date"])
         counts: dict[str, Any] = {}
         failures: list[str] = []
@@ -418,6 +438,7 @@ class RegimeDetectorContractTask(Task):
             "failures": failures,
             "golden_window_counts": counts,
             "module": "renquant_common.hmm_regime_labels",
+            "detector_version": spec.detector_version,
             "thresholds": {
                 "BEAR_VOL_20D_THR": BEAR_VOL_20D_THR,
                 "BEAR_RET_20D_THR": BEAR_RET_20D_THR,
@@ -426,6 +447,11 @@ class RegimeDetectorContractTask(Task):
                 "CHOPPY_VOL_RATIO": CHOPPY_VOL_RATIO,
                 "CHOPPY_DRIFT_TH": CHOPPY_DRIFT_TH,
                 "HURST_TREND_THR": HURST_TREND_THR,
+                # v2026-05-31 vol-based BULL_CALM thresholds — material for
+                # decision attribution when detector_version="v2026-05-31".
+                # PR #12 review M3.
+                "BULL_CALM_VOL_THR": BULL_CALM_VOL_THR,
+                "BULL_CALM_DRIFT_THR": BULL_CALM_DRIFT_THR,
             },
         }
         if failures:
@@ -1304,6 +1330,7 @@ def _trial_argv(
         "--label", spec.label_col,
         "--embargo-days", str(spec.embargo_days),
         "--val-tail-pct", str(spec.val_tail_pct),
+        "--detector-version", spec.detector_version,
     ] + list(extra)
     if spec.strategy_config is not None:
         argv += ["--strategy-config", str(spec.strategy_config)]
@@ -1370,7 +1397,10 @@ def _load_regime_labels(ctx: ExperimentContext) -> pd.DataFrame | None:
         return None
     from renquant_common.hmm_regime_labels import compute_hmm_regime_labels  # noqa: PLC0415
 
-    return compute_hmm_regime_labels(ctx.spec.spy_path)
+    return compute_hmm_regime_labels(
+        ctx.spec.spy_path,
+        detector_version=ctx.spec.detector_version,
+    )
 
 
 def _assign_split(

@@ -80,14 +80,24 @@ class LoadPanelTask(Task):
 
 
 class ComputeRegimeLabelsTask(Task):
-    """Compute HMM regime labels once (reused by FiLM injection + per-regime IC)."""
+    """Compute HMM regime labels once (reused by FiLM injection + per-regime IC).
+
+    ``args.detector_version`` selects the detector variant; defaults to the
+    corrected ``v2026-05-31`` so research runs see the calm_2017 fix. Falls
+    back to the legacy library default only if the caller's parser doesn't
+    expose the flag (backward compat for older script entrypoints).
+    """
 
     def run(self, ctx: SequenceTrainingContext) -> bool | None:
         a = ctx.args
         ctx.spy_path = hf.REPO / a.spy_path
         if ctx.spy_path.exists():
             from renquant_common.hmm_regime_labels import compute_hmm_regime_labels  # noqa: PLC0415
-            ctx.hmm_labels = compute_hmm_regime_labels(ctx.spy_path)
+            detector_version = getattr(a, "detector_version", None) or "v2026-05-31"
+            ctx.hmm_labels = compute_hmm_regime_labels(
+                ctx.spy_path,
+                detector_version=detector_version,
+            )
         elif a.film_regime_cond:
             raise FileNotFoundError(
                 f"FiLM regime conditioning requires SPY parquet at {ctx.spy_path}")
