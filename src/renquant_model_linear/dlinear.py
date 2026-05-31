@@ -23,7 +23,8 @@ unchanged.
 
 DLinearRanker:
   1. Trend/seasonal decomposition via moving-average kernel
-     (kernel_size configurable; default 5, matching LTSF-Linear).
+     (kernel_size configurable; default 25, matching LTSF-Linear's
+     pinned upstream value at SHA 0c11366).
   2. Per-channel temporal linear heads: trend_head + seasonal_head
      each produce a 1-step "forecast" per channel.
   3. Aggregate per-channel forecasts into a scalar ranking score.
@@ -123,9 +124,12 @@ class DLinearRanker(nn.Module):
     seq_len
         Number of historical timesteps consumed.
     kernel_size
-        Moving-average window size for trend extraction. Default 5
-        matches the LTSF-Linear/DLinear repo's default for non-ETT
-        datasets.
+        Moving-average window size for trend extraction. Default 25
+        matches the LTSF-Linear/DLinear repo at the pinned upstream
+        SHA (``models/DLinear.py`` line 47 at ``0c11366``). Smaller
+        kernels are acceptable for short sequences, but the default
+        keeps faithful-to-upstream parity so a poor result really
+        falsifies the same DLinear hypothesis the paper measures.
     individual
         If True, give each channel its own ``Linear(seq_len, 1)`` weights
         (upstream-style per-channel dynamics). If False (default), all
@@ -137,7 +141,7 @@ class DLinearRanker(nn.Module):
         self,
         n_features: int,
         seq_len: int,
-        kernel_size: int = 5,
+        kernel_size: int = 25,
         individual: bool = False,
     ) -> None:
         super().__init__()

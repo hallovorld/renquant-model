@@ -62,6 +62,7 @@ ONE score per (ticker, date) sample, not a forecast time series).
 |---|---|---|
 | Input shape | `(batch, seq_len, n_channels)` | `(batch, seq_len, n_features)` (same shape; "features" = "channels") |
 | Decomposition | trend + seasonal via moving-average, keeps channel dim | unchanged |
+| `kernel_size` default | `25` (`models/DLinear.py` line 47 at `0c11366`) | `25` (matches upstream) |
 | Per-channel temporal head | `Linear(seq_len → output_length)` per channel | `Linear(seq_len → 1)` per channel |
 | `individual=True` semantics | per-channel separate Linear weights | unchanged (real semantics, not just an accepted flag) |
 | Output | `(batch, output_length, n_channels)` forecast | scalar aggregator `Linear(n_channels → 1)` → `(batch,)` ranking score |

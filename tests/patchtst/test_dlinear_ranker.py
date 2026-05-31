@@ -172,6 +172,21 @@ def test_dlinear_individual_flag_accepted() -> None:
     DLinearRanker(n_features=8, seq_len=24, individual=True)
 
 
+def test_dlinear_default_kernel_size_matches_upstream() -> None:
+    """PR #14 review follow-up: default kernel_size MUST match the pinned
+    upstream LTSF-Linear/DLinear value of 25 (models/DLinear.py line 47
+    at SHA 0c11366). A different default would change the
+    trend/seasonal split → not the same DLinear hypothesis the paper
+    measures, so a poor result wouldn't actually falsify upstream DLinear."""
+    model = DLinearRanker(n_features=8, seq_len=32)
+    assert model.decomp.kernel_size == 25, (
+        f"DLinearRanker default kernel_size = {model.decomp.kernel_size}; "
+        f"expected 25 to match pinned upstream (LTSF-Linear DLinear.py:47 "
+        f"at 0c11366). If this changes intentionally, update "
+        f"docs/dlinear_source_note.md's deviation table + this assertion."
+    )
+
+
 @pytest.mark.parametrize("bad_n,bad_t", [(0, 24), (8, 0), (-1, 24)])
 def test_dlinear_rejects_bad_dimensions(bad_n: int, bad_t: int) -> None:
     with pytest.raises(ValueError):
