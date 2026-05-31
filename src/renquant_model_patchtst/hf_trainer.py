@@ -360,12 +360,30 @@ def load_panel_with_split(dataset_path: Path, cut_name: str, label_col: str,
     if label_shift_days:
         # Time-shift placebo: break the train feature→label alignment while
         # preserving validation labels for honest IC computation.
-        shifted = panel.groupby("ticker", sort=False)[label_col].shift(-int(label_shift_days))
-        panel.loc[train_mask, label_col] = shifted.loc[train_mask]
+        #
+        # Bug 2026-05-31: the panel was already ``dropna(subset=[label_col])``
+        # at load time, so ``shift(-N)`` walks N positions forward in the
+        # NaN-dropped panel — NOT N calendar days. At the train/val boundary,
+        # the shifted source can land in val/embargo rows. The "placebo"
+        # then trained on val labels, producing placebo IC > real IC and
+        # blocking Tier-3 verdicts. Fix: also track the SOURCE row's
+        # split_label and drop train rows whose shifted source is not in
+        # train. This keeps the placebo's "decorrelate within train"
+        # semantics without cross-split leak.
+        n_shift = int(label_shift_days)
+        ticker_groups = panel.groupby("ticker", sort=False)
+        shifted_label = ticker_groups[label_col].shift(-n_shift)
+        shifted_split = ticker_groups["split_label"].shift(-n_shift)
+        panel.loc[train_mask, label_col] = shifted_label.loc[train_mask]
+        # Drop train rows where the shifted source was NaN (off the end of
+        # the ticker's series) OR was a non-train split row.
         before = len(panel)
-        panel = panel.loc[~(train_mask & panel[label_col].isna())].copy()
+        cross_split_leak = train_mask & shifted_split.ne("train")
+        nan_after_shift = train_mask & panel[label_col].isna()
+        panel = panel.loc[~(cross_split_leak | nan_after_shift)].copy()
         log.info(
-            "PLACEBO label_shift_days=%d: shifted train '%s'; dropped %d train rows",
+            "PLACEBO label_shift_days=%d: shifted train '%s'; dropped %d "
+            "train rows (cross-split-leak guard + NaN tail)",
             label_shift_days, label_col, before - len(panel),
         )
     if shuffle_labels:
