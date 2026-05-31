@@ -33,6 +33,13 @@ patchtst_panel = "renquant_model_patchtst.scorer:load"
 # load_scorer dispatches identically whether the manifest names the family or
 # the runtime adapter.
 hf_patchtst = "renquant_model_patchtst.scorer:load"
+# PR #17 review (cross-repo blocker): PatchTSMixer sidecars stamped with
+# kind="hf_patchtsmixer" must dispatch through the same scorer:load entry,
+# which internally branches on the checkpoint's `kind` field to reconstruct
+# either HFPatchTSTRanker or HFPatchTSMixerRanker. Without this alias,
+# renquant_common.load_scorer(manifest.kind="hf_patchtsmixer") would raise
+# ScorerKindNotRegistered before scorer.load() can inspect the checkpoint.
+hf_patchtsmixer = "renquant_model_patchtst.scorer:load"
 
 [tool.setuptools.packages.find]
 where = ["src"]
