@@ -4,9 +4,10 @@ Pins the argparse → ExperimentSpec wiring so CLI flag changes can't
 silently degrade the spec the harness runs against.
 
 Specifically guards `--no-regime-contract`, the operator escape hatch
-for known detector mislabels (e.g. calm_2017 → BULL_VOLATILE per umbrella
-task #28). Bypass is temporary scaffolding per §1.4 PRIME DIRECTIVE; the
-default MUST stay strict (require_regime_contract=True).
+for known detector mislabels (e.g. calm_2017 → BULL_VOLATILE — tracked
+separately). Bypass is temporary scaffolding; the default MUST stay
+strict (require_regime_contract=True) so detector regressions can't
+silently degrade Tier-3 evaluation.
 """
 from __future__ import annotations
 

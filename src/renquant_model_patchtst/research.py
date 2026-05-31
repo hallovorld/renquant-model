@@ -75,11 +75,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--no-regime-contract", action="store_true",
         help="Bypass RegimeDetectorContractTask. Use ONLY when a detector "
-             "mislabel is being tracked separately (e.g. calm_2017 → "
+             "mislabel is tracked separately (e.g. calm_2017 → "
              "BULL_VOLATILE) and Tier-3 evaluation can't wait for the "
-             "detector fix. Per umbrella CLAUDE.md §1.4 PRIME DIRECTIVE: "
-             "detector quality is P0 and bypass is temporary scaffolding, "
-             "not a default.",
+             "detector fix. Detector quality is a P0 invariant — bypass "
+             "is temporary scaffolding, not a default.",
     )
     p.add_argument("--label", default="fwd_60d_excess")
     p.add_argument("--label-lookahead-days", type=int, default=60)
