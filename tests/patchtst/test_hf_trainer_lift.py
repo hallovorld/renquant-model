@@ -14,7 +14,9 @@ is exercised by scripts/train_patchtst_multirepo.py).
 from __future__ import annotations
 
 import importlib
+from pathlib import Path
 
+import pandas as pd
 import pytest
 
 torch = pytest.importorskip("torch")
@@ -47,3 +49,47 @@ def test_margin_ranking_loss_is_finite_and_orders():
     l_bad = hf.margin_ranking_loss(scores_bad, labels)
     assert torch.isfinite(l_good) and torch.isfinite(l_bad)
     assert l_bad.item() >= l_good.item()
+
+
+def test_placebo_label_mutation_keeps_validation_labels_aligned(tmp_path: Path):
+    rows = []
+    for d in pd.date_range("2024-01-01", periods=40, freq="B"):
+        for i in range(5):
+            rows.append({
+                "date": d,
+                "ticker": f"T{i}",
+                "feature": float(i),
+                "fwd_60d_excess": float(i),
+            })
+    dataset = tmp_path / "panel.parquet"
+    pd.DataFrame(rows).to_parquet(dataset, index=False)
+    base, _ = hf.load_panel_with_split(
+        dataset,
+        "all",
+        "fwd_60d_excess",
+        preprocess=False,
+        val_tail_pct=0.25,
+        embargo_days=5,
+    )
+    shifted, _ = hf.load_panel_with_split(
+        dataset,
+        "all",
+        "fwd_60d_excess",
+        preprocess=False,
+        val_tail_pct=0.25,
+        embargo_days=5,
+        label_shift_days=2,
+    )
+    shuffled, _ = hf.load_panel_with_split(
+        dataset,
+        "all",
+        "fwd_60d_excess",
+        preprocess=False,
+        val_tail_pct=0.25,
+        embargo_days=5,
+        shuffle_labels=True,
+    )
+
+    base_val = base.loc[base["split_label"].eq("val"), "fwd_60d_excess"].to_list()
+    assert shifted.loc[shifted["split_label"].eq("val"), "fwd_60d_excess"].to_list() == base_val
+    assert shuffled.loc[shuffled["split_label"].eq("val"), "fwd_60d_excess"].to_list() == base_val

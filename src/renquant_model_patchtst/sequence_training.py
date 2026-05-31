@@ -1,7 +1,7 @@
 """PatchTST single-run training, decomposed into the Task/Job/Pipeline model.
 
 ``hf_trainer.train_one`` was a ~200-line monolith. This module splits that exact
-flow into single-responsibility Tasks (CLAUDE.md §1b/§1c) grouped into four Jobs:
+flow into single-responsibility Tasks grouped into four Jobs:
 
     DataPrepJob   : LoadPanel → ComputeRegimeLabels → BuildDatasets
     TrainJob      : BuildModel → BuildTrainer → RunTraining
@@ -74,7 +74,8 @@ class LoadPanelTask(Task):
             data_end=getattr(a, "data_end", None),
             exclude_features=([s.strip() for s in a.exclude_features.split(",") if s.strip()]
                               if getattr(a, "exclude_features", None) else None),
-            shuffle_labels=getattr(a, "shuffle_labels", False))
+            shuffle_labels=getattr(a, "shuffle_labels", False),
+            label_shift_days=getattr(a, "label_shift_days", 0))
         return True
 
 
