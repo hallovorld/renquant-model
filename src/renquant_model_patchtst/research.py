@@ -72,6 +72,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--fail-fast", action="store_true")
     p.add_argument("--no-placebos", action="store_true")
     p.add_argument("--allow-ungated-smoke", action="store_true")
+    p.add_argument(
+        "--no-regime-contract", action="store_true",
+        help="Bypass RegimeDetectorContractTask. Use ONLY when a detector "
+             "mislabel is tracked separately (e.g. calm_2017 → "
+             "BULL_VOLATILE) and Tier-3 evaluation can't wait for the "
+             "detector fix. Detector quality is a P0 invariant — bypass "
+             "is temporary scaffolding, not a default.",
+    )
     p.add_argument("--label", default="fwd_60d_excess")
     p.add_argument("--label-lookahead-days", type=int, default=60)
     p.add_argument("--embargo-days", type=int, default=60)
@@ -113,6 +121,7 @@ def main(argv: list[str] | None = None) -> int:
         fail_fast=args.fail_fast,
         require_placebos=not args.no_placebos,
         allow_ungated_smoke=args.allow_ungated_smoke,
+        require_regime_contract=not args.no_regime_contract,
         label_col=args.label,
         label_lookahead_days=args.label_lookahead_days,
         embargo_days=args.embargo_days,

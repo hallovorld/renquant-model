@@ -314,6 +314,12 @@ class StampEnvironmentTask(Task):
                 if spec.strategy_config and spec.strategy_config.exists()
                 else None
             ),
+            # Spec switches that affect the verdict surface — stamped here so
+            # downstream audit dashboards reading environment.json see the
+            # exact policy the run ran under (PR #8 finding 2).
+            "require_regime_contract": bool(spec.require_regime_contract),
+            "require_placebos": bool(spec.require_placebos),
+            "allow_ungated_smoke": bool(spec.allow_ungated_smoke),
         }
         random.seed(first_seed)
         np.random.seed(first_seed)
@@ -1078,6 +1084,16 @@ class DecideVerdictTask(Task):
             "negative_non_defensive_regimes_by_config", {}
         ).get(best, {})
 
+        # Per-regime evidence presence: empty dict (vs negative value) is
+        # qualitatively different — it means no per-regime data was ever
+        # available, not that all regimes are non-negative. PRIME DIRECTIVE
+        # requires per-regime FIRST, so a "promote" verdict with no per-regime
+        # numbers at all is meaningless. This typically happens when
+        # `require_regime_contract=False` is paired with a missing/unloadable
+        # spy_path — the safety net here catches that combination explicitly.
+        non_defensive_map = robustness.get("min_non_defensive_regime_ic_by_config", {})
+        has_non_defensive_evidence = best in non_defensive_map
+
         verdict_inputs = {
             "best_config": best,
             "phase": ctx.spec.phase,
@@ -1086,6 +1102,8 @@ class DecideVerdictTask(Task):
             "required_delta_gt": (2.0 * se if se is not None else None),
             "worst_cut_ic": worst_cut_ic,
             "min_non_defensive_regime_ic": min_non_defensive,
+            "has_non_defensive_evidence": has_non_defensive_evidence,
+            "regime_contract_required": bool(ctx.spec.require_regime_contract),
             "negative_non_defensive_regimes": negative_non_defensive,
             "dsr": multiple.get("dsr"),
             "dsr_threshold": multiple.get("dsr_threshold", 0.5),
@@ -1102,6 +1120,18 @@ class DecideVerdictTask(Task):
             and float(min_non_defensive) < 0.0
         ):
             ctx.verdict = "reject"
+        elif not has_non_defensive_evidence:
+            # PRIME DIRECTIVE safety net: a "promote" verdict requires at
+            # minimum one non-defensive regime IC to gate on. Empty per-regime
+            # evidence is a degraded run (typically `--no-regime-contract`
+            # bypass + missing SPY path), not a passing one. Surface this as
+            # `needs_more_seeds` so the operator knows to re-run with
+            # regime labels.
+            ctx.verdict = "needs_more_seeds"
+            verdict_inputs["needs_more_seeds_reason"] = (
+                "no per-regime evidence — verify spy_path is loadable and "
+                "PerRegimeICCallback produces per-row regime in val_preds"
+            )
         elif (
             worst_cut_ic is None
             or not _is_finite_number(worst_cut_ic)
