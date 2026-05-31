@@ -136,6 +136,45 @@ Recommended candidates:
    later experiment proves they can handle RenQuant's exogenous cross-sectional
    ranking target.
 
+## Implementation Reference Policy
+
+Implementation should use mature libraries or official open-source projects
+wherever they fit the RenQuant contract. Write custom code only for the
+RenQuant-specific parts: point-in-time panel loading, cross-sectional rank loss,
+walk-forward splits, placebos, artifact contracts, and model adapters.
+
+Reference priority:
+
+1. Packaged, maintained libraries already compatible with PyTorch/HF workflows.
+   Current examples: Hugging Face `transformers.PatchTSTModel` and
+   `PatchTSMixerModel`.
+2. Official paper repositories with compatible license and clear reproduction
+   scripts. Pin a commit, record the license, and port only the minimal model
+   block needed for RenQuant if the repo is not package-quality.
+3. Widely used benchmark libraries such as THUML Time-Series-Library or
+   NeuralForecast for sanity checks and baseline parity.
+4. From-scratch implementation only when no reference exists or the reference
+   cannot support RenQuant's ranking/panel contract.
+
+Reference shortlist:
+
+| Model | Preferred source | Use in RenQuant |
+|---|---|---|
+| PatchTST | Hugging Face `transformers` | Keep using packaged backbone. |
+| PatchTSMixer / TSMixer | Hugging Face `transformers`, NeuralForecast | First MLP-mixer baseline before custom StockMixer. |
+| StockMixer | Official SJTU-DMTai repo | Port architecture if license/deps pass review. |
+| MASTER | Official SJTU-DMTai repo | Reference for market-guided stock/market tokens. |
+| iTransformer | Official THUML repo or Time-Series-Library | Reference if cross-stock attention wins. |
+| Crossformer | Official Thinklab-SJTU repo | Second-wave cross-dimension Transformer. |
+| DLinear | Official LTSF-Linear/DLinear repo | Cheap sanity baseline. |
+| TimesFM | Google Research repo | Frozen feature or benchmark only. |
+| Chronos | Amazon Science repo | Frozen feature or benchmark only. |
+| Moirai | Salesforce `uni2ts` repo | Frozen feature or benchmark only. |
+
+Every implementation PR should include a source note with paper URL, repo URL,
+license, pinned commit/version, deviations from the reference, and adapter tests
+showing expected tensor shapes and deterministic smoke behavior.
+
 ## Proposed Experiment Matrix
 
 All experiments should run through `renquant_model_patchtst.research` and
@@ -202,13 +241,24 @@ A candidate can move beyond research only if it satisfies all of these:
 ## References
 
 - PatchTST, "A Time Series is Worth 64 Words": https://arxiv.org/abs/2211.14730
+- Hugging Face PatchTST docs: https://huggingface.co/docs/transformers/model_doc/patchtst
+- Hugging Face PatchTSMixer docs: https://huggingface.co/docs/transformers/main/model_doc/patchtsmixer
 - iTransformer, ICLR 2024: https://openreview.net/forum?id=JePfAI8fah
+- iTransformer official repo: https://github.com/thuml/iTransformer
 - Crossformer, ICLR 2023: https://openreview.net/forum?id=vSVLM2j9eie
+- Crossformer official repo: https://github.com/Thinklab-SJTU/Crossformer
 - StockMixer, AAAI 2024: https://mlanthology.org/aaai/2024/fan2024aaai-stockmixer/
+- StockMixer official repo: https://github.com/SJTU-DMTai/StockMixer
 - MASTER: https://arxiv.org/abs/2312.15235
+- MASTER official repo: https://github.com/SJTU-DMTai/MASTER
 - TSMixer: https://research.google/pubs/tsmixer-an-all-mlp-architecture-for-time-series-forecasting/
+- NeuralForecast TSMixer docs: https://nixtlaverse.nixtla.io/neuralforecast/models.tsmixer.html
 - DLinear/LTSF-Linear: https://arxiv.org/abs/2205.13504
+- Time-Series-Library: https://github.com/thuml/Time-Series-Library
 - TS2Vec: https://ojs.aaai.org/index.php/AAAI/article/view/20881
 - TimesFM: https://research.google/blog/a-decoder-only-foundation-model-for-time-series-forecasting/
+- TimesFM official repo: https://github.com/google-research/timesfm
 - Chronos: https://www.amazon.science/blog/adapting-language-model-architectures-for-time-series-forecasting/
+- Chronos official repo: https://github.com/amazon-science/chronos-forecasting
 - Moirai: https://arxiv.org/abs/2402.02592
+- Moirai official repo: https://github.com/SalesforceAIResearch/uni2ts
