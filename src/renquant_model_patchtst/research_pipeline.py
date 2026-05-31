@@ -480,10 +480,12 @@ class ExpandTrialMatrixTask(Task):
         trials: list[TrialSpec] = []
         for config_name in sorted(spec.configs):
             extra = list(spec.config_args.get(config_name, []))
-            # PR #17 review BLOCKER-1: filenames must reflect the actual
-            # model selected by --model in the config's extras; otherwise
-            # PatchTSMixer configs would collide with PatchTST artifacts in
-            # the same trial directory and the harness couldn't locate them.
+            # Resolve the trainer's filename prefix from --model in extras
+            # (unified across PR #17 patchtst-family identity + PR #18
+            # linear-family filename mismatch). Without this, mixed-family
+            # experiments would collide artifacts in the same trial dir
+            # OR ValidateResultCompletenessTask would mark linear trials
+            # failed because the harness read the wrong filename.
             model_kind = _model_kind_for_extras(extra)
             for cut in sorted(spec.cuts):
                 for seed in sorted(spec.seeds):
@@ -510,18 +512,39 @@ class ExpandTrialMatrixTask(Task):
 
 
 def _model_kind_for_extras(extra: list[str]) -> str:
-    """Scan a per-config ``extra`` argv list for ``--model``; return the
-    canonical kind string used in artifact filenames + checkpoint `kind`.
+    """Resolve the trainer's artifact filename prefix from per-config extras.
 
-    Mirrors ``sequence_training.model_kind_from_args`` but operates on a
-    plain argv list (the spec hasn't been parsed by the trainer at this
-    point yet, so argparse isn't available)."""
-    # Lazy import — avoid loading sequence_training when only the matrix
-    # is being expanded (e.g. in --check-promotion mode).
+    Returns the string that the trainer prefixes every persisted artifact
+    with — ``{prefix}_{cut}_seed{seed}_{val_preds.parquet,summary.json,model.pt}``.
+
+    Family conventions:
+
+    * PatchTST family (``hf_trainer.train_single_run`` via PR #17's
+      sequence_training): persists as the canonical kind from
+      ``sequence_training.model_kind_from_args`` —
+      ``hf_patchtst`` / ``hf_patchtsmixer``. These strings are also the
+      checkpoint ``kind`` field consumed by ``scorer.load`` dispatch.
+
+    * Linear family (``renquant_model_linear.trainer.train_single_run``,
+      PR #15): persists as ``{args.model}_*`` directly — ``dlinear`` /
+      ``nlinear``. The linear trainer doesn't go through the
+      MODEL_KIND_* contract because it lives in a separate package and
+      its scorer plumbing is out-of-scope until linear baselines
+      promote.
+
+    Missing ``--model`` defaults to ``hf_patchtst`` so legacy PatchTST
+    configs keep working without change. Unknown ``--model`` values
+    fail-fast at planning time with ValueError (per PR #18 reviewer
+    follow-up): a typo would otherwise burn an entire trial's compute
+    only to surface later as "missing val_preds" in result aggregation.
+    """
+    # Lazy import to avoid loading sequence_training when only the
+    # matrix is being expanded (e.g. in --check-promotion mode).
     from .sequence_training import (  # noqa: PLC0415
         MODEL_KIND_PATCHTST,
         MODEL_KIND_PATCHTSMIXER,
     )
+    known = ("patchtst", "patchtsmixer", "dlinear", "nlinear")
     for i, tok in enumerate(extra):
         if tok == "--model" and i + 1 < len(extra):
             choice = extra[i + 1]
@@ -529,9 +552,12 @@ def _model_kind_for_extras(extra: list[str]) -> str:
                 return MODEL_KIND_PATCHTSMIXER
             if choice == "patchtst":
                 return MODEL_KIND_PATCHTST
+            # Linear family — separate trainer convention.
+            if choice in ("dlinear", "nlinear"):
+                return choice
             raise ValueError(
                 f"unsupported --model {choice!r} in extras; "
-                f"expected one of {{'patchtst', 'patchtsmixer'}}")
+                f"expected one of {known}")
     return MODEL_KIND_PATCHTST  # default = legacy behavior
 
 
@@ -828,6 +854,14 @@ class NormalizePredictionSchemaTask(Task):
         if ctx.regime_labels is not None:
             regimes = ctx.regime_labels.copy()
             regimes["date"] = pd.to_datetime(regimes["date"])
+            # PR #18: drop any existing `regime` column before merge so
+            # pandas doesn't auto-rename to regime_x/regime_y. The linear
+            # trainer (renquant_model_linear) emits a `regime` column for
+            # its in-trainer per-regime IC logging; we always want the
+            # canonical regimes from ctx.regime_labels, not the trainer's
+            # snapshot, so drop-then-merge is safe.
+            if "regime" in df.columns:
+                df = df.drop(columns=["regime"])
             df = df.merge(regimes[["date", "regime"]], on="date", how="left")
         elif "regime" not in df.columns:
             df["regime"] = None
