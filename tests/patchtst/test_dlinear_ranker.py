@@ -273,16 +273,17 @@ def test_nlinear_rejects_bad_dimensions(bad_n: int, bad_t: int) -> None:
 
 def test_public_api_exposes_only_documented_symbols() -> None:
     import renquant_model_linear as pkg
-    # Trainer adapter symbols come from the sibling PR (linear trainer).
-    # Model + decomp symbols are the focus of this PR.
-    expected_model_symbols = {
+    # Model + decomp from PR #14; trainer adapter from PR #15 stacked.
+    expected = {
         "DLinearRanker",
         "MovingAverageDecomposition",
         "NLinearRanker",
+        "build_parser",
+        "train_single_run",
     }
-    assert expected_model_symbols <= set(pkg.__all__), (
-        f"missing model symbols from public API: "
-        f"{expected_model_symbols - set(pkg.__all__)}"
+    assert expected <= set(pkg.__all__), (
+        f"missing expected symbols from public API: "
+        f"{expected - set(pkg.__all__)}"
     )
 
 
