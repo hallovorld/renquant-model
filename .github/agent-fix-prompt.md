@@ -30,18 +30,16 @@ NLinear). The reviewer's comments are appended at the bottom.
    exists for what you changed, ADD ONE per CLAUDE.md §7.1 (every fix
    has a paired test).
 
-4. **Commit** with a clear message naming each finding addressed:
+4. **Leave changes in the working tree only.** Do NOT run `git add`,
+   `git commit`, or `git push`. The wrapping umbrella workflow
+   (`_agent-fix-template.yml`, "Commit + push fix" step) is the single
+   commit/push authority — it stages everything, attributes the commit
+   to the agent bot identity (`claude-code-bot` / `codex-code-bot`),
+   and force-pushes with `--force-with-lease` per the §6 race gate.
+   Committing or pushing from inside the agent would either lose the
+   bot attribution or race the workflow's force-push.
 
-   ```
-   fix(<scope>): address review findings #1, #3
-
-   ... brief explanation of what was changed for each ...
-
-   Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
-   ```
-
-5. **Push** with `--force-with-lease`. The wrapping workflow posts a
-   summary comment via `gh`.
+   The wrapping workflow also posts the summary comment via `gh`.
 
 ## Repo-specific fix gotchas (renquant-model)
 
@@ -77,9 +75,10 @@ In addition to umbrella defaults (CLAUDE.md §7 invariants), watch for:
 
 ## Tools available
 
-`Bash`, `Edit`, `Write`, `Read`, `gh`, `git`. The wrapping workflow
-posts a summary comment automatically — you don't need to `gh pr
-comment` manually unless that step is disabled.
+`Bash`, `Edit`, `Write`, `Read`. Do not invoke `git commit`,
+`git push`, or `gh pr comment` — those are the wrapping workflow's
+responsibility. `git status` / `git diff` / `git log` for inspection
+are fine.
 
 ---
 
