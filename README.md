@@ -32,6 +32,43 @@ pip install -e .[gbdt]       # XGBoost backend
 pip install -e .[patchtst]   # torch + transformers backend
 ```
 
+## Model families
+
+| Family | Package | `--model` flag | Research config | Status |
+|---|---|---|---|---|
+| GBDT panel-LTR | `renquant_model_gbdt` | — | (own CLI) | production |
+| PatchTST | `renquant_model_patchtst` | `patchtst` (default) | `B_tuned` / `C_xstock` / `D_film` / `E_drop_senti` / `F_fwd20d` | candidate |
+| PatchTSMixer | `renquant_model_patchtst` | `patchtsmixer` | `G_patchtsmixer` | W1 baseline |
+| DLinear | `renquant_model_linear` | `dlinear` | `L_dlinear` (kernel=25) / `L_dlinear_k5` / `L_dlinear_k3` | W1 baseline |
+| NLinear | `renquant_model_linear` | `nlinear` | `L_nlinear` | W1 baseline |
+
+All sequence families (PatchTST, PatchTSMixer, DLinear, NLinear) share the
+same research harness (`renquant_model_patchtst.research_pipeline`), the
+same data preprocessing (`load_panel_with_split` + `csrank_norm` +
+`train-fit Winsorize`), and the same evaluation surface (per-regime IC,
+placebo gates, DSR/PBO/promotion tiers) — so cross-family comparisons are
+apples-to-apples.
+
+Invocation:
+
+```bash
+# PatchTST research
+python -m renquant_model_patchtst.research --configs B_tuned --cuts all ...
+
+# PatchTSMixer (same CLI, just switch the config)
+python -m renquant_model_patchtst.research --configs G_patchtsmixer --cuts all ...
+
+# Linear baselines (separate CLI, mirrors the PatchTST shape)
+python -m renquant_model_linear.research --configs L_dlinear --cuts all ...
+```
+
+Phase A.0 smoke runners (small synthetic fixture, < 5 min):
+
+```bash
+./scripts/run_phase_a0_smoke.sh          # PatchTST family
+./scripts/run_phase_a0_smoke_linear.sh   # DLinear / NLinear family
+```
+
 ## Scorer registration
 
 Both families register loaders under the `renquant_common.scorers`
