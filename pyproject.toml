@@ -21,7 +21,7 @@ dependencies = [
 #   pip install renquant-model[gbdt]      → XGBoost backend
 #   pip install renquant-model[patchtst]  → torch + transformers backend
 [project.optional-dependencies]
-gbdt = ["xgboost>=2.1", "pyarrow>=15"]
+gbdt = ["xgboost>=2.1", "pyarrow>=15", "scikit-learn>=1.4"]
 patchtst = ["torch>=2.2", "transformers>=4.40"]
 
 # Scorer entry points — consumers reach these only via

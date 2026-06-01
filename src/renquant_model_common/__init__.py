@@ -8,6 +8,7 @@ Lifted cross-family model utilities (copy-not-move, stdlib + numpy/pandas/
 scipy only):
 
 * ``calibrator_quality``  — calibrator health metrics
+* ``global_calibrator``   — pooled panel score calibration
 * ``triple_barrier``      — triple-barrier label construction
 * ``acceptance_entry_ic`` — entry-IC acceptance metric
 * ``challenger``          — challenger-window model ledger
