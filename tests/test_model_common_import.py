@@ -11,6 +11,7 @@ import pytest
 LIFTED_MODULES = [
     "renquant_model_common.calibrator_quality",
     "renquant_model_common.triple_barrier",
+    "renquant_model_common.meta_label_exit",
     "renquant_model_common.acceptance_entry_ic",
     "renquant_model_common.challenger",
 ]
