@@ -1,0 +1,87 @@
+# renquant-model · agent fix prompt
+
+You are addressing review findings on an open PR in the `renquant-model`
+repo (model families: GBDT panel-LTR, PatchTST, PatchTSMixer, DLinear,
+NLinear). The reviewer's comments are appended at the bottom.
+
+## What to do (in this order)
+
+1. **Read every finding.** Don't skip or reorder.
+
+2. **For each finding**: identify the smallest concrete change that
+   resolves it. Read the surrounding code first (`Read`, `git log`),
+   then `Edit` / `Write`. NEVER change unrelated code in the same
+   pass — keep blast radius small.
+
+3. **Run tests** that cover the changed code path. On GitHub Actions
+   Ubuntu (where this workflow actually runs), `make test` or
+   `pytest tests/patchtst/` work directly via the CI's installed
+   Python. Local-dev callers can prefix with their own interpreter
+   (umbrella venv, system python3, etc.) — DO NOT hardcode a
+   workstation-specific venv path here; it makes the prompt
+   unportable.
+
+   ```bash
+   # Workflow context (Ubuntu CI):
+   pytest tests/patchtst/ -q       # or tests/gbdt/ / tests/linear/
+   ```
+
+   If a test exists targeting the changed area, run it. If no test
+   exists for what you changed, ADD ONE per CLAUDE.md §7.1 (every fix
+   has a paired test).
+
+4. **Leave changes in the working tree only.** Do NOT run `git add`,
+   `git commit`, or `git push`. The wrapping umbrella workflow
+   (`_agent-fix-template.yml`, "Commit + push fix" step) is the single
+   commit/push authority — it stages everything, attributes the commit
+   to the agent bot identity (`claude-code-bot` / `codex-code-bot`),
+   and force-pushes with `--force-with-lease` per the §6 race gate.
+   Committing or pushing from inside the agent would either lose the
+   bot attribution or race the workflow's force-push.
+
+   The wrapping workflow also posts the summary comment via `gh`.
+
+## Repo-specific fix gotchas (renquant-model)
+
+In addition to umbrella defaults (CLAUDE.md §7 invariants), watch for:
+
+1. **Model-aware artifact identity** — every model family has a `kind`
+   field that `scorer.load` dispatches on. PRs adding a model family
+   must register a `hf_<name>` entry point in `pyproject.toml` under
+   `[project.entry-points."renquant_common.scorers"]`. See PR #17 / #18
+   for past defects.
+
+2. **Effective vs requested feature flags** — `BuildSummaryTask` and
+   `PersistModelTask` MUST stamp EFFECTIVE flag values
+   (`uses_distributional_head`, `uses_film_regime`, `uses_cross_stock_attn`),
+   not the requested ones from `args.*`. PatchTSMixer ignores
+   PatchTST-only flags by construction.
+
+3. **Placebo cross-split-leak** — `--shuffle-labels` / `--label-shift-days`
+   paths MUST NOT leak across train/val boundaries (fixed in PR #9).
+   Any fix touching the placebo machinery needs to re-verify.
+
+4. **`--detector-version` threading** — research code calling
+   `compute_hmm_regime_labels` must thread `detector_version=` through
+   from `ExperimentSpec`. Hardcoded `"v2026-05-31"` is OK during the
+   migration window; flag drift.
+
+## What you MUST NOT do
+
+- No drift fixes (only the reviewed findings)
+- No untested changes (CLAUDE.md §7.1)
+- No silent skips — if a finding can't be addressed, say so explicitly
+- No new dependencies unless the reviewer requested
+
+## Tools available
+
+`Bash`, `Edit`, `Write`, `Read`. Do not invoke `git commit`,
+`git push`, or `gh pr comment` — those are the wrapping workflow's
+responsibility. `git status` / `git diff` / `git log` for inspection
+are fine.
+
+---
+
+## Reviewer feedback to address
+
+(Auto-appended by the workflow.)
