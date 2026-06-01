@@ -19,15 +19,18 @@ dependencies = [
 
 # Per-family optional extras keep installs slim:
 #   pip install renquant-model[gbdt]      → XGBoost backend
-#   pip install renquant-model[patchtst]  → torch + transformers backend
+#   pip install renquant-model[alpha158-linear]  → sklearn linear backend
+#   pip install renquant-model[patchtst]         → torch + transformers backend
 [project.optional-dependencies]
 gbdt = ["xgboost>=2.1", "pyarrow>=15", "scikit-learn>=1.4"]
+alpha158-linear = ["pyarrow>=15", "scikit-learn>=1.4"]
 patchtst = ["torch>=2.2", "transformers>=4.40"]
 
 # Scorer entry points — consumers reach these only via
 # renquant_common.load_scorer (RFC §"Cross-Repo Contracts → Scorer Protocol").
 [project.entry-points."renquant_common.scorers"]
 panel_ltr_xgboost = "renquant_model_gbdt.scorer:load"
+panel_linear = "renquant_model_alpha158_linear.scorer:load"
 patchtst_panel = "renquant_model_patchtst.scorer:load"
 # Alias: matches sidecars stamped with kind="hf_patchtst" (the arch name) so
 # load_scorer dispatches identically whether the manifest names the family or
