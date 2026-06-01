@@ -6,11 +6,13 @@ name: agent-review
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    # MANDATORY cost gate per §6: skip docs-only PRs (zero-value LLM spend).
-    # NB: .github/** is the security control plane — do NOT add it here.
+    # MANDATORY cost gate per §6: skip project docs only.
+    # NB: do NOT add '.github/**' OR '**/*.md' — both are control
+    # planes. `.github/**` houses workflows + CODEOWNERS;
+    # `.github/agent-*.md` is the automation's own prompt template
+    # (PR review of changes to that file is exactly what we want).
     paths-ignore:
       - 'doc/**'
-      - '**/*.md'
 
 concurrency:
   # MANDATORY: only review the latest commit when a PR is pushed
