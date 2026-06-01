@@ -9,11 +9,13 @@ training-ledger writer, and a single Scorer-registration surface.
 
 ```
 src/
-  renquant_model_gbdt/      # GBDT panel-LTR family (production)
-  renquant_model_patchtst/  # PatchTST / sequence family (candidate)
-  renquant_model_common/    # cross-family scaffolding
+  renquant_model_gbdt/            # GBDT panel-LTR family (production)
+  renquant_model_alpha158_linear/ # alpha158 linear side-strategy family
+  renquant_model_patchtst/        # PatchTST / sequence family (candidate)
+  renquant_model_common/          # cross-family scaffolding
 tests/
   gbdt/                     # GBDT family tests
+  alpha158_linear/          # alpha158 linear tests
   patchtst/                 # sequence family tests
 ```
 
@@ -28,8 +30,9 @@ tests/
 ## Install
 
 ```bash
-pip install -e .[gbdt]       # XGBoost backend
-pip install -e .[patchtst]   # torch + transformers backend
+pip install -e .[gbdt]            # XGBoost backend
+pip install -e .[alpha158-linear] # Alpha158 linear backend
+pip install -e .[patchtst]        # torch + transformers backend
 ```
 
 ## Model families
@@ -37,6 +40,7 @@ pip install -e .[patchtst]   # torch + transformers backend
 | Family | Package | `--model` flag | Research config | Status |
 |---|---|---|---|---|
 | GBDT panel-LTR | `renquant_model_gbdt` | — | (own CLI) | production |
+| Alpha158 linear | `renquant_model_alpha158_linear` | — | side-strategy retrain | production side-strategy |
 | PatchTST | `renquant_model_patchtst` | `patchtst` (default) | `B_tuned` / `C_xstock` / `D_film` / `E_drop_senti` / `F_fwd20d` | candidate |
 | PatchTSMixer | `renquant_model_patchtst` | `patchtsmixer` | `G_patchtsmixer` | W1 baseline |
 | DLinear | `renquant_model_linear` | `dlinear` | `L_dlinear` (kernel=25) / `L_dlinear_k5` / `L_dlinear_k3` | W1 baseline |
