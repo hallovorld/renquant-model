@@ -23,6 +23,7 @@ from renquant_model_patchtst.sequence_training import (
     RecordTrainingRunTask,
     SequenceTrainingContext,
     TrainJob,
+    _default_training_db_path,
     build_sequence_training_pipeline,
 )
 
@@ -167,6 +168,7 @@ def test_compute_regime_labels_task_threads_detector_version(
         film_regime_cond=False,
     ))
     assert ComputeRegimeLabelsTask().run(ctx) is True
+    assert captured["spy_path"] == spy
     assert captured["detector_version"] == "v2026-05-31"
 
 
@@ -278,6 +280,14 @@ def test_record_training_run_writes_canonical_training_columns(
     assert trigger == "unit"
     assert deterministic == 0
     assert years == 5.0
+
+
+def test_default_training_db_path_uses_data_root(monkeypatch, tmp_path) -> None:
+    renquant_root = tmp_path / "RenQuant"
+    monkeypatch.setenv("RENQUANT_DATA_ROOT", str(renquant_root))
+    monkeypatch.delenv("RENQUANT_STRATEGY_DIR", raising=False)
+
+    assert _default_training_db_path() == renquant_root.resolve() / "data" / "sim_runs.db"
 
 
 def _make_training_runs_db(path: Path) -> None:

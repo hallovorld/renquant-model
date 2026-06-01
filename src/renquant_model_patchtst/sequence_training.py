@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -129,7 +130,7 @@ class ComputeRegimeLabelsTask(Task):
 
     def run(self, ctx: SequenceTrainingContext) -> bool | None:
         a = ctx.args
-        ctx.spy_path = hf.REPO / a.spy_path
+        ctx.spy_path = hf.resolve_runtime_path(a.spy_path)
         if ctx.spy_path.exists():
             from renquant_common.hmm_regime_labels import compute_hmm_regime_labels  # noqa: PLC0415
             detector_version = getattr(a, "detector_version", None) or "v2026-05-31"
@@ -492,17 +493,12 @@ class RecordTrainingRunTask(Task):
         import subprocess  # noqa: PLC0415
         import sys  # noqa: PLC0415
         from pathlib import Path as _Path  # noqa: PLC0415
-        # Derive DB path from RENQUANT_STRATEGY_DIR when set (preferred over a
-        # machine-specific hardcode); env var still wins.
-        strat = os.environ.get("RENQUANT_STRATEGY_DIR")
-        default_db = (_Path(strat).resolve().parent.parent / "data" / "sim_runs.db"
-                      if strat else _Path("data") / "sim_runs.db")
-        db = _Path(os.environ.get("RENQUANT_TRAINING_DB", str(default_db)))
+        db = _Path(os.environ.get("RENQUANT_TRAINING_DB", str(_default_training_db_path())))
         if not db.exists():
             return True
         a = ctx.args
         s = ctx.summary or {}
-        repo = _Path(__file__).resolve().parents[3]
+        repo = hf.MODEL_REPO
         try:
             conn = sqlite3.connect(str(db))
             try:
@@ -564,6 +560,17 @@ class RecordTrainingRunTask(Task):
             except Exception as exc:  # noqa: BLE001
                 hf.log.warning("README refresh skipped: %s", exc)
         return True
+
+
+def _default_training_db_path() -> Path:
+    """Resolve the non-fatal training_runs DB without assuming umbrella cwd."""
+    raw_data_root = os.environ.get("RENQUANT_DATA_ROOT")
+    if raw_data_root:
+        return Path(raw_data_root).expanduser().resolve() / "data" / "sim_runs.db"
+    strat = os.environ.get("RENQUANT_STRATEGY_DIR")
+    if strat:
+        return Path(strat).expanduser().resolve().parent.parent / "data" / "sim_runs.db"
+    return hf.REPO / "data" / "sim_runs.db"
 
 
 class RecordTrainingRunJob(Job):
