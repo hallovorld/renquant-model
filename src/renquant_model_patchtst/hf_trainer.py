@@ -60,22 +60,41 @@ from transformers import (
     TrainingArguments,  # noqa: F401 - re-exported for sequence_training
 )
 
-# Strategy dir hosts the umbrella's data-side kernel.* deps (walk_forward_splits,
-# hmm_regime_labels, config_consistency) + strategy_config files that the deferred
-# imports below resolve against. In the umbrella this is the in-repo path; when
-# this trainer is driven from the multi-repo, the driver sets RENQUANT_STRATEGY_DIR
-# to the umbrella's strategy dir (the torch trainer lives in the subrepo; its
-# kernel.* data deps resolve from the umbrella baseline).
+# Runtime data may still live in the RenQuant checkout, but model code and
+# strategy config are independent subrepos. Keep these roots explicit so
+# scheduled retrains do not depend on the caller's cwd being the umbrella repo.
+MODEL_REPO = Path(__file__).resolve().parents[2]
+GITHUB_ROOT = MODEL_REPO.parent
+DEFAULT_RENQUANT_ROOT = GITHUB_ROOT / "RenQuant"
+DEFAULT_STRATEGY_REPO_CONFIG = (
+    GITHUB_ROOT / "renquant-strategy-104" / "configs" / "strategy_config.json"
+)
+DEFAULT_DATASET_REL = Path("data/transformer_v4_wl200_clean.parquet")
+
+
+def _default_data_root() -> Path:
+    raw = os.environ.get("RENQUANT_DATA_ROOT")
+    if raw:
+        return Path(raw).expanduser().resolve()
+    legacy_strategy = os.environ.get("RENQUANT_STRATEGY_DIR")
+    if legacy_strategy:
+        root = Path(legacy_strategy).expanduser().resolve().parent.parent
+        if (root / DEFAULT_DATASET_REL).exists():
+            return root
+    if (DEFAULT_RENQUANT_ROOT / DEFAULT_DATASET_REL).exists():
+        return DEFAULT_RENQUANT_ROOT.resolve()
+    return Path.cwd().resolve()
+
+
+REPO = _default_data_root()
 _strat_env = os.environ.get("RENQUANT_STRATEGY_DIR")
-if _strat_env:
-    STRATEGY_DIR = Path(_strat_env)
-    REPO = STRATEGY_DIR.parent.parent  # umbrella repo root (.../backtesting/renquant_104 → root)
-else:
-    REPO = Path(__file__).resolve().parent.parent
-    sys.path.insert(0, str(REPO))
-    STRATEGY_DIR = REPO / "backtesting" / "renquant_104"
-# REPO points to the umbrella root in both modes so spy_path / config paths /
-# git cwd (used below) resolve against the baseline data + configs.
+STRATEGY_DIR = (
+    Path(_strat_env).expanduser().resolve()
+    if _strat_env
+    else DEFAULT_RENQUANT_ROOT / "backtesting" / "renquant_104"
+)
+if str(MODEL_REPO / "src") not in sys.path:
+    sys.path.insert(0, str(MODEL_REPO / "src"))
 if STRATEGY_DIR.exists() and str(STRATEGY_DIR) not in sys.path:
     sys.path.insert(0, str(STRATEGY_DIR))
 
@@ -418,30 +437,63 @@ def load_panel_with_split(dataset_path: Path, cut_name: str, label_col: str,
 def git_head() -> str | None:
     """Best-effort source stamp for model artifacts."""
     try:
-        r = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO,
+        r = subprocess.run(["git", "rev-parse", "HEAD"], cwd=MODEL_REPO,
                            capture_output=True, text=True, check=False)
     except Exception:
         return None
     return r.stdout.strip() or None
 
 
+def resolve_runtime_path(raw: str | Path) -> Path:
+    """Resolve dataset/SPY inputs without assuming the caller's cwd."""
+    path = Path(raw).expanduser()
+    if path.is_absolute():
+        return path
+    cwd_path = Path.cwd().resolve() / path
+    if cwd_path.exists():
+        return cwd_path
+    return REPO / path
+
+
+def resolve_strategy_config_path(raw: str | Path | None = None) -> Path:
+    """Resolve the strategy config stamped into PatchTST artifacts."""
+    raw = raw or os.getenv("RENQUANT_STRATEGY_CONFIG")
+    if raw:
+        path = Path(raw).expanduser()
+        if path.is_absolute():
+            return path
+        for base in (Path.cwd().resolve(), REPO, MODEL_REPO):
+            candidate = base / path
+            if candidate.exists():
+                return candidate
+        return REPO / path
+
+    candidates = [
+        DEFAULT_STRATEGY_REPO_CONFIG,
+        STRATEGY_DIR / "strategy_config.shadow.json",
+        STRATEGY_DIR / "strategy_config.json",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate.resolve()
+    return candidates[0]
+
+
 def build_config_contract(args: argparse.Namespace) -> dict:
     """Stamp the model-relevant strategy config used by runtime preflight."""
-    raw = getattr(args, "strategy_config", None) or os.getenv("RENQUANT_STRATEGY_CONFIG")
-    if raw:
-        path = Path(raw)
-        path = path if path.is_absolute() else REPO / path
-    else:
-        path = STRATEGY_DIR / "strategy_config.shadow.json"
-        if not path.exists():
-            path = STRATEGY_DIR / "strategy_config.json"
+    path = resolve_strategy_config_path(getattr(args, "strategy_config", None))
     cfg = json.loads(path.read_text())
     from renquant_common.config_consistency import (  # noqa: PLC0415
         fingerprint_config, _model_relevant_fields,
     )
     fields = _model_relevant_fields(cfg)
+    display_path = path
+    for base in (MODEL_REPO, REPO):
+        if path.is_relative_to(base):
+            display_path = path.relative_to(base)
+            break
     return {
-        "config_path": str(path.relative_to(REPO) if path.is_relative_to(REPO) else path),
+        "config_path": str(display_path),
         "config_fingerprint": fingerprint_config(cfg),
         "config_fingerprint_fields": fields,
         "trained_watchlist_n": len(fields.get("watchlist") or []),
