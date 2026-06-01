@@ -383,6 +383,12 @@ def test_research_planning_uses_model_aware_filenames(tmp_path: Path) -> None:
     assert _model_kind_for_extras(["--lr", "1e-3"]) == MODEL_KIND_PATCHTST
     assert _model_kind_for_extras(["--model", "patchtst", "--lr", "1e-3"]) == MODEL_KIND_PATCHTST
     assert _model_kind_for_extras(["--lr", "1e-3", "--model", "patchtsmixer"]) == MODEL_KIND_PATCHTSMIXER
+    # Linear family — distinct trainer convention (PR #18 union into helper)
+    assert _model_kind_for_extras(["--model", "dlinear"]) == "dlinear"
+    assert _model_kind_for_extras(["--model", "nlinear"]) == "nlinear"
+    # Unknown --model fail-fast at planning time (PR #18 reviewer
+    # follow-up): a typo would otherwise burn trial compute and only
+    # surface as missing val_preds during result aggregation.
     import pytest as _pytest
     with _pytest.raises(ValueError, match="unsupported --model"):
         _model_kind_for_extras(["--model", "lstm_typo"])
