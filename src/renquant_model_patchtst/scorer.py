@@ -250,16 +250,31 @@ def load(manifest: Any) -> PatchTstStatefulScorer:
     """
     path = _resolve_path(manifest)
     ckpt = torch.load(path, map_location="cpu", weights_only=False)
-    # Lazy import — avoids loading torch/transformers when the scorer is only enumerated.
-    from .hf_trainer import HFPatchTSTRanker  # noqa: PLC0415
-    from transformers import PatchTSTConfig  # noqa: PLC0415
-    cfg = PatchTSTConfig(**ckpt["config_dict"])
-    model = HFPatchTSTRanker(
-        cfg,
-        use_distributional_head=bool(ckpt.get("uses_distributional_head", False)),
-        use_film_regime=bool(ckpt.get("uses_film_regime", False)),
-        use_cross_stock_attn=bool(ckpt.get("uses_cross_stock_attn", False)),
-    )
+    # PR #17 review BLOCKER-1: dispatch on `kind` so PatchTSMixer
+    # artifacts (introduced by PR #16/#17) are loadable. Legacy
+    # checkpoints without a `kind` field default to PatchTST for
+    # backward compat — every artifact persisted before model_kind
+    # threading landed in sequence_training was PatchTST.
+    kind = str(ckpt.get("kind", "hf_patchtst"))
+    if kind == "hf_patchtsmixer":
+        from .patchtsmixer_ranker import HFPatchTSMixerRanker  # noqa: PLC0415
+        from transformers import PatchTSMixerConfig  # noqa: PLC0415
+        cfg = PatchTSMixerConfig(**ckpt["config_dict"])
+        model = HFPatchTSMixerRanker(cfg)
+    elif kind == "hf_patchtst":
+        from .hf_trainer import HFPatchTSTRanker  # noqa: PLC0415
+        from transformers import PatchTSTConfig  # noqa: PLC0415
+        cfg = PatchTSTConfig(**ckpt["config_dict"])
+        model = HFPatchTSTRanker(
+            cfg,
+            use_distributional_head=bool(ckpt.get("uses_distributional_head", False)),
+            use_film_regime=bool(ckpt.get("uses_film_regime", False)),
+            use_cross_stock_attn=bool(ckpt.get("uses_cross_stock_attn", False)),
+        )
+    else:
+        raise ValueError(
+            f"PatchTST scorer cannot load checkpoint kind={kind!r}; "
+            f"expected one of {{'hf_patchtst', 'hf_patchtsmixer'}}")
     model.load_state_dict(ckpt["state_dict"])
     return PatchTstStatefulScorer(
         model,

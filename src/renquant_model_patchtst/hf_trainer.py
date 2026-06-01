@@ -697,6 +697,16 @@ def build_parser() -> argparse.ArgumentParser:
     adapter (training.py) so default hyperparameters live in exactly one place."""
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--model", default="patchtst",
+                   choices=["patchtst", "patchtsmixer"],
+                   help="Backbone model family. 'patchtst' (default) keeps "
+                        "the existing PatchTST + FiLM + cross-stock-attn + "
+                        "distributional-head stack. 'patchtsmixer' swaps in "
+                        "HFPatchTSMixerRanker (W1 MLP-mixer baseline from "
+                        "PR #16) — same data/loss/eval pipeline, only the "
+                        "backbone differs. PatchTST-specific knobs "
+                        "(--film-regime-cond, --cross-stock-attn, NLL head) "
+                        "are accepted-but-ignored for patchtsmixer.")
     p.add_argument("--dataset", default="data/transformer_v4_wl200_clean.parquet")
     p.add_argument("--cut", default="cut1_covid",
                    help="walk-forward cut name OR 'all' for full-data prod")
