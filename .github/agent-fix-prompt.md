@@ -13,11 +13,17 @@ NLinear). The reviewer's comments are appended at the bottom.
    then `Edit` / `Write`. NEVER change unrelated code in the same
    pass — keep blast radius small.
 
-3. **Run tests** that cover the changed code path:
+3. **Run tests** that cover the changed code path. On GitHub Actions
+   Ubuntu (where this workflow actually runs), `make test` or
+   `pytest tests/patchtst/` work directly via the CI's installed
+   Python. Local-dev callers can prefix with their own interpreter
+   (umbrella venv, system python3, etc.) — DO NOT hardcode a
+   workstation-specific venv path here; it makes the prompt
+   unportable.
 
    ```bash
-   PYTHON=/Users/renhao/git/github/RenQuant/.venv/bin/python
-   $PYTHON -m pytest tests/patchtst/ -q       # or tests/gbdt/ / tests/linear/
+   # Workflow context (Ubuntu CI):
+   pytest tests/patchtst/ -q       # or tests/gbdt/ / tests/linear/
    ```
 
    If a test exists targeting the changed area, run it. If no test
