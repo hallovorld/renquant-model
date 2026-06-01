@@ -13,6 +13,7 @@ LIFTED_MODULES = [
     "renquant_model_common.triple_barrier",
     "renquant_model_common.acceptance_entry_ic",
     "renquant_model_common.challenger",
+    "renquant_model_common.news_sentiment_finbert",
 ]
 
 
