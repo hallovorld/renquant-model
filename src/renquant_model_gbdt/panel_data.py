@@ -37,6 +37,18 @@ PANEL_FILE = "alpha158_291_fundamental_dataset.parquet"
 ALPHA_STATS_FILE = "alpha158_qlib_dataset.stats.json"
 FUND_FILE = "sec_fundamentals_daily.parquet"
 FUND_COLS = ["earnings_yield", "book_to_price", "gross_profitability", "roe", "asset_growth"]
+# Track B BULL_CALM-regime features (renquant-base-data feat/bull-calm-track-b-features).
+# When present in the panel they ride the alpha158 global_z normalization chain
+# (same protocol as other panel features). The presence of any Track B feature is
+# stamped into the artifact's ``feature_addendum_v1`` field so the WF gate's
+# recipe-match check can distinguish baseline-172 from variant-176.
+#
+# Naming: ``idio_vol_market`` was originally named ``idio_vol_3f`` but the
+# production base-data callers pass ``sector_close=None``, making the feature
+# a SPY+size 2-factor residual std (NOT 3-factor). renquant-base-data #16
+# renamed the column honestly; this constant tracks the post-#16 name. See
+# RenQuant#120 audit memo (doc/research/2026-06-02-track-b-feature-audit.md).
+TRACK_B_FEATURES = ("mom_carry_12_1", "beta_dm", "rvar_total", "idio_vol_market")
 _LABEL_EXCL = {"ticker", "date", "split_label", "fwd_5d_excess", "fwd_20d_excess", "fwd_60d_excess"}
 
 
@@ -174,6 +186,16 @@ class LoadPanelTask(Task):
             drop = set(ctx.exclude_features)
             feat_cols = [c for c in feat_cols if c not in drop]
             log.info("Excluded %d feature(s); %d remain", len(drop & set(train.columns)), len(feat_cols))
+        # Track B recipe stamp — any Track B feature in feat_cols pins a
+        # ``feature_addendum_v1`` field on the artifact so the WF gate's
+        # recipe-match check distinguishes the variant from baseline.
+        track_b_active = [c for c in TRACK_B_FEATURES if c in feat_cols]
+        if track_b_active:
+            ctx.extra_artifact_fields["feature_addendum_v1"] = {
+                "track_b_features_active": track_b_active,
+                "source": "renquant-base-data:track_b_features",
+                "memo": "doc/research/2026-06-02-track-b-feature-audit.md",
+            }
         ctx.train, ctx.feat_cols, ctx.label = train, feat_cols, label
         ctx.lookahead_days = infer_label_lookahead_days(label)
         if ctx.cutoff_date is not None:
