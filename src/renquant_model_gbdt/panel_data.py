@@ -42,7 +42,13 @@ FUND_COLS = ["earnings_yield", "book_to_price", "gross_profitability", "roe", "a
 # (same protocol as other panel features). The presence of any Track B feature is
 # stamped into the artifact's ``feature_addendum_v1`` field so the WF gate's
 # recipe-match check can distinguish baseline-172 from variant-176.
-TRACK_B_FEATURES = ("mom_carry_12_1", "beta_dm", "rvar_total", "idio_vol_3f")
+#
+# Naming: ``idio_vol_market`` was originally named ``idio_vol_3f`` but the
+# production base-data callers pass ``sector_close=None``, making the feature
+# a SPY+size 2-factor residual std (NOT 3-factor). renquant-base-data #16
+# renamed the column honestly; this constant tracks the post-#16 name. See
+# RenQuant#120 audit memo (doc/research/2026-06-02-track-b-feature-audit.md).
+TRACK_B_FEATURES = ("mom_carry_12_1", "beta_dm", "rvar_total", "idio_vol_market")
 _LABEL_EXCL = {"ticker", "date", "split_label", "fwd_5d_excess", "fwd_20d_excess", "fwd_60d_excess"}
 
 
