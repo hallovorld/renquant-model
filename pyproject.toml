@@ -50,5 +50,5 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 addopts = "--import-mode=importlib"
-pythonpath = ["src", "../renquant-common/src", "../renquant-base-data/src", "../renquant-artifacts/src"]
+pythonpath = ["src", "../renquant-common/src", "../renquant-base-data/src", "../renquant-artifacts/src", "../renquant-pipeline/src"]
 testpaths = ["tests"]
