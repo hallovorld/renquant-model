@@ -25,8 +25,8 @@ def test_scorer_predictions_match_umbrella_panel_scorer() -> None:
     if not _PROD_ARTIFACT.exists():
         pytest.skip(f"production artifact absent: {_PROD_ARTIFACT}")
     sys.path.insert(0, str(_UMBRELLA_STRATEGY))
-    from kernel.panel_pipeline.feature_transform import transform_feature_frame  # noqa: PLC0415
-    from kernel.panel_pipeline.panel_scorer import PanelScorer  # noqa: PLC0415
+    from renquant_pipeline.kernel.panel_pipeline.feature_transform import transform_feature_frame  # noqa: PLC0415
+    from renquant_pipeline.kernel.panel_pipeline.panel_scorer import PanelScorer  # noqa: PLC0415
 
     artifact = json.loads(_PROD_ARTIFACT.read_text(encoding="utf-8"))
     raw_frame = _raw_sample_frame(artifact)
