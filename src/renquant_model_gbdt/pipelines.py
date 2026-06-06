@@ -100,6 +100,16 @@ class BuildArtifactManifestTask(Task):
             )
         ctx.metrics_record.setdefault("panel_contract_ok", panel_contract.ok)
         ctx.metrics_record.setdefault("panel_contract_details", panel_contract.details)
+        from .wf_retrain_readiness import (  # noqa: PLC0415
+            is_full_wf_retrain_config,
+            require_full_wf_retrain_readiness,
+        )
+
+        if is_full_wf_retrain_config(ctx.model_config):
+            ctx.metrics_record["wf_retrain_readiness"] = require_full_wf_retrain_readiness(
+                ctx.model_config,
+                ctx.model_artifact,
+            )
         manifest = {
             "artifact_id": ctx.model_artifact["artifact_id"],
             "model_family": ctx.model_artifact["model_family"],
@@ -163,4 +173,9 @@ _RUNTIME_ARTIFACT_FIELDS = (
     "cv_method",
     "cv_embargo_days",
     "train_run_id",
+    "feature_addendum_v1",
+    "sanity_triad",
+    "verdict",
+    "verdict_metadata",
+    "verdict_inputs",
 )
