@@ -22,6 +22,9 @@ def _config() -> dict:
         "mode": "full_wf_retrain",
         "full_wf_retrain": True,
         "required_features": list(TRACK_B_FEATURES),
+        "required_artifact_metadata": {
+            "one_of": ["sanity_triad", "verdict + verdict_metadata", "verdict + verdict_inputs"],
+        },
         "strategy": "renquant_104",
     }
 
@@ -155,6 +158,7 @@ def test_readiness_cli_outputs_json_report_without_training(tmp_path: Path, caps
     assert [c["name"] for c in report["checks"]] == [
         "full_wf_retrain_config",
         "config_requires_track_b_features",
+        "config_requires_triad_or_verdict_metadata",
         "artifact_contains_track_b_features",
         "artifact_stamps_track_b_addendum",
         "artifact_has_triad_or_verdict_metadata",

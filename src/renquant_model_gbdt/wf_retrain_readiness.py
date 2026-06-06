@@ -60,6 +60,14 @@ def validate_full_wf_retrain_readiness(
         {"required_features": config_features, "missing": missing_config},
     )
 
+    metadata_requirement = _config_metadata_requirement(config)
+    _add_check(
+        checks,
+        "config_requires_triad_or_verdict_metadata",
+        metadata_requirement["present"],
+        metadata_requirement,
+    )
+
     if artifact is not None:
         artifact_features = _artifact_features(artifact)
         missing_artifact = _missing(required, artifact_features)
@@ -161,6 +169,22 @@ def _config_required_features(config: dict[str, Any]) -> list[str]:
             if isinstance(value, list):
                 return [str(v) for v in value]
     return []
+
+
+def _config_metadata_requirement(config: dict[str, Any]) -> dict[str, Any]:
+    value = config.get("required_artifact_metadata")
+    if not isinstance(value, dict):
+        return {"present": False, "required_artifact_metadata": value}
+    one_of = value.get("one_of")
+    options = [str(v) for v in one_of] if isinstance(one_of, list) else []
+    has_triad = any(option in TRIAD_METADATA_KEYS for option in options)
+    has_verdict = any("verdict" in option for option in options)
+    return {
+        "present": bool(has_triad or has_verdict),
+        "one_of": options,
+        "accepted_triad_keys": list(TRIAD_METADATA_KEYS),
+        "accepted_verdict_forms": ["verdict + verdict_metadata", "verdict + verdict_inputs"],
+    }
 
 
 def _artifact_features(artifact: dict[str, Any]) -> list[str]:
