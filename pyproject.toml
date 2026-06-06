@@ -27,6 +27,9 @@ alpha158-linear = ["pyarrow>=15", "scikit-learn>=1.4"]
 patchtst = ["torch>=2.2", "transformers>=4.40"]
 sentiment = ["torch>=2.2", "transformers>=4.40", "pyarrow>=15"]
 
+[project.scripts]
+rq-gbdt-wf-retrain-readiness = "renquant_model_gbdt.wf_retrain_readiness:main"
+
 # Scorer entry points — consumers reach these only via
 # renquant_common.load_scorer (RFC §"Cross-Repo Contracts → Scorer Protocol").
 [project.entry-points."renquant_common.scorers"]

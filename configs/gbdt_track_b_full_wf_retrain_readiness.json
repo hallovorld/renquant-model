@@ -1,0 +1,21 @@
+{
+  "name": "gbdt_track_b_full_wf_retrain_readiness",
+  "mode": "full_wf_retrain",
+  "full_wf_retrain": true,
+  "model_family": "panel_ltr_xgboost",
+  "required_features": [
+    "mom_carry_12_1",
+    "beta_dm",
+    "rvar_total",
+    "idio_vol_market"
+  ],
+  "required_artifact_metadata": {
+    "one_of": [
+      "sanity_triad",
+      "verdict + verdict_metadata",
+      "verdict + verdict_inputs"
+    ]
+  },
+  "readiness_only": true,
+  "notes": "Validation-only Track B full WF retrain contract; does not launch training."
+}
