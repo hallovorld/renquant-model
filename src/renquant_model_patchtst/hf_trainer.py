@@ -601,20 +601,32 @@ class PerDayDataset(torch.utils.data.Dataset):
                  hmm_labels: pd.DataFrame | None = None):
         feat_arr = panel[feat_cols].astype(np.float32).fillna(0.0).values
         lab_arr = panel[label_col].astype(np.float32).values
+        split_arr = panel["split_label"].astype(str).to_numpy()
         samples_by_date: dict[int, list[tuple[np.ndarray, float, pd.Timestamp]]] = {}
         tkr_arr = panel["ticker"].to_numpy()
+        skipped_cross_split = 0
         for ticker, idxs in panel.groupby("ticker", sort=False).indices.items():
             idxs = np.asarray(sorted(idxs))
             for i in range(seq_len, len(idxs)):
                 end_pos = idxs[i]
-                if panel.iloc[end_pos]["split_label"] != split:
+                if split_arr[end_pos] != split:
                     continue
-                window = feat_arr[idxs[i - seq_len: i]]
+                window_idxs = idxs[i - seq_len: i]
+                if not np.all(split_arr[window_idxs] == split):
+                    skipped_cross_split += 1
+                    continue
+                window = feat_arr[window_idxs]
                 if window.shape[0] != seq_len:
                     continue
                 d = panel.iloc[end_pos]["date"]
                 samples_by_date.setdefault(d.value, []).append(
                     (window, lab_arr[end_pos], d, tkr_arr[end_pos]))
+        if skipped_cross_split:
+            log.info(
+                "PerDayDataset[%s]: skipped %d cross-split lookback window(s) "
+                "for split-pure PatchTST tensors",
+                split, skipped_cross_split,
+            )
 
         # Build per-day regime context lookup (if HMM labels provided)
         regime_map: dict[int, str] | None = None

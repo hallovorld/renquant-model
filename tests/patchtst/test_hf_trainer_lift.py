@@ -192,3 +192,45 @@ def test_timeshift_placebo_preserves_within_train_decorrelation(
         if base_indexed.get((row["date"], row["ticker"])) != row["fwd_60d_excess"]
     )
     assert differs > 0, "shifted train labels are byte-identical to base — placebo is a no-op"
+
+
+def test_per_day_dataset_windows_are_split_pure(tmp_path: Path) -> None:
+    """Regression guard for the 2026-06-02 sequence-boundary audit.
+
+    `PerDayDataset` used to require only the sample end row to match the
+    requested split. The first validation samples could therefore look back
+    into embargo/train rows. Encode each split with a different feature
+    sentinel and assert every emitted window contains only its own split.
+    """
+    rows = []
+    for d in pd.date_range("2024-01-01", periods=50, freq="B"):
+        for i in range(5):
+            rows.append({
+                "date": d,
+                "ticker": f"T{i}",
+                "feature": 1.0,
+                "fwd_60d_excess": float(i),
+            })
+    dataset = tmp_path / "panel.parquet"
+    pd.DataFrame(rows).to_parquet(dataset, index=False)
+
+    panel, feat_cols = hf.load_panel_with_split(
+        dataset,
+        "all",
+        "fwd_60d_excess",
+        preprocess=False,
+        val_tail_pct=0.25,
+        embargo_days=5,
+    )
+    encoded = {"train": 0.0, "embargo": -10.0, "val": 100.0, "test": 200.0}
+    panel["feature"] = panel["split_label"].map(encoded).astype(float)
+
+    train_ds = hf.PerDayDataset(panel, feat_cols, "fwd_60d_excess", 2, "train")
+    val_ds = hf.PerDayDataset(panel, feat_cols, "fwd_60d_excess", 2, "val")
+
+    assert len(train_ds) > 0
+    assert len(val_ds) > 0
+    for day in train_ds:
+        assert torch.all(day["past_values"] == 0.0)
+    for day in val_ds:
+        assert torch.all(day["past_values"] == 100.0)
