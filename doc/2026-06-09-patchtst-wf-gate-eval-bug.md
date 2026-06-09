@@ -108,3 +108,27 @@ ordering; `tail(seq_len)` window edges; NaN handling).
 - renquant-backtesting #48 (recipe-fingerprint robustness) — merged, unrelated to this bug.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+---
+
+## 7 · UPDATE (2026-06-09, after implementing the fix) — corrected conclusions
+
+Implemented Fix A and ran the decisive tests. The earlier framing ("model good,
+gate wrong") was **only half right**:
+
+- **Fix A is correct and shipped** (renquant-backtesting #49): the gate now scores
+  on `training_contract.dataset`. pt07 `real_ic` moved **−0.017 → −0.0018**.
+- **Fix B is NOT needed**: the two scorers are **identical** — scoring one
+  checkpoint through both on identical `(panel_history, tickers)` gave
+  **corr +1.0000** and identical IC (+0.125). No divergence. Dropped.
+- **But the fix did NOT make pt07 pass.** On the *right* dataset, pt07's rigorous
+  point-in-time WF IC is **~0** (aligned_real +0.008, placebo +0.057 → genuine
+  negative — the RFC #259 overlapping-`fwd_60d`-label confound). **The gate FAIL
+  is defensible.**
+- The **+0.11 cited earlier was pt07's own recent val window** (and production
+  calibrator +0.115 is current-day). Real but **window-specific** — NOT the
+  recipe's broad OOS edge.
+
+**Net:** the gate had a real dataset bug (fixed); pt07 is **not robustly
+validated** under rigorous WF. Going live with it is an operator trading-risk
+call on a recent-window edge, not a "gate is wrong" engineering one.
