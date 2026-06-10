@@ -1,0 +1,159 @@
+{
+  "schema_version": 1,
+  "kind": "patchtst_oos_ic_export",
+  "run_id": "20260610T165959Z",
+  "command": "oos_ic_export.py --checkpoint ../RenQuant/artifacts/patchtst_shadow/pt07_strict_trainfit_embargo60_20260522/seed_44/hf_patchtst_all_seed44_model.pt",
+  "checkpoint": {
+    "path": "/Users/renhao/git/github/RenQuant/artifacts/patchtst_shadow/pt07_strict_trainfit_embargo60_20260522/seed_44/hf_patchtst_all_seed44_model.pt",
+    "sha256": "sha256:07046963994dbb8da29bfc66f99d21399e39d6d2dbd842c180299bce67c07571",
+    "label_col": "fwd_60d_excess",
+    "seq_len": 24,
+    "lookahead_days": 60,
+    "config_fingerprint": null,
+    "trained_date": "None",
+    "effective_train_cutoff_date": "None"
+  },
+  "panel": {
+    "path": "/Users/renhao/git/github/renquant-model/data/transformer_v4_wl200_clean.parquet",
+    "sha256": "sha256:7ae2a8bc9d30dad1e8c226ceda257ee68f64c33a3e2416c1c5e002235811013f",
+    "cut": "all",
+    "val_tail_pct": 0.1,
+    "embargo_days": 60,
+    "n_features": 172,
+    "split_counts": {
+      "train": 302144,
+      "val": 36068,
+      "embargo": 7810
+    },
+    "split_counts_match_training_contract": true
+  },
+  "oos_contract": {
+    "passed": true,
+    "effective_train_cutoff_date": "2024-11-13",
+    "lookahead_days": 60,
+    "min_oos_start_exclusive": "2025-02-05",
+    "val_start": "2025-02-06",
+    "reason": "OOS contract satisfied"
+  },
+  "split_purity": "PerDayDataset split-pure lookback windows (commit c5d15dc); val samples whose lookback crosses embargo/train are skipped",
+  "eval_window": {
+    "start": "2025-03-13",
+    "end": "2026-02-10",
+    "n_dates": 230,
+    "n_rows": 32660,
+    "smoke_max_days": null
+  },
+  "metrics": {
+    "mean_oos_ic": 0.07241519473824265,
+    "median_oos_ic": 0.09398966684368165,
+    "ic_std": 0.15558411481317685,
+    "pct_dates_positive": 0.6869565217391305
+  },
+  "sanity_battery": {
+    "passed": true,
+    "real_ic": 0.07241519473824265,
+    "shuffled_label": {
+      "ic": 0.0013693116262020136,
+      "threshold_abs": 0.005,
+      "passed": true
+    },
+    "timeshift_placebo": {
+      "shift_days": 120,
+      "placebo_ic": -0.019245945680797495,
+      "aligned_real_ic": 0.1854496261957592,
+      "threshold": 0.0927248130978796,
+      "passed": true,
+      "reason": "|placebo_ic|=0.0192 < threshold=0.0927 (max(0.005, 0.5\u00d7|aligned_real_ic=+0.1854|))"
+    },
+    "reason": "PASS: real_ic=+0.0724 shuf_ic=+0.0014 (|\u00b7|<0.005) placebo: |placebo_ic|=0.0192 < threshold=0.0927 (max(0.005, 0.5\u00d7|aligned_real_ic=+0.1854|))",
+    "placebo_shift_diagnostics": [
+      {
+        "shift_days": 5,
+        "ic": 0.07174405557786061,
+        "aligned_real_ic": 0.07072266898414434,
+        "n_rows": 31950,
+        "n_dates": 225,
+        "abs_ratio_to_aligned_real": 1.0144421386860452
+      },
+      {
+        "shift_days": 10,
+        "ic": 0.0684838535455891,
+        "aligned_real_ic": 0.07262336773071817,
+        "n_rows": 31240,
+        "n_dates": 220,
+        "abs_ratio_to_aligned_real": 0.9430002447631171
+      },
+      {
+        "shift_days": 20,
+        "ic": 0.055599486372380505,
+        "aligned_real_ic": 0.07540282942568055,
+        "n_rows": 29820,
+        "n_dates": 210,
+        "abs_ratio_to_aligned_real": 0.7373660484077874
+      },
+      {
+        "shift_days": 40,
+        "ic": 0.03354875806390292,
+        "aligned_real_ic": 0.09704321167288679,
+        "n_rows": 26980,
+        "n_dates": 190,
+        "abs_ratio_to_aligned_real": 0.34570947813422603
+      },
+      {
+        "shift_days": 60,
+        "ic": 0.015255939275497631,
+        "aligned_real_ic": 0.1282716610091549,
+        "n_rows": 24140,
+        "n_dates": 170,
+        "abs_ratio_to_aligned_real": 0.11893460453754315
+      },
+      {
+        "shift_days": 80,
+        "ic": 0.008135012286358849,
+        "aligned_real_ic": 0.15841335001424908,
+        "n_rows": 21300,
+        "n_dates": 150,
+        "abs_ratio_to_aligned_real": 0.051353072740568356
+      },
+      {
+        "shift_days": 120,
+        "ic": -0.019245945680797495,
+        "aligned_real_ic": 0.1854496261957592,
+        "n_rows": 15620,
+        "n_dates": 110,
+        "abs_ratio_to_aligned_real": 0.10377991088793904
+      },
+      {
+        "shift_days": 180,
+        "ic": -0.022974367839170104,
+        "aligned_real_ic": 0.21308433397129586,
+        "n_rows": 7100,
+        "n_dates": 50,
+        "abs_ratio_to_aligned_real": 0.10781819297079312
+      },
+      {
+        "shift_days": 252,
+        "ic": null,
+        "aligned_real_ic": null,
+        "n_rows": 0,
+        "n_dates": 0,
+        "skipped": "too_few_aligned_rows"
+      }
+    ]
+  },
+  "crosscheck_vs_training_val_preds": {
+    "val_preds_path": "/Users/renhao/git/github/RenQuant/artifacts/patchtst_shadow/pt07_strict_trainfit_embargo60_20260522/seed_44/hf_patchtst_all_seed44_val_preds.parquet",
+    "trainval_mean_ic_full": 0.07057628577764591,
+    "n_common_dates": 230,
+    "n_export_dates": 230,
+    "n_trainval_dates": 254,
+    "export_mean_ic_common": 0.07241519473824265,
+    "trainval_mean_ic_common": 0.0724130262417698,
+    "daily_ic_corr_common": 0.9999999685062495
+  },
+  "outputs": {
+    "oos_ic_daily_csv": "/Users/renhao/git/github/renquant-model/artifacts/diagnostics/oos_ic/hf_patchtst_all_seed44_model_20260610T165959Z/oos_ic_daily.csv",
+    "oos_ic_daily_parquet": "/Users/renhao/git/github/renquant-model/artifacts/diagnostics/oos_ic/hf_patchtst_all_seed44_model_20260610T165959Z/oos_ic_daily.parquet",
+    "predictions_parquet": "/Users/renhao/git/github/renquant-model/artifacts/diagnostics/oos_ic/hf_patchtst_all_seed44_model_20260610T165959Z/predictions.parquet"
+  }
+}
