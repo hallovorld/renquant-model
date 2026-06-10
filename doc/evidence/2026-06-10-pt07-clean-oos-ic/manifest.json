@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "kind": "patchtst_oos_ic_export",
-  "run_id": "20260610T165959Z",
-  "command": "oos_ic_export.py --checkpoint ../RenQuant/artifacts/patchtst_shadow/pt07_strict_trainfit_embargo60_20260522/seed_44/hf_patchtst_all_seed44_model.pt",
+  "run_id": "20260610T193556Z",
+  "command": "oos_ic_export.py --checkpoint /Users/renhao/git/github/RenQuant/artifacts/patchtst_shadow/pt07_strict_trainfit_embargo60_20260522/seed_44/hf_patchtst_all_seed44_model.pt",
   "checkpoint": {
     "path": "/Users/renhao/git/github/RenQuant/artifacts/patchtst_shadow/pt07_strict_trainfit_embargo60_20260522/seed_44/hf_patchtst_all_seed44_model.pt",
     "sha256": "sha256:07046963994dbb8da29bfc66f99d21399e39d6d2dbd842c180299bce67c07571",
@@ -152,8 +152,12 @@
     "daily_ic_corr_common": 0.9999999685062495
   },
   "outputs": {
-    "oos_ic_daily_csv": "/Users/renhao/git/github/renquant-model/artifacts/diagnostics/oos_ic/hf_patchtst_all_seed44_model_20260610T165959Z/oos_ic_daily.csv",
-    "oos_ic_daily_parquet": "/Users/renhao/git/github/renquant-model/artifacts/diagnostics/oos_ic/hf_patchtst_all_seed44_model_20260610T165959Z/oos_ic_daily.parquet",
-    "predictions_parquet": "/Users/renhao/git/github/renquant-model/artifacts/diagnostics/oos_ic/hf_patchtst_all_seed44_model_20260610T165959Z/predictions.parquet"
+    "oos_ic_daily_csv": "/Users/renhao/git/github/renquant-model/artifacts/diagnostics/oos_ic/hf_patchtst_all_seed44_model_20260610T193556Z/oos_ic_daily.csv",
+    "oos_ic_daily_parquet": "/Users/renhao/git/github/renquant-model/artifacts/diagnostics/oos_ic/hf_patchtst_all_seed44_model_20260610T193556Z/oos_ic_daily.parquet",
+    "predictions_parquet": "/Users/renhao/git/github/renquant-model/artifacts/diagnostics/oos_ic/hf_patchtst_all_seed44_model_20260610T193556Z/predictions.parquet"
+  },
+  "output_hashes": {
+    "predictions_parquet_sha256": "sha256:d74fc52d1bf91101edcfd09ecc362300b31448c43bd9045366e0145024813109",
+    "oos_ic_daily_parquet_sha256": "sha256:6acb32ba110e8cf005ea353debf84da695eef62662309c477c3023c3a00677b1"
   }
 }

@@ -194,6 +194,17 @@ def test_cli_end_to_end_smoke(tmp_path: Path) -> None:
     assert manifest["sanity_battery"]["timeshift_placebo"]["shift_days"] == 10
     assert isinstance(manifest["metrics"]["mean_oos_ic"], float)
 
+    # Chain-of-custody: the manifest must carry the predictions CONTENT hash
+    # (not just its path), so a downstream consumer can detect a same-path
+    # swap of predictions.parquet. The hash must match the bytes on disk.
+    import hashlib
+    ph = manifest["output_hashes"]["predictions_parquet_sha256"]
+    assert ph.startswith("sha256:")
+    on_disk = "sha256:" + hashlib.sha256(
+        (out_dir / "predictions.parquet").read_bytes()
+    ).hexdigest()
+    assert ph == on_disk
+
     ic = pd.read_csv(out_dir / "oos_ic_daily.csv", parse_dates=["date"])
     assert {"date", "ic", "n_names"} <= set(ic.columns)
     assert len(ic) > 0

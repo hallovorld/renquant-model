@@ -1,0 +1,11 @@
+2026-06-10 09:59:59,321 INFO checkpoint=/Users/renhao/git/github/RenQuant/artifacts/patchtst_shadow/pt07_strict_trainfit_embargo60_20260522/seed_44/hf_patchtst_all_seed44_model.pt
+2026-06-10 09:59:59,321 INFO dataset=/Users/renhao/git/github/renquant-model/data/transformer_v4_wl200_clean.parquet cut=all label=fwd_60d_excess seq_len=24 embargo=60 val_tail=0.10
+2026-06-10 10:00:08,597 INFO preprocessing: CSRankNorm + train-fit Winsorize(±0.5%) applied bounds=[-2.620219, +4.037451]
+2026-06-10 10:00:08,618 INFO panel 346022 rows | cut=all | train=302144 val=36068 test=0 | n_feat=172
+2026-06-10 10:00:08,631 INFO OOS contract: OOS contract satisfied
+2026-06-10 10:00:10,700 INFO PerDayDataset[val]: skipped 3408 cross-split lookback window(s) for split-pure PatchTST tensors
+2026-06-10 10:01:21,410 INFO scored 32660 rows over 230 dates (2025-03-13 → 2026-02-10)
+2026-06-10 10:01:23,084 INFO real_ic=+0.0724 shuf_ic=+0.0014 placebo@120d=-0.019245945680797495 → PASS: real_ic=+0.0724 shuf_ic=+0.0014 (|·|<0.005) placebo: |placebo_ic|=0.0192 < threshold=0.0927 (max(0.005, 0.5×|aligned_real_ic=+0.1854|))
+2026-06-10 10:01:23,189 INFO cross-check vs training-time val_preds: {'val_preds_path': '/Users/renhao/git/github/RenQuant/artifacts/patchtst_shadow/pt07_strict_trainfit_embargo60_20260522/seed_44/hf_patchtst_all_seed44_val_preds.parquet', 'trainval_mean_ic_full': 0.07057628577764591, 'n_common_dates': 230, 'n_export_dates': 230, 'n_trainval_dates': 254, 'export_mean_ic_common': 0.07241519473824265, 'trainval_mean_ic_common': 0.0724130262417698, 'daily_ic_corr_common': 0.9999999685062495}
+2026-06-10 10:01:23,344 INFO manifest written: /Users/renhao/git/github/renquant-model/artifacts/diagnostics/oos_ic/hf_patchtst_all_seed44_model_20260610T165959Z/manifest.json
+2026-06-10 10:01:23,344 INFO VERDICT: PASS: real_ic=+0.0724 shuf_ic=+0.0014 (|·|<0.005) placebo: |placebo_ic|=0.0192 < threshold=0.0927 (max(0.005, 0.5×|aligned_real_ic=+0.1854|))

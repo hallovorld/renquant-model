@@ -512,6 +512,15 @@ def main(argv: list[str] | None = None) -> int:
             "oos_ic_daily_parquet": str(out_dir / "oos_ic_daily.parquet"),
             "predictions_parquet": str(out_dir / "predictions.parquet"),
         },
+        # Content hash of the predictions artifact (NOT just its path), so a
+        # downstream consumer can prove the parquet it loads is byte-identical
+        # to the one this placebo-clean export produced. Without it, a
+        # same-path replacement of predictions.parquet would silently pass a
+        # path-only validator (renquant-pipeline validate_clean_oos_manifest).
+        "output_hashes": {
+            "predictions_parquet_sha256": sha256_file(out_dir / "predictions.parquet"),
+            "oos_ic_daily_parquet_sha256": sha256_file(out_dir / "oos_ic_daily.parquet"),
+        },
     }
     (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, default=str))
     log.info("manifest written: %s", out_dir / "manifest.json")
