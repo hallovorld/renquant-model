@@ -159,6 +159,25 @@ def test_research_cli_can_explicitly_override_to_legacy(
     assert spec.detector_version == "legacy"
 
 
+def test_research_cli_infers_horizon_aware_placebo_contract_from_label(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    argv = [
+        "--phase", "range_find",
+        "--configs", "B_tuned",
+        "--cuts", "cut1_covid",
+        "--seeds", "42",
+        "--epochs", "1",
+        "--device", "cpu",
+        "--out-dir", str(tmp_path),
+        "--label", "fwd_20d_excess",
+    ]
+    spec, rc = _capture_spec_from_main(argv, monkeypatch)
+    assert rc == 0
+    assert spec.label_lookahead_days == 20
+    assert spec.label_shift_days == 40
+
+
 def test_research_cli_detector_version_independent_of_regime_contract(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ) -> None:

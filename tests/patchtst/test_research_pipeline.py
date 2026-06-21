@@ -16,11 +16,14 @@ from renquant_model_patchtst.research_pipeline import (
     ExperimentSpec,
     FingerprintTrialsTask,
     MultipleComparisonCorrectionTask,
+    ResolvePathsTask,
     RobustnessAndRiskTask,
     TrialResult,
     TrialSpec,
     _assign_split,
     check_promotion,
+    default_label_shift_days,
+    placebo_ic_threshold,
     run_experiment,
 )
 
@@ -129,6 +132,27 @@ def test_pipeline_runs_gated_experiment_and_persists_report(tmp_path: Path) -> N
     assert ctx.environment["splitter_contract"]["implementation"].endswith("assign_split_column")
     trial_fp = json.loads((ctx.trial_plan[0].out_dir / "trial_fingerprint.json").read_text())
     assert trial_fp["splitter_contract"]["embargo_days"] == 5
+
+
+def test_placebo_contract_matches_prod_gate() -> None:
+    assert default_label_shift_days(5) == 10
+    assert default_label_shift_days(20) == 40
+    assert placebo_ic_threshold(0.123, kind="shuffle_placebo") == pytest.approx(0.005)
+    assert placebo_ic_threshold(0.0, kind="timeshift_placebo") == pytest.approx(0.005)
+    assert placebo_ic_threshold(0.04, kind="timeshift_placebo") == pytest.approx(0.02)
+
+
+def test_resolve_paths_derives_effective_label_shift_from_horizon(tmp_path: Path) -> None:
+    ctx = ExperimentContext(
+        spec=_spec(
+            tmp_path,
+            label_lookahead_days=20,
+            label_shift_days=None,
+            require_placebos=True,
+        )
+    )
+    ResolvePathsTask().run(ctx)
+    assert ctx.spec.label_shift_days == 40
 
 
 def test_splitter_embargo_failure_blocks_planning(tmp_path: Path) -> None:

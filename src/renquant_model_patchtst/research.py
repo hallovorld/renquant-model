@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 from pathlib import Path
 
 from renquant_common.hmm_regime_labels import (
@@ -10,7 +11,12 @@ from renquant_common.hmm_regime_labels import (
     DETECTOR_VERSION_V20260531,
 )
 
-from .research_pipeline import ExperimentSpec, check_promotion, run_experiment
+from .research_pipeline import (
+    ExperimentSpec,
+    check_promotion,
+    default_label_shift_days,
+    run_experiment,
+)
 
 # Single source of truth for the detector-version choice set — pulled from
 # renquant-common so adding a new detector version is one edit, not three.
@@ -25,6 +31,11 @@ _TUNED = [
     "--seq-len", "24",
     "--early-stopping-patience", "2",
 ]
+
+
+def _infer_label_lookahead_days(label: str) -> int:
+    match = re.search(r"fwd_(\d+)d", str(label))
+    return int(match.group(1)) if match else 60
 
 
 def configs(spy_path: str) -> dict[str, list[str]]:
@@ -113,10 +124,10 @@ def main(argv: list[str] | None = None) -> int:
              "behavior for backward-compat experiments only.",
     )
     p.add_argument("--label", default="fwd_60d_excess")
-    p.add_argument("--label-lookahead-days", type=int, default=60)
+    p.add_argument("--label-lookahead-days", type=int, default=None)
     p.add_argument("--embargo-days", type=int, default=60)
     p.add_argument("--val-tail-pct", type=float, default=0.10)
-    p.add_argument("--label-shift-days", type=int, default=10)
+    p.add_argument("--label-shift-days", type=int, default=None)
     p.add_argument("--baseline-pooled-ic", type=float, default=None)
     p.add_argument("--check-promotion", default=None, help="load experiment dir and return 0/1/2/3")
     args = p.parse_args(argv)
@@ -134,6 +145,16 @@ def main(argv: list[str] | None = None) -> int:
     seeds = [int(s) for s in args.seeds.split(",") if s.strip()]
     out_dir = Path(args.out).parent if args.out else Path(args.out_dir)
     config_args = {name: all_configs[name] for name in selected_configs}
+    label_lookahead_days = (
+        int(args.label_lookahead_days)
+        if args.label_lookahead_days is not None
+        else _infer_label_lookahead_days(args.label)
+    )
+    label_shift_days = (
+        int(args.label_shift_days)
+        if args.label_shift_days is not None
+        else default_label_shift_days(label_lookahead_days)
+    )
     spec = ExperimentSpec(
         phase=phase,
         configs=selected_configs,
@@ -156,10 +177,10 @@ def main(argv: list[str] | None = None) -> int:
         require_regime_contract=not args.no_regime_contract,
         detector_version=args.detector_version,
         label_col=args.label,
-        label_lookahead_days=args.label_lookahead_days,
+        label_lookahead_days=label_lookahead_days,
         embargo_days=args.embargo_days,
         val_tail_pct=args.val_tail_pct,
-        label_shift_days=args.label_shift_days,
+        label_shift_days=label_shift_days,
         baseline_pooled_ic=args.baseline_pooled_ic,
     )
     ctx = run_experiment(spec, trainer_runner=hf.train_single_run, parser_builder=hf.build_parser)
