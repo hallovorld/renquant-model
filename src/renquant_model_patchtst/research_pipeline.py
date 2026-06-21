@@ -47,7 +47,9 @@ Verdict = Literal[
 ]
 
 DEFAULT_BASELINE_CONFIG = "B_tuned"
-DEFAULT_LABEL_SHIFT_DAYS = 10
+SHUFFLED_IC_MAX_ABS = 0.005
+PLACEBO_RATIO_MAX = 0.50
+PLACEBO_IC_FLOOR = 0.005
 # Non-defensive regimes — bull/choppy phases where strategy should produce
 # positive selection IC. BEAR is excluded (legitimate selectively-short /
 # defensive territory). BULL_STRONG is config-legacy phantom retained for
@@ -67,12 +69,33 @@ DEFAULT_TRIAL_TIMEOUTS_SEC = {
 }
 GATE_THRESHOLDS = {
     "version": 1,
-    "shuffle_abs_ic": 0.01,
-    "shuffle_real_fraction": 0.25,
-    "timeshift_abs_ic": 0.01,
-    "timeshift_real_fraction": 0.50,
-    "label_shift_days": DEFAULT_LABEL_SHIFT_DAYS,
+    "shuffle_abs_ic": SHUFFLED_IC_MAX_ABS,
+    "shuffle_real_fraction": 0.0,
+    "timeshift_abs_ic": PLACEBO_IC_FLOOR,
+    "timeshift_real_fraction": PLACEBO_RATIO_MAX,
+    "timeshift_shift_rule": "2x_label_horizon",
 }
+
+
+def default_label_shift_days(label_lookahead_days: int) -> int:
+    """Mirror the prod WF gate's 2x-horizon timeshift placebo contract."""
+    return max(1, 2 * int(label_lookahead_days))
+
+
+def placebo_ic_threshold(aligned_real_ic: float, *, kind: TrialKind) -> float:
+    """Research placebo thresholds must match the production gate exactly."""
+    if kind == "shuffle_placebo":
+        return SHUFFLED_IC_MAX_ABS
+    return max(PLACEBO_IC_FLOOR, PLACEBO_RATIO_MAX * abs(float(aligned_real_ic)))
+
+
+def gate_thresholds_for_spec(spec: "ExperimentSpec") -> dict[str, Any]:
+    return {
+        **GATE_THRESHOLDS,
+        "label_shift_days": int(spec.label_shift_days or default_label_shift_days(
+            spec.label_lookahead_days
+        )),
+    }
 REGIME_GOLDEN_WINDOWS = (
     {
         "name": "covid_crash",
@@ -131,7 +154,7 @@ class ExperimentSpec:
     label_lookahead_days: int = 60
     embargo_days: int = 60
     val_tail_pct: float = DEFAULT_ALL_VAL_TAIL_PCT
-    label_shift_days: int = DEFAULT_LABEL_SHIFT_DAYS
+    label_shift_days: int | None = None
     baseline_config: str = DEFAULT_BASELINE_CONFIG
     baseline_pooled_ic: float | None = None
     check_promotion: bool = False
@@ -281,6 +304,8 @@ class ResolvePathsTask(Task):
             raise FileNotFoundError(f"dataset not found: {spec.dataset}")
         if spec.require_regime_contract and not spec.spy_path.exists():
             raise FileNotFoundError(f"spy_path not found: {spec.spy_path}")
+        if spec.label_shift_days is None:
+            spec.label_shift_days = default_label_shift_days(spec.label_lookahead_days)
         spec.out_dir.mkdir(parents=True, exist_ok=True)
         return True
 
@@ -636,7 +661,7 @@ class FingerprintTrialsTask(Task):
                 "git_dirty": ctx.environment.get("git_dirty"),
                 "regime_contract": ctx.regime_contract,
                 "splitter_contract": ctx.environment.get("splitter_contract"),
-                "gate_thresholds": GATE_THRESHOLDS,
+                "gate_thresholds": gate_thresholds_for_spec(spec),
             }
             trial.fingerprint = "sha256:" + _hash_json(payload)
         return True
@@ -793,7 +818,7 @@ class PrepareTrialTask(Task):
             {
                 "trial_id": ctx.spec.trial_id,
                 "fingerprint": ctx.spec.fingerprint,
-                "gate_thresholds": GATE_THRESHOLDS,
+                "gate_thresholds": gate_thresholds_for_spec(ctx.experiment.spec),
                 "splitter_contract": ctx.experiment.environment.get("splitter_contract"),
             },
         )
@@ -973,7 +998,7 @@ class PlaceboVerdictTask(Task):
             name: gate for name, gate in ctx.placebo_gate.items()
             if gate.get("hard_gate", True) and not gate.get("passed", False)
         }
-        ctx.placebo_gate["thresholds"] = dict(GATE_THRESHOLDS)
+        ctx.placebo_gate["thresholds"] = gate_thresholds_for_spec(ctx.spec)
         if failed:
             ctx.verdict = "invalid_experiment"
             return False
@@ -1417,16 +1442,7 @@ def _placebo_check(ctx: ExperimentContext, kind: TrialKind) -> bool | None:
     ]
     real_mean = float(np.mean([r.pooled_ic for r in real])) if real else float("nan")
     pl_mean = float(np.mean([r.pooled_ic for r in placebo])) if placebo else float("nan")
-    if kind == "shuffle_placebo":
-        threshold = max(
-            GATE_THRESHOLDS["shuffle_abs_ic"],
-            GATE_THRESHOLDS["shuffle_real_fraction"] * abs(real_mean),
-        )
-    else:
-        threshold = max(
-            GATE_THRESHOLDS["timeshift_abs_ic"],
-            GATE_THRESHOLDS["timeshift_real_fraction"] * abs(real_mean),
-        )
+    threshold = placebo_ic_threshold(real_mean, kind=kind)
     passed = bool(np.isfinite(pl_mean) and abs(pl_mean) <= threshold)
     ctx.placebo_gate[kind] = {
         "passed": passed,
@@ -1434,6 +1450,11 @@ def _placebo_check(ctx: ExperimentContext, kind: TrialKind) -> bool | None:
         "real_ic_mean": real_mean,
         "placebo_ic_mean": pl_mean,
         "threshold": threshold,
+        "threshold_contract": (
+            "abs(placebo_ic) <= 0.005"
+            if kind == "shuffle_placebo"
+            else "abs(placebo_ic) <= max(0.005, 0.5 * abs(real_ic))"
+        ),
         "n_real": len(real),
         "n_placebo": len(placebo),
     }
