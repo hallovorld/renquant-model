@@ -19,6 +19,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr
 
+from renquant_common.model_fingerprint import model_content_sha256
 from renquant_model_common.calibrator_quality import flat_region_stats
 from renquant_model_common.global_calibrator import fit_global_calibrator
 from renquant_model_gbdt.feature_transform import transform_feature_frame
@@ -31,26 +32,15 @@ DEFAULT_RAW_LABEL_PANEL_FILENAME = "alpha158_291_fundamental_dataset_rawlabel.pa
 DEFAULT_LABEL = "fwd_60d_excess"
 MAX_FLAT_FRACTION = 0.30
 
-
-def model_content_sha256(payload: dict) -> str:
-    """Stable scorer identity over fields that change predictions."""
-    content = {
-        "params": payload.get("params"),
-        "feature_cols": payload.get("feature_cols"),
-        "feature_columns": payload.get("feature_columns"),
-        "feature_means": payload.get("feature_means"),
-        "feature_stds": payload.get("feature_stds"),
-        "feature_norm_kind": payload.get("feature_norm_kind"),
-        "feature_norm_kinds": payload.get("feature_norm_kinds"),
-        "feature_raw_clip_low": payload.get("feature_raw_clip_low"),
-        "feature_raw_clip_high": payload.get("feature_raw_clip_high"),
-        "label_col": payload.get("label_col"),
-        "booster_raw_json": payload.get("booster_raw_json"),
-    }
-    if not any(value is not None for value in content.values()):
-        raise ValueError("payload has no recognizable scorer prediction content")
-    blob = json.dumps(content, sort_keys=True, separators=(",", ":"), default=str)
-    return "sha256:" + hashlib.sha256(blob.encode("utf-8")).hexdigest()
+# `model_content_sha256` used to be hand-copied here as an ALLOWLIST-style
+# implementation (INCLUDING label_col, missing several fields the runtime
+# denylist excludes) — DIFFERENT from renquant-pipeline's runtime
+# `panel_scorer.model_content_sha256`, which is DENYLIST-style. That
+# divergence meant a calibrator fit here could never match the runtime
+# scorer-binding check by construction — the recurring
+# 2026-05-27/06-22/07-01 fail-closed incident. Fixed 2026-07-01: both repos
+# now import the SAME function from `renquant_common.model_fingerprint`. Do
+# not re-add a local copy here.
 
 
 def _artifact_fingerprint(path: Path, payload: dict) -> str:
