@@ -16,10 +16,10 @@ strategy config. Absent a regime map the model trains on the full feature set.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import re
+import warnings
 from pathlib import Path
 from typing import Any, Optional
 
@@ -27,6 +27,7 @@ import numpy as np
 import pandas as pd
 
 from renquant_common import Job, Pipeline, Task
+from renquant_common.model_fingerprint import model_content_sha256
 
 from .panel_trainer import DEFAULT_LABEL
 from .pipeline import GbdtTrainingContext, ModelTrainingJob
@@ -139,15 +140,22 @@ def build_normalization(
 
 
 def content_fingerprint(artifact: dict[str, Any]) -> str:
-    """Self-describing sha256 over model-defining fields (params + features + booster)."""
-    payload = {
-        "params": artifact.get("params"),
-        "feature_cols": artifact.get("feature_cols"),
-        "label_col": artifact.get("label_col"),
-        "booster_raw_json": artifact.get("booster_raw_json"),
-    }
-    blob = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return "sha256:" + hashlib.sha256(blob).hexdigest()
+    """DEPRECATED: use ``renquant_common.model_fingerprint.model_content_sha256``.
+
+    This was a LOCAL allowlist-style hash over 4 fields (params, feature_cols,
+    label_col, booster_raw_json) — DIFFERENT from the pipeline's denylist-style
+    hash. That divergence is the root cause of the recurring 2026-05-27/06-22/
+    07-01 fail-closed incidents. Both repos now import the SAME function from
+    ``renquant_common.model_fingerprint``. Do not re-fork a local copy.
+    """
+    warnings.warn(
+        "content_fingerprint() is deprecated — use "
+        "renquant_common.model_fingerprint.model_content_sha256() directly. "
+        "This wrapper will be removed in a future release.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return model_content_sha256(artifact)
 
 
 def attach_inference_smoke(artifact: dict, booster: Any, feat_cols: list[str]) -> None:
@@ -228,7 +236,14 @@ class BuildNormalizationTask(Task):
 class StampFingerprintTask(Task):
     """Stamp the config fingerprint: the injected production fingerprint when the
     orchestrator provides one (so the runtime scorer matches), else a
-    self-describing content hash."""
+    self-describing content hash via the canonical
+    ``renquant_common.model_fingerprint.model_content_sha256``.
+
+    Migration note (M6): the fallback previously called the LOCAL
+    ``content_fingerprint()`` which hashed only 4 fields — DIFFERENT from
+    the pipeline's runtime hash. Both sides now use the same canonical
+    function from renquant-common, structurally guaranteeing agreement.
+    """
 
     def run(self, ctx: GbdtTrainingContext) -> bool | None:
         if ctx.artifact is None:
@@ -239,7 +254,7 @@ class StampFingerprintTask(Task):
                 ctx.artifact["config_fingerprint_fields"] = ctx.config_fingerprint_fields
             log.info("Production config fingerprint: %s", ctx.config_fingerprint)
         else:
-            fp = content_fingerprint(ctx.artifact)
+            fp = model_content_sha256(ctx.artifact)
             ctx.artifact["config_fingerprint"] = fp
             log.info("Content fingerprint (no production fp injected): %s", fp)
         return True
