@@ -48,6 +48,22 @@ CRYPTO_OHLCV_DIRNAME = "crypto_ohlcv"
 DEFAULT_CRYPTO_LABEL = "fwd_20d_raw"
 CRYPTO_LABEL_HORIZON_CALENDAR_DAYS = 20
 
+#: Execution-timing fix (Codex review, model#43 r2 follow-up): the label's
+#: horizon is frozen at 20 calendar days, but same-bar entry (label[D] =
+#: close[D+h]/close[D]) prices a fill at bar D's OWN close — the identical
+#: information the alpha158 features at D are computed from, and therefore
+#: not an achievable execution price (the r2 fix already applied this same
+#: reasoning to the net-of-cost replay's fills via
+#: ``fee_gate.DEFAULT_EXECUTION_DELAY_BARS`` — this constant is the SAME
+#: value, kept independent here since panel_data is the more foundational
+#: data-layer module and must not depend on the evaluation-layer fee_gate;
+#: ``tests/crypto/test_crypto_panel_data.py`` pins the two stay equal).
+#: The label's TRUE information window is therefore
+#: ``CRYPTO_LABEL_HORIZON_CALENDAR_DAYS + LABEL_EXECUTION_DELAY_CALENDAR_DAYS``
+#: calendar days — the CV/cutoff embargo below is sized to that, not the
+#: frozen horizon alone, so no leakage gap reopens at the boundary.
+LABEL_EXECUTION_DELAY_CALENDAR_DAYS = 1
+
 #: §4.6 pre-registered weaker claim, stamped on every artifact.
 SURVIVORSHIP_CLAIM = "exploratory_survivor_only_panel"
 EVIDENCE_TIER = "tier1_exploratory_survivor_only"
@@ -142,21 +158,35 @@ def compute_raw_forward_return_label(
     close: pd.Series,
     horizon_days: int = CRYPTO_LABEL_HORIZON_CALENDAR_DAYS,
 ) -> pd.Series:
-    """Raw forward return over EXACTLY ``horizon_days`` calendar days.
+    """Raw forward return over EXACTLY ``horizon_days`` calendar days,
+    entered at the first FEASIBLE execution point after the signal bar.
 
-    ``label[D] = close[D + horizon_days] / close[D] - 1`` with an EXACT
-    calendar-day match: when the ``D + horizon_days`` bar is absent from the
-    store (vendor gap, end of history) the label is NaN — never a
-    nearest-bar substitute, which would silently vary the horizon (RFC §4.3
-    freeze). Calendar days, not trading days: crypto's UTC daily axis is the
+    ``label[D] = close[D + 1 + horizon_days] / close[D + 1] - 1`` (Codex
+    review, model#43 r2 follow-up): entry is priced at ``close[D+1]`` — the
+    first bar strictly AFTER the one whose close the alpha158 features at D
+    are computed from — never at ``close[D]`` itself, which is not an
+    achievable fill for a decision that can only be made once that same
+    close prints. Exactly ``horizon_days`` of realized market exposure
+    follows from that feasible entry. EXACT calendar-day match on BOTH
+    legs: when either the entry or exit target bar is absent from the store
+    (vendor gap, end of history) the label is NaN — never a nearest-bar
+    substitute, which would silently vary the horizon OR the entry
+    convention (RFC §4.3 freeze extended to cover execution feasibility).
+    Calendar days, not trading days: crypto's UTC daily axis is the
     365-day market's native clock (gap B4).
     """
     if int(horizon_days) <= 0:
         raise ValueError(f"horizon_days must be positive, got {horizon_days!r}")
     c = close.sort_index()
-    target = c.index + pd.Timedelta(days=int(horizon_days))
-    fwd = c.reindex(target)  # exact-match only; missing -> NaN
-    label = pd.Series(fwd.to_numpy(dtype=float) / c.to_numpy(dtype=float) - 1.0, index=c.index)
+    entry_target = c.index + pd.Timedelta(days=LABEL_EXECUTION_DELAY_CALENDAR_DAYS)
+    exit_target = c.index + pd.Timedelta(
+        days=LABEL_EXECUTION_DELAY_CALENDAR_DAYS + int(horizon_days)
+    )
+    entry = c.reindex(entry_target)  # exact-match only; missing -> NaN
+    fwd = c.reindex(exit_target)  # exact-match only; missing -> NaN
+    label = pd.Series(
+        fwd.to_numpy(dtype=float) / entry.to_numpy(dtype=float) - 1.0, index=c.index
+    )
     return label
 
 
@@ -356,8 +386,18 @@ class LoadCryptoPanelTask(Task):
         train = panel.dropna(subset=[label])
         ctx.lookahead_days = infer_label_lookahead_days(label)
         if ctx.cutoff_date is not None:
-            embargo = int(ctx.lookahead_days if ctx.cutoff_embargo_days is None
-                          else ctx.cutoff_embargo_days)
+            # Default embargo pads the label's NAMED horizon by the same
+            # execution-entry delay the label itself now bakes in (r2
+            # follow-up) — the label's TRUE information window is
+            # lookahead_days + LABEL_EXECUTION_DELAY_CALENDAR_DAYS calendar
+            # days, and an embargo sized to the horizon alone would reopen
+            # a 1-day leakage gap at the boundary. An explicit
+            # cutoff_embargo_days always wins (caller's own, wider or
+            # narrower, informed choice).
+            embargo = int(
+                ctx.lookahead_days + LABEL_EXECUTION_DELAY_CALENDAR_DAYS
+                if ctx.cutoff_embargo_days is None else ctx.cutoff_embargo_days
+            )
             effective_cutoff = pd.Timestamp(ctx.cutoff_date) - pd.Timedelta(days=max(0, embargo))
             train = train[train["date"] < effective_cutoff]
             if len(train) == 0:

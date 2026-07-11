@@ -166,3 +166,59 @@ Stage-0 fee calibration, any orchestrator/pipeline/execution wiring
 - Merge order is now HARD: common#28 (0.12.0) must merge and siblings sync
   before the crypto family is usable; the equity families are unaffected
   either way.
+
+---
+
+## r2 follow-up (same day) — the label itself still had the same lookahead
+
+r2 correctly fixed the net-of-cost REPLAY's fill timing, but did not touch
+`panel_data.compute_raw_forward_return_label` — the TRAINING LABEL
+(`fwd_20d_raw`) still priced entry at bar D's own close
+(`label[D] = close[D+h]/close[D] - 1`), the identical information the
+alpha158 features at D are computed from. This is the same structural bug
+Codex's review named ("the fill price was not available after observing the
+signal"), just in the label the model is actually trained AND gross-CV'd
+against, independent of how the replay later executes on the model's score.
+
+- `compute_raw_forward_return_label`: now `label[D] = close[D+1+h]/close[D+1]
+  - 1` — entry at the first bar strictly after D (the same one-bar delay
+  the r2 replay fix uses), exit exactly `h` calendar days later. New
+  `LABEL_EXECUTION_DELAY_CALENDAR_DAYS = 1` constant, independent of
+  `fee_gate.DEFAULT_EXECUTION_DELAY_BARS` (data-layer must not import the
+  evaluation-layer) but pinned equal by a cross-module tripwire test
+  (`test_label_execution_delay_matches_replay_execution_delay`) so the two
+  can never silently drift apart.
+- Regression test (Codex's explicit ask, at the label level this time):
+  `test_mutating_bar_d_close_never_changes_bar_d_label` mutates `close[D]`
+  to a wildly different value and asserts `label[D]` is unchanged.
+- **Embargo correction**: the label's TRUE information window widened by
+  the entry delay (21 days, not 20) — an embargo sized to the named horizon
+  alone would reopen a 1-day leakage gap at the CV fold boundary and at a
+  production `cutoff_date`. `CryptoTrainingContext.cv_embargo_days` default
+  is now `21` (was `20`); `LoadCryptoPanelTask`'s default cutoff embargo
+  (when the caller doesn't override `cutoff_embargo_days`) now pads
+  `lookahead_days` by the same delay. An explicit caller-supplied embargo
+  still always wins.
+
+### Dependency status (unchanged by this follow-up, verified again)
+
+`common#28` is still open (not merged) — its own head now correctly reports
+version 0.12.0 (a concurrent r2 fix there), but Codex's only review on it
+is stale (submitted against the pre-fix commit) and CI on THIS PR
+(model#43) will keep failing at `pip install` dependency resolution
+(`renquant-common==0.11.0` from the checked-out main vs. this PR's
+`>=0.12.0` requirement) until common#28 actually merges. This is expected,
+external, and not a defect in this PR's logic: verified by running the full
+suite against a temporary worktree of common#28's own branch (which
+already reports 0.12.0) — **335 passed, 2 skipped** (the 2 being an
+unrelated, pre-existing environment artifact). Left as-is per r2's
+"no fallback by design" decision (reintroducing one would recreate exactly
+the drift risk D-C8a exists to prevent) — the correct next action is
+getting common#28 through review and merged, not working around it here.
+
+### Verification
+
+Full suite against the common#28 branch checkout: 335 passed, 2 skipped.
+Verified meaningful via stash-revert (both touched source files):
+`test_crypto_panel_data.py` fails to import (`LABEL_EXECUTION_DELAY_
+CALENDAR_DAYS` doesn't exist pre-fix).

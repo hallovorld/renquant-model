@@ -49,7 +49,7 @@ def trained(tmp_path_factory) -> CryptoTrainingContext:
     make_crypto_store(tmp, SLUGS, n_days=240)
     ctx = CryptoTrainingContext(
         params=dict(PANEL_LTR_PARAMS), num_boost_round=10,
-        cv_n_splits=2, cv_embargo_days=20,
+        cv_n_splits=2,  # cv_embargo_days: exercise the (now 21-day) default
         data_dir=str(tmp), pairs=list(PAIRS),
         output_path=str(tmp / "crypto-panel-ltr.json"),
         train_run_id="crypto-selftest",
@@ -77,7 +77,9 @@ class TestArtifactContract:
         art = trained.artifact
         assert art["label_col"] == "fwd_20d_raw"
         assert art["lookahead_days"] == 20
-        assert art["cv_embargo_days"] == 20
+        # 21, not 20: default embargo pads the named horizon by the label's
+        # execution-entry delay (r2 follow-up) so no leakage gap reopens.
+        assert art["cv_embargo_days"] == 21
 
     def test_normalization_is_train_fit_panel_raw_z(self, trained: CryptoTrainingContext) -> None:
         art = trained.artifact
@@ -110,7 +112,7 @@ class TestArtifactContract:
         assert gate["method"] == "purged_walk_forward_net_of_cost"
         assert gate["grade"] == "net_of_cost"
         assert gate["net_verdict_status"] == "emitted"
-        assert gate["embargo_days"] == 20
+        assert gate["embargo_days"] == 21  # padded default; see cv_embargo_days above
         assert gate["btc_slug"] == "BTC-USD"
         assert gate["folds"], "net-of-cost WF must produce folds"
         diag = gate["promotion_diagnostic"]
@@ -219,9 +221,12 @@ class TestVariants:
         )
         build_crypto_training_pipeline().run(ctx)
         art = ctx.artifact
-        effective = cutoff - pd.Timedelta(days=20)  # calendar days, not BDay
+        # 21, not 20: the label's execution-entry delay (r2 follow-up) widens
+        # its TRUE information window by one calendar day beyond the named
+        # horizon, and the default embargo pads to match (calendar days, not BDay).
+        effective = cutoff - pd.Timedelta(days=21)
         assert art["cutoff_date"] == cutoff.isoformat()
-        assert art["cutoff_embargo_days"] == 20
+        assert art["cutoff_embargo_days"] == 21
         assert art["effective_train_cutoff_date"] == effective.isoformat()
         assert pd.Timestamp(ctx.train["date"].max()) < effective
 

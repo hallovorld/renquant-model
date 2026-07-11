@@ -41,7 +41,9 @@ from .fee_gate import (
 )
 from .panel_data import (
     BuildCryptoNormalizationTask,
+    CRYPTO_LABEL_HORIZON_CALENDAR_DAYS,
     DEFAULT_CRYPTO_LABEL,
+    LABEL_EXECUTION_DELAY_CALENDAR_DAYS,
     LoadCryptoPanelTask,
     crypto_universe_stamp,
 )
@@ -52,14 +54,19 @@ class CryptoTrainingContext(GbdtTrainingContext):
     """Shared context for the crypto panel training pipeline.
 
     Inherits the equity engine's context contract; crypto defaults are the
-    RFC-frozen ones — label ``fwd_20d_raw`` (§4.3), lookahead/embargo 20
-    CALENDAR days (§4.4 embargo >= h on the UTC-day axis).
+    RFC-frozen ones — label ``fwd_20d_raw`` (§4.3), lookahead 20 CALENDAR
+    days (the frozen, NAMED horizon). ``cv_embargo_days`` is one day WIDER
+    than the horizon (21, not 20): the label's execution-timing fix (r2
+    follow-up) prices entry at ``D+1``, so its TRUE information window is
+    ``horizon + LABEL_EXECUTION_DELAY_CALENDAR_DAYS`` calendar days — an
+    embargo sized to the horizon alone would reopen a 1-day leakage gap at
+    the fold boundary (§4.4 embargo >= h on the UTC-day axis, now h_true).
     """
 
     # RFC-frozen crypto defaults (override the equity defaults).
     label: str = DEFAULT_CRYPTO_LABEL
-    lookahead_days: int = 20
-    cv_embargo_days: int = 20
+    lookahead_days: int = CRYPTO_LABEL_HORIZON_CALENDAR_DAYS
+    cv_embargo_days: int = CRYPTO_LABEL_HORIZON_CALENDAR_DAYS + LABEL_EXECUTION_DELAY_CALENDAR_DAYS
 
     # ── crypto data-side inputs ──
     #: STATIC current-pairs universe (pair or slug form) — §4.6 snapshot.
