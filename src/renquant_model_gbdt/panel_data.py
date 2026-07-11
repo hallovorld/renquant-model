@@ -31,6 +31,7 @@ from renquant_common.model_fingerprint import model_content_sha256
 
 from .panel_trainer import DEFAULT_LABEL
 from .pipeline import GbdtTrainingContext, ModelTrainingJob
+from .vol_trend_features import VOL_TREND_FEATURE_SET_VERSION, VOL_TREND_FEATURES
 
 log = logging.getLogger("renquant_model_gbdt.panel_data")
 
@@ -197,13 +198,37 @@ class LoadPanelTask(Task):
         # Track B recipe stamp — any Track B feature in feat_cols pins a
         # ``feature_addendum_v1`` field on the artifact so the WF gate's
         # recipe-match check distinguishes the variant from baseline.
+        addendum: dict[str, Any] = {}
         track_b_active = [c for c in TRACK_B_FEATURES if c in feat_cols]
         if track_b_active:
-            ctx.extra_artifact_fields["feature_addendum_v1"] = {
+            # Key order preserved verbatim — a Track-B-only panel must stamp a
+            # byte-identical addendum to the pre-vol_trend code.
+            addendum.update({
                 "track_b_features_active": track_b_active,
                 "source": "renquant-base-data:track_b_features",
                 "memo": "doc/research/2026-06-02-track-b-feature-audit.md",
+            })
+        # Vol/trend feature-set v2 stamp (STD60 provenance, orchestrator
+        # #475/#476) — any vol_trend_v2 column in feat_cols pins a versioned
+        # sub-object under ``feature_addendum_v1`` so the WF gate's recipe-match
+        # check distinguishes the returns-vol/trend-interaction variant from the
+        # current recipe. NESTED (not a new top-level key) on purpose:
+        # ``feature_addendum_v1`` is the recipe-identity field already classified
+        # PREDICTIVE in renquant-common's fail-closed fingerprint table
+        # (model_fingerprint.PREDICTIVE_KEYS, hashed as one atomic unit), so the
+        # v2 recipe binds into the model content fingerprint with no cross-repo
+        # classification-table change and no FINGERPRINT_SCHEMA_VERSION bump.
+        # Panels without these columns (production today) stamp byte-identically.
+        vol_trend_active = [c for c in VOL_TREND_FEATURES if c in feat_cols]
+        if vol_trend_active:
+            addendum["vol_trend_v2"] = {
+                "feature_set_version": VOL_TREND_FEATURE_SET_VERSION,
+                "vol_trend_features_active": vol_trend_active,
+                "source": "renquant-model:vol_trend_features",
+                "memo": "doc/progress/2026-07-11-vol-trend-feature-set-v2.md",
             }
+        if addendum:
+            ctx.extra_artifact_fields["feature_addendum_v1"] = addendum
         ctx.train, ctx.feat_cols, ctx.label = train, feat_cols, label
         ctx.lookahead_days = infer_label_lookahead_days(label)
         if ctx.cutoff_date is not None:

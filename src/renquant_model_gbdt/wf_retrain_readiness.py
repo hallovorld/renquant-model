@@ -12,10 +12,33 @@ from pathlib import Path
 from typing import Any
 
 from .panel_data import TRACK_B_FEATURES
+from .vol_trend_features import VOL_TREND_FEATURE_SET_VERSION, VOL_TREND_FEATURES
 
 READINESS_CONFIG_VERSION = 1
 TRIAD_METADATA_KEYS = ("sanity_triad", "placebo_triad", "placebo_sanity_triad")
 VERDICT_METADATA_KEYS = ("verdict_metadata", "verdict_inputs")
+FEATURE_SET_VERSION_KEYS = ("feature_set_version", "feature_set")
+
+
+def config_declares_vol_trend_feature_set(config: dict[str, Any]) -> bool:
+    """True when a retrain config opts into the ``vol_trend_v2`` feature set.
+
+    Declared via ``feature_set_version`` (or ``feature_set``) at the top level or
+    inside a ``full_wf_retrain`` object. Configs that do not declare the key are
+    entirely unaffected — the vol_trend checks below are only appended when this
+    returns True (zero default behavior change; production configs keep the old
+    recipe until a gated retrain adopts the new one).
+    """
+
+    scopes: list[dict[str, Any]] = [config]
+    retrain = config.get("full_wf_retrain")
+    if isinstance(retrain, dict):
+        scopes.append(retrain)
+    for scope in scopes:
+        for key in FEATURE_SET_VERSION_KEYS:
+            if str(scope.get(key) or "").strip().lower() == VOL_TREND_FEATURE_SET_VERSION:
+                return True
+    return False
 
 
 def is_full_wf_retrain_config(config: dict[str, Any]) -> bool:
@@ -96,12 +119,61 @@ def validate_full_wf_retrain_readiness(
             evidence,
         )
 
+    # Vol/trend feature-set v2 checks (STD60 provenance, orchestrator #475/#476) —
+    # appended ONLY when the config declares feature_set_version=vol_trend_v2, so
+    # existing configs (production today) produce a byte-identical report.
+    vol_trend_declared = config_declares_vol_trend_feature_set(config)
+    required_vol_trend = list(VOL_TREND_FEATURES)
+    if vol_trend_declared:
+        missing_vt_config = _missing(required_vol_trend, config_features)
+        _add_check(
+            checks,
+            "config_requires_vol_trend_features",
+            not missing_vt_config,
+            {"required_features": config_features, "missing": missing_vt_config},
+        )
+        if artifact is not None:
+            artifact_features = _artifact_features(artifact)
+            missing_vt_artifact = _missing(required_vol_trend, artifact_features)
+            _add_check(
+                checks,
+                "artifact_contains_vol_trend_features",
+                not missing_vt_artifact,
+                {"feature_cols": artifact_features, "missing": missing_vt_artifact},
+            )
+            # The v2 stamp is NESTED under feature_addendum_v1 (the recipe-
+            # identity field renquant-common's fingerprint table classifies
+            # PREDICTIVE as one atomic unit) — see panel_data.LoadPanelTask.
+            addendum_v1 = artifact.get("feature_addendum_v1")
+            vol_trend_stamp = (addendum_v1 or {}).get("vol_trend_v2") if isinstance(addendum_v1, dict) else None
+            if isinstance(vol_trend_stamp, dict):
+                active_v2 = [str(v) for v in vol_trend_stamp.get("vol_trend_features_active", [])]
+                stamped_version = vol_trend_stamp.get("feature_set_version")
+            else:
+                active_v2, stamped_version = [], None
+            missing_vt_addendum = _missing(required_vol_trend, active_v2)
+            version_ok = stamped_version == VOL_TREND_FEATURE_SET_VERSION
+            _add_check(
+                checks,
+                "artifact_stamps_vol_trend_addendum",
+                version_ok and not missing_vt_addendum,
+                {
+                    "feature_set_version": stamped_version,
+                    "expected_feature_set_version": VOL_TREND_FEATURE_SET_VERSION,
+                    "vol_trend_features_active": active_v2,
+                    "missing": missing_vt_addendum,
+                },
+            )
+
     report = {
         "ok": all(bool(c["ok"]) for c in checks),
         "readiness_config_version": READINESS_CONFIG_VERSION,
         "required_track_b_features": required,
         "checks": checks,
     }
+    if vol_trend_declared:
+        report["feature_set_version"] = VOL_TREND_FEATURE_SET_VERSION
+        report["required_vol_trend_features"] = required_vol_trend
     return report
 
 
