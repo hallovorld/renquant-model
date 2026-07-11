@@ -5,8 +5,9 @@ panel scorer reuses ``renquant_model_gbdt``'s engine (``ModelTrainingJob``,
 ``kind="panel_ltr_xgboost"``) with crypto data-side Tasks (D-C2 store
 consumption, frozen raw 20-calendar-day label, survivor-only universe
 stamps) and a fee-aware net-of-cost WF gate (D-C8b) consuming the shared
-``renquant_common.cost_model`` primitive (D-C8a, soft-consumed with an
-identical local fallback).
+``renquant_common.cost_model`` primitive (D-C8a) as a HARD dependency
+(renquant-common>=0.12.0, fail-closed at import — no local fallback by
+design, Codex review model#43 r2).
 
 Family-gated: no equity or production path imports this package; equity
 family behavior is pinned byte-identical by tests.
@@ -16,7 +17,10 @@ from .fee_gate import (
     BTC_TIMING_LOOKBACK_CALENDAR_DAYS,
     CRYPTO_TAKER_FEE_BPS_DEFAULT,
     DEFAULT_BTC_SLUG,
-    USING_COMMON_COST_MODEL,
+    DEFAULT_EXECUTION_DELAY_BARS,
+    MEASURED_COST_SOURCES,
+    NET_VERDICT_EMITTED,
+    NET_VERDICT_WITHHELD,
     btc_buy_and_hold_net,
     btc_timing_rule_net,
     cost_model,
@@ -24,6 +28,7 @@ from .fee_gate import (
     default_crypto_cost_spec,
     net_of_cost_wf_evaluation,
     simulate_topk_net,
+    validate_cost_attestation,
 )
 from .panel_data import (
     CRYPTO_ANNUALIZATION_DAYS,
@@ -63,12 +68,15 @@ __all__ = [
     "CryptoTrainingContext",
     "DEFAULT_BTC_SLUG",
     "DEFAULT_CRYPTO_LABEL",
+    "DEFAULT_EXECUTION_DELAY_BARS",
     "EVIDENCE_TIER",
     "LoadCryptoPanelTask",
+    "MEASURED_COST_SOURCES",
+    "NET_VERDICT_EMITTED",
+    "NET_VERDICT_WITHHELD",
     "NetOfCostWfGateTask",
     "SURVIVORSHIP_CLAIM",
     "StampCryptoProvenanceTask",
-    "USING_COMMON_COST_MODEL",
     "as_slug",
     "assemble_crypto_panel",
     "btc_buy_and_hold_net",
@@ -84,4 +92,5 @@ __all__ = [
     "load_crypto_close",
     "net_of_cost_wf_evaluation",
     "simulate_topk_net",
+    "validate_cost_attestation",
 ]

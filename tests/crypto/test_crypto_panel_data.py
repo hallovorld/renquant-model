@@ -8,6 +8,10 @@ import pandas as pd
 import pytest
 
 pytest.importorskip("pyarrow")
+pytest.importorskip(
+    "renquant_common.cost_model",
+    reason="renquant-common>=0.12.0 (D-C8a, common#28) required — no local fallback by design",
+)
 
 from renquant_model_crypto.panel_data import (  # noqa: E402
     CRYPTO_LABEL_HORIZON_CALENDAR_DAYS,

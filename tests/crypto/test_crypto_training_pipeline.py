@@ -10,6 +10,10 @@ import pytest
 
 pytest.importorskip("pyarrow")
 xgb = pytest.importorskip("xgboost")
+pytest.importorskip(
+    "renquant_common.cost_model",
+    reason="renquant-common>=0.12.0 (D-C8a, common#28) required — no local fallback by design",
+)
 
 from renquant_common.model_fingerprint import (  # noqa: E402
     FINGERPRINT_SCHEMA_VERSION,
@@ -21,12 +25,22 @@ from renquant_model_gbdt.panel_trainer import PANEL_LTR_PARAMS  # noqa: E402
 from renquant_model_crypto import (  # noqa: E402
     CryptoTrainingContext,
     build_crypto_training_pipeline,
+    default_crypto_cost_spec,
 )
 
 from .conftest import make_crypto_store
 
 PAIRS = ["BTC/USD", "ETH/USD", "SOL/USD", "AVAX/USD", "LINK/USD"]
 SLUGS = ["BTC-USD", "ETH-USD", "SOL-USD", "AVAX-USD", "LINK-USD"]
+
+#: Synthetic MEASURED attestation for the net-verdict fixture. Clearly a
+#: test fixture: the point under test is the gating MECHANISM, not the
+#: number (which stays the [GUESS] 25 bps until the real Stage-0 battery).
+TEST_ATTESTATION = {
+    "source": "stage0_battery",
+    "measured_at": "2026-07-09",
+    "evidence_ref": "synthetic Stage-0 battery report (test fixture)",
+}
 
 
 @pytest.fixture(scope="module")
@@ -39,6 +53,8 @@ def trained(tmp_path_factory) -> CryptoTrainingContext:
         data_dir=str(tmp), pairs=list(PAIRS),
         output_path=str(tmp / "crypto-panel-ltr.json"),
         train_run_id="crypto-selftest",
+        fee_spec=default_crypto_cost_spec(),
+        cost_attestation=dict(TEST_ATTESTATION),
         fee_gate_top_k=2, fee_gate_rebalance_days=10,
     )
     result = build_crypto_training_pipeline().run(ctx)
@@ -92,18 +108,51 @@ class TestArtifactContract:
     def test_fee_gate_evidence_stamped(self, trained: CryptoTrainingContext) -> None:
         gate = trained.artifact["metadata"]["crypto_fee_gate_v1"]
         assert gate["method"] == "purged_walk_forward_net_of_cost"
+        assert gate["grade"] == "net_of_cost"
+        assert gate["net_verdict_status"] == "emitted"
         assert gate["embargo_days"] == 20
         assert gate["btc_slug"] == "BTC-USD"
         assert gate["folds"], "net-of-cost WF must produce folds"
-        assert gate["cost_spec"]["fee_bps"] == 25.0
-        assert gate["cost_spec"]["fee_default_status"] == "GUESS_stage0_verifies"
         diag = gate["promotion_diagnostic"]
         assert diag["diagnostic_only"] is True and diag["enable_path"] is False
+        assert diag["decision_grade"] is False
         assert isinstance(diag["wf_promotion_bar_met"], bool)
         for fold in gate["folds"]:
             # net <= gross always (costs only subtract)
             assert fold["strategy_net_total_return"] <= fold["strategy_gross_total_return"] + 1e-12
             assert fold["strategy_total_cost_fraction"] > 0
+
+    def test_fee_gate_cost_spec_identity_stamped(self, trained: CryptoTrainingContext) -> None:
+        prov = trained.artifact["metadata"]["crypto_fee_gate_v1"]["cost_spec_provenance"]
+        assert prov["cost_spec"]["fee_bps"] == 25.0
+        # cross-repo golden digest (pinned identically in renquant-common)
+        assert prov["cost_spec_sha256"] == (
+            "sha256:00db27bbca21c5292077b6d4135a12f60c952fcc5be211768f9feb8f2d825661")
+        assert prov["cost_model_fingerprint_schema_version"] == 1
+        assert prov["fee_default_status"] == "GUESS_stage0_verifies"
+        assert prov["attestation"] == TEST_ATTESTATION
+        assert prov["cost_model_impl"] == "renquant_common.cost_model"
+
+    def test_fee_gate_execution_convention_and_uncertainty(
+            self, trained: CryptoTrainingContext) -> None:
+        gate = trained.artifact["metadata"]["crypto_fee_gate_v1"]
+        conv = gate["execution_convention"]
+        assert conv["execution_delay_bars"] == 1
+        assert "D+1" in conv["fill"] or "D+1" in conv["observable_cutoff"]
+        # exploratory boundary: fold-level dates/counts + uncertainty
+        assert gate["decision_grade"] is False
+        assert any("survivor" in r for r in gate["decision_grade_reasons"])
+        assert any("prospective" in r for r in gate["decision_grade_reasons"])
+        assert gate["n_folds_evaluated"] == len(gate["folds"])
+        assert np.isfinite(gate["fold_total_return_dispersion"]) or \
+            gate["n_folds_evaluated"] == 1
+        for fold in gate["folds"]:
+            assert fold["n_val_dates"] > 0
+            assert fold["val_start"] < fold["val_end"]
+            stats = fold["return_stats"]
+            assert stats["n_periods"] == fold["n_val_dates"]
+            assert np.isfinite(stats["mean_daily_return"])
+            assert np.isfinite(stats["std_daily_return"])
 
     def test_smoke_evidence_coexists_with_crypto_stamps(self, trained: CryptoTrainingContext) -> None:
         md = trained.artifact["metadata"]
@@ -175,6 +224,31 @@ class TestVariants:
         assert art["cutoff_embargo_days"] == 20
         assert art["effective_train_cutoff_date"] == effective.isoformat()
         assert pd.Timestamp(ctx.train["date"].max()) < effective
+
+    def test_unattested_run_withholds_net_verdict(self, tmp_path: Path) -> None:
+        """No measured cost spec (the default) -> the gate emits labeled
+        GROSS-ONLY diagnostics and withholds every net figure: the [GUESS]
+        25 bps default can never become a net verdict (model#43 r2)."""
+        make_crypto_store(tmp_path, SLUGS, n_days=240)
+        ctx = CryptoTrainingContext(
+            params=dict(PANEL_LTR_PARAMS), num_boost_round=8, skip_cv=True,
+            cv_n_splits=2, data_dir=str(tmp_path), pairs=list(PAIRS),
+            train_run_id="unattested", fee_gate_top_k=2, fee_gate_rebalance_days=10,
+        )
+        build_crypto_training_pipeline().run(ctx)
+        gate = ctx.artifact["metadata"]["crypto_fee_gate_v1"]
+        assert gate["grade"] == "gross_only_diagnostic"
+        assert gate["net_verdict_status"] == "withheld_unmeasured_cost_spec"
+        assert gate["cost_spec_provenance"] is None
+        assert "pooled_strategy_net_total_return" not in gate
+        assert "pooled_strategy_gross_total_return" in gate  # labeled gross diagnostics emit
+        diag = gate["promotion_diagnostic"]
+        assert diag["status"] == "withheld_unmeasured_cost_spec"
+        assert "wf_promotion_bar_met" not in diag
+        assert any("unmeasured_cost_spec" in r for r in gate["decision_grade_reasons"])
+        for fold in gate["folds"]:
+            assert "strategy_net_total_return" not in fold
+            assert "strategy_gross_total_return" in fold
 
     def test_missing_pairs_fails_loud(self, tmp_path: Path) -> None:
         make_crypto_store(tmp_path, ["BTC-USD"], n_days=150)

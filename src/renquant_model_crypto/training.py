@@ -36,7 +36,7 @@ from renquant_model_gbdt.pipeline import GbdtTrainingContext, ModelTrainingJob
 
 from .fee_gate import (
     DEFAULT_BTC_SLUG,
-    default_crypto_cost_spec,
+    DEFAULT_EXECUTION_DELAY_BARS,
     net_of_cost_wf_evaluation,
 )
 from .panel_data import (
@@ -67,10 +67,17 @@ class CryptoTrainingContext(GbdtTrainingContext):
 
     # ── fee-aware WF gate (D-C8b) config ──
     run_fee_gate: bool = True
-    #: cost spec (shared cost_model CostModelSpec); None -> fee-only taker default.
+    #: MEASURED cost spec (shared cost_model CostModelSpec) + its attestation
+    #: ({source, measured_at, evidence_ref} — validate_cost_attestation shape).
+    #: BOTH None (default) -> the gate runs GROSS-ONLY, labeled, and the net
+    #: verdict is withheld: a [GUESS] fee default can never become a net
+    #: number (Codex review, model#43 r2). Spec-without-attestation (or vice
+    #: versa) is a hard error in the gate.
     fee_spec: Any = None
+    cost_attestation: Optional[dict[str, Any]] = None
     fee_gate_top_k: int = 5
     fee_gate_rebalance_days: int = 20
+    fee_gate_execution_delay_bars: int = DEFAULT_EXECUTION_DELAY_BARS
     btc_slug: str = DEFAULT_BTC_SLUG
 
     # ── set by Tasks ──
@@ -81,12 +88,13 @@ class CryptoTrainingContext(GbdtTrainingContext):
 
 
 class NetOfCostWfGateTask(Task):
-    """Run the fee-aware net-of-cost WF evaluation + BTC baselines (D-C8b).
+    """Run the fee-aware WF evaluation + BTC baselines (D-C8b).
 
     Skipped only when ``ctx.run_fee_gate`` is False (an explicit research
-    escape hatch); a crypto artifact intended for promotion review must
-    carry the net-of-cost evidence — gross-only evaluation of a crypto
-    model is exactly the failure the RFC's M1 gap names.
+    escape hatch). With an attested MEASURED spec (``ctx.fee_spec`` +
+    ``ctx.cost_attestation``) it emits the net verdict; without one it
+    emits labeled GROSS-ONLY diagnostics and withholds the net verdict —
+    never a net number from the [GUESS] default (model#43 r2).
     """
 
     def run(self, ctx: CryptoTrainingContext) -> bool | None:
@@ -101,8 +109,9 @@ class NetOfCostWfGateTask(Task):
             normalization_builder=ctx.normalization_builder,
             label=ctx.label, params=ctx.params, num_boost_round=ctx.num_boost_round,
             n_splits=ctx.cv_n_splits, embargo_days=ctx.cv_embargo_days,
-            spec=ctx.fee_spec if ctx.fee_spec is not None else default_crypto_cost_spec(),
+            spec=ctx.fee_spec, cost_attestation=ctx.cost_attestation,
             top_k=ctx.fee_gate_top_k, rebalance_days=ctx.fee_gate_rebalance_days,
+            execution_delay_bars=ctx.fee_gate_execution_delay_bars,
             btc_slug=ctx.btc_slug,
         )
         return True

@@ -111,3 +111,58 @@ Crypto-native feature families beyond the alpha158 price/volume subset
 artifact publication + production training config (D-C9 completion),
 Stage-0 fee calibration, any orchestrator/pipeline/execution wiring
 (D-C4..D-C7, D-C11..D-C13).
+
+---
+
+## r2 (same day) — Codex review fixes
+
+1. **Lookahead (blocking finding)**: the r1 replay decided AND filled at the
+   same bar's close — a fill priced inside the decision's information set.
+   Frozen feasible convention now: a decision from bar D fills at the close
+   of bar `D + execution_delay_bars` (default 1, the next observable daily
+   mark; 0 rejected everywhere); the delay period's return accrues to the
+   PRE-fill book; turnover costs are charged on the fill bar; decisions
+   whose fill bar falls beyond the window EXPIRE unexecuted (counted). The
+   pre-registered BTC-timing baseline takes the SAME delay (it conditions on
+   the decision bar's close); buy-and-hold takes none (it conditions on
+   nothing — and being fully invested from bar 0 vs the strategy's bar-1+
+   start is conservative AGAINST the strategy). Every result stamps an
+   `execution_convention` block. **Regression tests (Codex-required)**:
+   perturbing a decision bar's close leaves the replay's accounting
+   bit-identical, for both the strategy replay and the timing rule
+   (`tests/crypto/test_fee_gate.py::TestExecutionDelay`,
+   `TestBtcBaselines::test_timing_rule_regression_...`). All replay hand
+   math recomputed for the delayed-fill timeline.
+2. **Cost-model soft fallback REMOVED; measured-spec-gated net verdicts**:
+   `_cost_model_fallback.py` deleted; `renquant_common.cost_model` is a HARD
+   import (pyproject pin `renquant-common>=0.12.0`; informative fail-closed
+   ImportError below it — verified directly against common main). The gate
+   emits a NET verdict ONLY with a caller-supplied spec + a validated
+   MEASURED attestation (`{source: stage0_battery|live_canary, measured_at,
+   evidence_ref}`); the 25 bps default stays a [GUESS] research constant the
+   gate structurally cannot turn into a net number. Without attestation:
+   labeled `grade: gross_only_diagnostic`,
+   `net_verdict_status: withheld_unmeasured_cost_spec`, promotion verdict
+   withheld. Spec-without-attestation and malformed attestations are hard
+   errors (never silent downgrades). Every emitted spec stamps its canonical
+   identity: `cost_spec` dict + `cost_spec_sha256`
+   (`cost_model_content_sha256`, cross-repo golden-pinned) + schema version
+   + attestation.
+3. **Exploratory boundary hardened**: gate results (and the artifact stamp)
+   now carry `decision_grade: false` + explicit reasons (tier-1
+   survivor-only panel; unmeasured/partially-measured cost spec; no
+   prospective Stage 1/2/2.5 evidence), per-fold `n_val_dates`,
+   `val_start/val_end`, decision/fill/expiry counts, per-fold daily
+   return mean/std, and cross-fold total-return dispersion.
+
+### r2 verification
+
+- Consume path (sibling common on the companion branch, 0.12.0):
+  **334 passed, 0 skipped** (71 crypto tests).
+- Pre-D-C8a env (sibling common on main): **263 passed + 4 skipped** — the
+  four crypto test modules skip with the explicit hard-dependency reason;
+  equity suite byte-identical to the pre-PR baseline (263). Fail-closed
+  import verified directly.
+- Merge order is now HARD: common#28 (0.12.0) must merge and siblings sync
+  before the crypto family is usable; the equity families are unaffected
+  either way.

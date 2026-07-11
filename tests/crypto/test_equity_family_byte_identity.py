@@ -19,6 +19,10 @@ import pytest
 
 pytest.importorskip("pyarrow")
 xgb = pytest.importorskip("xgboost")
+pytest.importorskip(
+    "renquant_common.cost_model",
+    reason="renquant-common>=0.12.0 (D-C8a, common#28) required — no local fallback by design",
+)
 
 from renquant_common.model_fingerprint import model_content_sha256  # noqa: E402
 from renquant_model_gbdt import GbdtTrainingContext, build_training_pipeline  # noqa: E402
