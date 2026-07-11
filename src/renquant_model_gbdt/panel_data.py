@@ -208,17 +208,32 @@ class LoadPanelTask(Task):
                 "source": "renquant-base-data:track_b_features",
                 "memo": "doc/research/2026-06-02-track-b-feature-audit.md",
             })
-        # Vol/trend feature-set v2 stamp (STD60 provenance, orchestrator
-        # #475/#476) — any vol_trend_v2 column in feat_cols pins a versioned
-        # sub-object under ``feature_addendum_v1`` so the WF gate's recipe-match
-        # check distinguishes the returns-vol/trend-interaction variant from the
-        # current recipe. NESTED (not a new top-level key) on purpose:
-        # ``feature_addendum_v1`` is the recipe-identity field already classified
-        # PREDICTIVE in renquant-common's fail-closed fingerprint table
+        # Vol/trend feature-set v2 stamp (candidate features C1/C2 for the
+        # orchestrator #476 §7 preregistered baseline-vs-vol_trend_v2 experiment
+        # — NOT a repair for a proven STD60 defect; #476 established only a
+        # mechanically-reproduced single-path decomposition plus hypotheses H1-H4,
+        # not a general-adoption verdict; see the module docstring). Any
+        # vol_trend_v2 column in feat_cols pins a versioned sub-object under
+        # ``feature_addendum_v1`` so the WF gate's recipe-match check distinguishes
+        # the returns-vol/trend-interaction variant from the current recipe.
+        # NESTED (not a new top-level key) on purpose: ``feature_addendum_v1`` is
+        # the recipe-identity field already classified PREDICTIVE in
+        # renquant-common's fail-closed fingerprint table
         # (model_fingerprint.PREDICTIVE_KEYS, hashed as one atomic unit), so the
         # v2 recipe binds into the model content fingerprint with no cross-repo
         # classification-table change and no FINGERPRINT_SCHEMA_VERSION bump.
         # Panels without these columns (production today) stamp byte-identically.
+        #
+        # ``experiment_id`` / ``run_bundle_ref`` are ALWAYS stamped (possibly
+        # None) when the recipe is active — training/experimentation under
+        # vol_trend_v2 is unrestricted either way (this is not a training-time
+        # gate). Promotion eligibility is enforced downstream, once, in
+        # ``wf_retrain_readiness.validate_full_wf_retrain_readiness``: an
+        # artifact cannot pass readiness with a vol_trend_v2 recipe unless both
+        # fields are populated and ``experiment_id`` matches the config's
+        # declared value. No freshness/manual-override promotion path can
+        # satisfy that check after the fact, because it is evaluated on the
+        # stamp already baked into the (fingerprint-bound) artifact.
         vol_trend_active = [c for c in VOL_TREND_FEATURES if c in feat_cols]
         if vol_trend_active:
             addendum["vol_trend_v2"] = {
@@ -226,6 +241,8 @@ class LoadPanelTask(Task):
                 "vol_trend_features_active": vol_trend_active,
                 "source": "renquant-model:vol_trend_features",
                 "memo": "doc/progress/2026-07-11-vol-trend-feature-set-v2.md",
+                "experiment_id": ctx.experiment_id,
+                "run_bundle_ref": ctx.experiment_run_bundle_ref,
             }
         if addendum:
             ctx.extra_artifact_fields["feature_addendum_v1"] = addendum

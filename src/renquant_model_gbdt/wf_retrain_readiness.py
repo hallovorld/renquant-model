@@ -1,8 +1,31 @@
-"""Readiness checks for the Track B full walk-forward GBDT retrain.
+"""Readiness checks for the Track B full walk-forward GBDT retrain, plus the
+vol_trend_v2 experiment-contract gate (see ``config_declares_vol_trend_feature_set``
+/ ``config_declared_vol_trend_experiment_id`` below).
 
 This module is deliberately validation-only: it checks the config/artifact
 contract that a full WF retrain must satisfy, without loading panels or fitting
 models. The actual long-running retrain remains owned by the orchestrator.
+
+vol_trend_v2 promotion-eligibility gate: ``vol_trend_v2`` (F1 returns-based vol /
+F2 trend interactions) is a candidate feature-set implementation for the
+preregistered baseline-vs-vol_trend_v2 experiment that orchestrator #476 §7
+specifies as required future work (its own hypotheses H1-H4 are explicitly NOT a
+general-adoption verdict — see ``vol_trend_features`` module docstring). This
+module therefore requires, in addition to the feature/addendum checks, that:
+
+1. a retrain config opting into ``vol_trend_v2`` also declares an
+   ``experiment_id`` (the identifier of that preregistered experiment run — see
+   ``renquant_orchestrator.expkit.prereg.FrozenSpec.experiment_id`` for the
+   convention this mirrors), and
+2. the resulting artifact's ``vol_trend_v2`` stamp carries a matching
+   ``experiment_id`` plus a non-empty ``run_bundle_ref`` (a reference to that
+   run's persisted evidence/run bundle).
+
+Both are required for ``report["ok"]`` to be True whenever the config declares
+``vol_trend_v2`` — i.e. an artifact tagged ``vol_trend_v2`` WITHOUT a declared,
+matching experiment id and run bundle reference is never promotion-eligible
+through this readiness check, no matter what other candidate-scanning or
+freshness-override tooling elsewhere reads the resulting ``ok``/``passed`` bit.
 """
 from __future__ import annotations
 
@@ -18,6 +41,7 @@ READINESS_CONFIG_VERSION = 1
 TRIAD_METADATA_KEYS = ("sanity_triad", "placebo_triad", "placebo_sanity_triad")
 VERDICT_METADATA_KEYS = ("verdict_metadata", "verdict_inputs")
 FEATURE_SET_VERSION_KEYS = ("feature_set_version", "feature_set")
+EXPERIMENT_ID_KEYS = ("experiment_id",)
 
 
 def config_declares_vol_trend_feature_set(config: dict[str, Any]) -> bool:
@@ -39,6 +63,29 @@ def config_declares_vol_trend_feature_set(config: dict[str, Any]) -> bool:
             if str(scope.get(key) or "").strip().lower() == VOL_TREND_FEATURE_SET_VERSION:
                 return True
     return False
+
+
+def config_declared_vol_trend_experiment_id(config: dict[str, Any]) -> str | None:
+    """Return the non-empty ``experiment_id`` a retrain config declares, if any.
+
+    Same top-level-or-``full_wf_retrain``-scope lookup as
+    ``config_declares_vol_trend_feature_set``. This is the experiment-contract
+    identifier the vol_trend_v2 gate requires: it names the preregistered
+    baseline-vs-vol_trend_v2 comparison (orchestrator #476 §7) the config's
+    training run is standing in for. Returns ``None`` when absent/blank —
+    callers must treat that as "no experiment declared", not as a wildcard.
+    """
+
+    scopes: list[dict[str, Any]] = [config]
+    retrain = config.get("full_wf_retrain")
+    if isinstance(retrain, dict):
+        scopes.append(retrain)
+    for scope in scopes:
+        for key in EXPERIMENT_ID_KEYS:
+            value = str(scope.get(key) or "").strip()
+            if value:
+                return value
+    return None
 
 
 def is_full_wf_retrain_config(config: dict[str, Any]) -> bool:
@@ -119,11 +166,16 @@ def validate_full_wf_retrain_readiness(
             evidence,
         )
 
-    # Vol/trend feature-set v2 checks (STD60 provenance, orchestrator #475/#476) —
-    # appended ONLY when the config declares feature_set_version=vol_trend_v2, so
-    # existing configs (production today) produce a byte-identical report.
+    # Vol/trend feature-set v2 checks — appended ONLY when the config declares
+    # feature_set_version=vol_trend_v2, so existing configs (production today)
+    # produce a byte-identical report. vol_trend_v2 is a candidate feature-set
+    # implementation for the preregistered baseline-vs-vol_trend_v2 experiment
+    # (orchestrator #476 §7), not a validated replacement — see module docstring.
     vol_trend_declared = config_declares_vol_trend_feature_set(config)
     required_vol_trend = list(VOL_TREND_FEATURES)
+    declared_experiment_id = (
+        config_declared_vol_trend_experiment_id(config) if vol_trend_declared else None
+    )
     if vol_trend_declared:
         missing_vt_config = _missing(required_vol_trend, config_features)
         _add_check(
@@ -131,6 +183,21 @@ def validate_full_wf_retrain_readiness(
             "config_requires_vol_trend_features",
             not missing_vt_config,
             {"required_features": config_features, "missing": missing_vt_config},
+        )
+        # Experiment-contract gate, part 1: the config itself must name the
+        # preregistered experiment it stands in for. Absent this, nothing below
+        # can make the recipe promotion-eligible — the recipe stays disabled
+        # outside a declared experiment, with no freshness/manual-override path
+        # able to satisfy this check retroactively (it is evaluated on the
+        # config actually used for the run).
+        _add_check(
+            checks,
+            "config_requires_vol_trend_experiment_id",
+            declared_experiment_id is not None,
+            {
+                "experiment_id": declared_experiment_id,
+                "accepted_keys": list(EXPERIMENT_ID_KEYS),
+            },
         )
         if artifact is not None:
             artifact_features = _artifact_features(artifact)
@@ -149,8 +216,11 @@ def validate_full_wf_retrain_readiness(
             if isinstance(vol_trend_stamp, dict):
                 active_v2 = [str(v) for v in vol_trend_stamp.get("vol_trend_features_active", [])]
                 stamped_version = vol_trend_stamp.get("feature_set_version")
+                stamped_experiment_id = str(vol_trend_stamp.get("experiment_id") or "").strip() or None
+                stamped_run_bundle_ref = str(vol_trend_stamp.get("run_bundle_ref") or "").strip() or None
             else:
                 active_v2, stamped_version = [], None
+                stamped_experiment_id, stamped_run_bundle_ref = None, None
             missing_vt_addendum = _missing(required_vol_trend, active_v2)
             version_ok = stamped_version == VOL_TREND_FEATURE_SET_VERSION
             _add_check(
@@ -164,6 +234,28 @@ def validate_full_wf_retrain_readiness(
                     "missing": missing_vt_addendum,
                 },
             )
+            # Experiment-contract gate, part 2 (the promotion-eligibility gate
+            # proper): the artifact must carry the SAME experiment_id the config
+            # declared, plus a non-empty run_bundle_ref pointing at that run's
+            # persisted evidence. Fails closed on a missing config experiment_id
+            # (declared_experiment_id is None), a missing/blank artifact stamp,
+            # a mismatched experiment_id, or a missing run_bundle_ref — an
+            # artifact tagged vol_trend_v2 is NEVER promotion-eligible without
+            # this, regardless of feature-set/addendum checks passing above.
+            experiment_id_match = (
+                declared_experiment_id is not None
+                and stamped_experiment_id == declared_experiment_id
+            )
+            _add_check(
+                checks,
+                "artifact_stamps_vol_trend_experiment_contract",
+                experiment_id_match and stamped_run_bundle_ref is not None,
+                {
+                    "declared_experiment_id": declared_experiment_id,
+                    "stamped_experiment_id": stamped_experiment_id,
+                    "stamped_run_bundle_ref": stamped_run_bundle_ref,
+                },
+            )
 
     report = {
         "ok": all(bool(c["ok"]) for c in checks),
@@ -174,6 +266,7 @@ def validate_full_wf_retrain_readiness(
     if vol_trend_declared:
         report["feature_set_version"] = VOL_TREND_FEATURE_SET_VERSION
         report["required_vol_trend_features"] = required_vol_trend
+        report["vol_trend_experiment_id"] = declared_experiment_id
     return report
 
 

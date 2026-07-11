@@ -1,21 +1,35 @@
-"""Vol/trend feature-set v2 (F1 returns-based vol + F2 trend interactions).
+"""Vol/trend feature-set v2 (C1/F1 returns-based vol + C2/F2 trend interactions).
 
-Provenance: orchestrator #476 (STD60 rule provenance) + #475 (META score
-attribution). qlib STD60 = std(close LEVELS)/close is 92-101% trend-confounded
-on trending names — during META's 07-06..07-10 +11.5% rally STD60 fell purely
-via the denominator while 60d returns-vol ROSE. These tests pin:
+Candidate implementation for the preregistered baseline-vs-vol_trend_v2
+experiment orchestrator #476 §7 specifies as required future work — NOT a
+validated fix. #476's H3 ("qlib STD60 = std(close LEVELS)/close mistakes trend
+for calm on trending names") is, after Codex's review, an explicit hypothesis:
+"mechanical decomposition independently reproduced [on the META path]；
+causal-mechanism claim not established" (#476 §3). The reproduced decomposition
+itself (during META's 07-06..07-10 +11.5% rally STD60 fell ~10% almost entirely
+via the denominator while 60d returns-vol ROSE) is a re-verified fact about that
+one path, not a general-adoption verdict about the feature or the fitted model.
+These tests pin:
 
 1. recipe correctness on synthetic fixtures (brute-force golden checks);
-2. the honesty property — returns-vol/resid-vol do not read a smooth rally as
-   "calming down", and the interactions separate "trending-quiet" from
-   "flat-quiet" names;
+2. the reproduced-decomposition property, on synthetic fixtures mirroring the
+   #476 §3 path — returns-vol/resid-vol do not read a smooth rally as "calming
+   down", and the interactions separate "trending-quiet" from "flat-quiet"
+   names. This demonstrates the candidate features behave as designed on a
+   controlled fixture; it does NOT demonstrate that STD60 is a defect in the
+   live model or that adopting C1/C2 improves it — that is exactly what the
+   not-yet-run #476 §7 preregistered comparison would establish;
 3. the version-key mechanics — the ``vol_trend_v2`` stamp (nested inside the
    PREDICTIVE-classified ``feature_addendum_v1`` recipe-identity field) appears
    only when the columns are present; baseline and Track-B-only panels produce
    byte-identical stamps/artifacts (old-version outputs unchanged), and the
    stamp binds into ``model_content_sha256`` with no fingerprint-table change;
 4. WF-retrain readiness accepts the new set only behind the declared version
-   key, with a byte-identical report for configs that do not declare it.
+   key, with a byte-identical report for configs that do not declare it; and
+   the experiment-contract promotion gate — a config declaring ``vol_trend_v2``
+   must also declare an ``experiment_id``, and the artifact must stamp a
+   matching ``experiment_id`` + non-empty ``run_bundle_ref``, or the recipe is
+   never promotion-eligible regardless of the feature/addendum checks passing.
 """
 from __future__ import annotations
 
@@ -50,6 +64,7 @@ from renquant_model_gbdt.vol_trend_features import (  # noqa: E402
     qlib_std60,
 )
 from renquant_model_gbdt.wf_retrain_readiness import (  # noqa: E402
+    config_declared_vol_trend_experiment_id,
     config_declares_vol_trend_feature_set,
     validate_full_wf_retrain_readiness,
 )
@@ -157,13 +172,18 @@ def test_warmup_nan_policy_strict_full_window() -> None:
         assert feats[col].iloc[idx:].notna().all(), f"{col}: post-warmup must be finite"
 
 
-# ── 2. the honesty property (the #475/#476 confound, on synthetic fixtures) ──
+# ── 2. the reproduced #476 §3 decomposition, on controlled synthetic fixtures.
+# These pin that C1/C2 behave as designed on a fixture built to mirror the
+# reproduced META-path decomposition; they do NOT establish that this
+# generalizes to the live model or corpus — see #476 §7 for what would. ──
 
 
 def test_smooth_rally_deflates_std60_but_not_returns_vol() -> None:
-    """META-week replication (#475): 55 flat-noise days then a sharp smooth
-    +11.5% rally. qlib STD60 falls mechanically (denominator); the honest
-    returns-vol does NOT fall — it rises (rally returns add dispersion)."""
+    """Synthetic fixture mirroring the #476 §3 META-path decomposition: 55
+    flat-noise days then a sharp smooth +11.5% rally. On this fixture qlib
+    STD60 falls mechanically (denominator) while the candidate returns-vol
+    feature does NOT fall — it rises (rally returns add dispersion). This is a
+    controlled-fixture property, not a claim about the live model."""
     rng = np.random.default_rng(42)
     n_flat = 120
     rets_flat = rng.normal(scale=0.01, size=n_flat - 1)
@@ -177,23 +197,24 @@ def test_smooth_rally_deflates_std60_but_not_returns_vol() -> None:
 
     std60 = qlib_std60(close)
     assert std60.iloc[after] < std60.iloc[before] * 0.95, (
-        "qlib STD60 must fall >5% across the rally (the denominator confound)"
+        "qlib STD60 must fall >5% across the rally on this fixture (denominator effect)"
     )
     assert feats["ret_vol_60d"].iloc[after] >= feats["ret_vol_60d"].iloc[before], (
-        "returns-vol must NOT read the orderly rally as 'calming down'"
+        "returns-vol must NOT read the orderly rally as 'calming down' on this fixture"
     )
 
 
 def test_trending_quiet_vs_flat_quiet_separate() -> None:
-    """The required separation: same return noise, drift on vs off. F1 says the
-    two names carry the SAME risk; the F2 interaction tells them apart."""
+    """The required separation on this fixture: same return noise, drift on vs
+    off. C1/F1 gives the two names the SAME risk reading; the C2/F2 interaction
+    tells them apart."""
     trending = compute_vol_trend_features(_trending_quiet())
     flat = compute_vol_trend_features(_flat_quiet())
     t = -1
 
     # F1: identical noise scale → returns-vol agrees across the two names.
     ratio = trending["ret_vol_60d"].iloc[t] / flat["ret_vol_60d"].iloc[t]
-    assert 0.75 < ratio < 1.33, "returns-vol must not be trend-confounded"
+    assert 0.75 < ratio < 1.33, "returns-vol must not vary with trend on this fixture"
 
     # F2: the interaction separates trending-quiet from flat-quiet by an order
     # of magnitude (drift 0.15%/day → 120d return ≈ +20% vs ≈ 0).
@@ -211,9 +232,13 @@ def test_trending_quiet_vs_flat_quiet_separate() -> None:
 
 
 def test_resid_vol_is_exactly_trend_invariant_while_std60_is_confounded() -> None:
-    """Adding a linear trend to the SAME additive noise leaves the 60d linear-fit
-    residuals bit-identical (the fit absorbs the trend), while qlib STD60
-    inflates with the trend — the 92-101% confound from #476."""
+    """On this controlled fixture: adding a linear trend to the SAME additive
+    noise leaves the 60d linear-fit residuals bit-identical (the fit absorbs the
+    trend), while qlib STD60 inflates with the trend. This reproduces, on a
+    fixture, the same numerator/denominator mechanics #476 §3 measured on the
+    META path; it is not a claim that this generalizes as a defect across all
+    trending names in the live corpus (that is exactly the open question #476
+    §7's preregistered comparison would answer)."""
     n = 220
     rng = np.random.default_rng(9)
     noise = rng.normal(scale=0.5, size=n)
@@ -349,10 +374,36 @@ def test_load_panel_task_stamps_v2_addendum_when_columns_present(tmp_path: Path)
     assert set(stamp["vol_trend_features_active"]) == set(VOL_TREND_FEATURES)
     assert stamp["source"] == "renquant-model:vol_trend_features"
     assert stamp["memo"] == "doc/progress/2026-07-11-vol-trend-feature-set-v2.md"
+    # Experimentation is unrestricted: computing/training vol_trend_v2 with no
+    # experiment context set requires no special declaration; the stamp simply
+    # carries None placeholders (readiness — not training — is what gates on
+    # these being populated; see the WF-retrain-readiness tests below).
+    assert stamp["experiment_id"] is None
+    assert stamp["run_bundle_ref"] is None
     # No Track B columns in this fixture → no Track B keys are invented.
     assert "track_b_features_active" not in addendum
     for col in VOL_TREND_FEATURES:
         assert col in ctx.feat_cols
+
+
+def test_load_panel_task_stamps_experiment_contract_when_ctx_provides_it(tmp_path: Path) -> None:
+    """When the caller (the orchestrator's retrain driver) sets ctx.experiment_id
+    / ctx.experiment_run_bundle_ref, LoadPanelTask carries them verbatim into the
+    nested vol_trend_v2 stamp — this is what lets the WF-retrain-readiness
+    experiment-contract check later confirm the artifact belongs to a declared,
+    preregistered experiment run."""
+    data_dir = _make_vol_trend_data_dir(tmp_path)
+    ctx = GbdtTrainingContext(
+        params=dict(PANEL_LTR_PARAMS), num_boost_round=10, data_dir=str(data_dir),
+        experiment_id="std60-baseline-vs-vol_trend_v2-2026w29",
+        experiment_run_bundle_ref="renquant-artifacts:evidence/std60-baseline-vs-vol_trend_v2-2026w29/run-bundle.json",
+    )
+    LoadPanelTask().run(ctx)
+
+    stamp = ctx.extra_artifact_fields["feature_addendum_v1"]["vol_trend_v2"]
+    assert stamp["experiment_id"] == "std60-baseline-vs-vol_trend_v2-2026w29"
+    assert (stamp["run_bundle_ref"]
+            == "renquant-artifacts:evidence/std60-baseline-vs-vol_trend_v2-2026w29/run-bundle.json")
 
 
 def test_track_b_only_panel_stamps_byte_identical_pre_v2_addendum(tmp_path: Path) -> None:
@@ -486,42 +537,68 @@ def test_runtime_artifact_fields_propagate_the_addendum() -> None:
 # ── 5. WF-retrain readiness behind the version key ──
 
 
-def _declared_config() -> dict:
-    return {
+_EXPERIMENT_ID = "std60-baseline-vs-vol_trend_v2-2026w29"
+_RUN_BUNDLE_REF = f"renquant-artifacts:evidence/{_EXPERIMENT_ID}/run-bundle.json"
+
+
+def _declared_config(*, experiment_id: str | None = _EXPERIMENT_ID) -> dict:
+    config = {
         "full_wf_retrain": True,
         "feature_set_version": "vol_trend_v2",
         "required_features": list(TRACK_B_FEATURES) + list(VOL_TREND_FEATURES),
         "required_artifact_metadata": {"one_of": ["sanity_triad", "verdict_metadata"]},
     }
+    if experiment_id is not None:
+        config["experiment_id"] = experiment_id
+    return config
 
 
-def _artifact_with(features: list[str], *, v2_stamp: bool) -> dict:
+def _artifact_with(
+    features: list[str],
+    *,
+    v2_stamp: bool,
+    experiment_id: str | None = None,
+    run_bundle_ref: str | None = None,
+) -> dict:
     art: dict = {
         "feature_cols": features,
         "feature_addendum_v1": {"track_b_features_active": list(TRACK_B_FEATURES)},
         "sanity_triad": {"present": True},
     }
     if v2_stamp:
-        art["feature_addendum_v1"]["vol_trend_v2"] = {
+        stamp: dict = {
             "feature_set_version": VOL_TREND_FEATURE_SET_VERSION,
             "vol_trend_features_active": list(VOL_TREND_FEATURES),
         }
+        if experiment_id is not None:
+            stamp["experiment_id"] = experiment_id
+        if run_bundle_ref is not None:
+            stamp["run_bundle_ref"] = run_bundle_ref
+        art["feature_addendum_v1"]["vol_trend_v2"] = stamp
     return art
 
 
 def test_readiness_accepts_declared_vol_trend_config_and_artifact() -> None:
+    """The full-acceptance path: config declares BOTH feature_set_version and a
+    matching experiment_id; the artifact stamp carries that same experiment_id
+    plus a run_bundle_ref. Only then is report['ok'] True."""
     config = _declared_config()
     assert config_declares_vol_trend_feature_set(config)
     artifact = _artifact_with(
-        list(TRACK_B_FEATURES) + list(VOL_TREND_FEATURES) + ["a0"], v2_stamp=True)
+        list(TRACK_B_FEATURES) + list(VOL_TREND_FEATURES) + ["a0"], v2_stamp=True,
+        experiment_id=_EXPERIMENT_ID, run_bundle_ref=_RUN_BUNDLE_REF,
+    )
     report = validate_full_wf_retrain_readiness(config, artifact)
     assert report["ok"], report
     assert report["feature_set_version"] == VOL_TREND_FEATURE_SET_VERSION
     assert report["required_vol_trend_features"] == list(VOL_TREND_FEATURES)
+    assert report["vol_trend_experiment_id"] == _EXPERIMENT_ID
     names = {c["name"] for c in report["checks"]}
     assert {"config_requires_vol_trend_features",
+            "config_requires_vol_trend_experiment_id",
             "artifact_contains_vol_trend_features",
-            "artifact_stamps_vol_trend_addendum"} <= names
+            "artifact_stamps_vol_trend_addendum",
+            "artifact_stamps_vol_trend_experiment_contract"} <= names
 
 
 def test_readiness_fails_declared_config_when_artifact_missing_columns() -> None:
@@ -555,4 +632,93 @@ def test_readiness_report_unchanged_when_version_key_not_declared() -> None:
         "artifact_has_triad_or_verdict_metadata",
     ]
     assert "feature_set_version" not in report
-    assert "required_vol_trend_features" not in report
+    assert "vol_trend_experiment_id" not in report
+
+
+# ── 6. the experiment-contract promotion-eligibility gate ──
+#
+# vol_trend_v2 is a candidate implementation for the #476 §7 preregistered
+# experiment, not a validated replacement (see module docstrings). These tests
+# pin that an artifact tagged vol_trend_v2 is NEVER promotion-eligible
+# (report['ok']) without a declared, matching experiment_id + a non-empty
+# run_bundle_ref — closing exactly the gap Codex's review flagged.
+
+
+def test_readiness_fails_when_config_omits_experiment_id() -> None:
+    """The recipe must remain disabled outside a declared experiment: a config
+    that opts into vol_trend_v2 but declares no experiment_id fails readiness
+    even when every feature/addendum check would otherwise pass."""
+    config = _declared_config(experiment_id=None)
+    artifact = _artifact_with(
+        list(TRACK_B_FEATURES) + list(VOL_TREND_FEATURES) + ["a0"], v2_stamp=True,
+        experiment_id=None, run_bundle_ref=_RUN_BUNDLE_REF,
+    )
+    report = validate_full_wf_retrain_readiness(config, artifact)
+    assert not report["ok"]
+    failed = {c["name"] for c in report["checks"] if not c["ok"]}
+    assert "config_requires_vol_trend_experiment_id" in failed
+    assert "artifact_stamps_vol_trend_experiment_contract" in failed
+    assert report["vol_trend_experiment_id"] is None
+
+
+def test_readiness_fails_when_artifact_missing_experiment_contract() -> None:
+    """An artifact tagged vol_trend_v2 (feature/addendum checks pass) but with NO
+    experiment_id/run_bundle_ref stamped is NOT promotion-eligible, even though
+    the config itself declares a valid experiment_id."""
+    config = _declared_config()
+    artifact = _artifact_with(
+        list(TRACK_B_FEATURES) + list(VOL_TREND_FEATURES) + ["a0"], v2_stamp=True,
+    )  # no experiment_id / run_bundle_ref on the artifact stamp
+    report = validate_full_wf_retrain_readiness(config, artifact)
+    assert not report["ok"]
+    failed = {c["name"] for c in report["checks"] if not c["ok"]}
+    assert "artifact_stamps_vol_trend_experiment_contract" in failed
+    # The feature/addendum checks (a different concern) still pass — this is
+    # specifically the experiment-contract gate doing its job.
+    assert "artifact_contains_vol_trend_features" not in failed
+    assert "artifact_stamps_vol_trend_addendum" not in failed
+
+
+def test_readiness_fails_on_experiment_id_mismatch() -> None:
+    """An artifact stamped with a DIFFERENT experiment_id than the config
+    declares is not promotion-eligible — this closes the "re-stamp any old
+    vol_trend_v2 artifact with a fresh experiment_id after the fact" loophole,
+    since the config's declared id and the artifact's stamped id must agree."""
+    config = _declared_config()
+    artifact = _artifact_with(
+        list(TRACK_B_FEATURES) + list(VOL_TREND_FEATURES) + ["a0"], v2_stamp=True,
+        experiment_id="some-other-unrelated-experiment", run_bundle_ref=_RUN_BUNDLE_REF,
+    )
+    report = validate_full_wf_retrain_readiness(config, artifact)
+    assert not report["ok"]
+    failed = {c["name"] for c in report["checks"] if not c["ok"]}
+    assert "artifact_stamps_vol_trend_experiment_contract" in failed
+
+
+def test_readiness_fails_when_run_bundle_ref_missing() -> None:
+    """A matching experiment_id alone is not sufficient — a non-empty
+    run_bundle_ref (pointing at the persisted evidence for that specific run)
+    is also required."""
+    config = _declared_config()
+    artifact = _artifact_with(
+        list(TRACK_B_FEATURES) + list(VOL_TREND_FEATURES) + ["a0"], v2_stamp=True,
+        experiment_id=_EXPERIMENT_ID, run_bundle_ref=None,
+    )
+    report = validate_full_wf_retrain_readiness(config, artifact)
+    assert not report["ok"]
+    failed = {c["name"] for c in report["checks"] if not c["ok"]}
+    assert "artifact_stamps_vol_trend_experiment_contract" in failed
+
+
+def test_vol_trend_v2_disabled_by_default_in_production_config() -> None:
+    """The production readiness config must NOT declare vol_trend_v2 — the
+    recipe stays disabled outside an explicitly-declared experiment. This is a
+    direct check against the actual committed config file, not a restated
+    constant, so it fails if anyone flips the production config on directly."""
+    config_path = (
+        Path(__file__).resolve().parents[2]
+        / "configs" / "gbdt_track_b_full_wf_retrain_readiness.json"
+    )
+    config = json.loads(config_path.read_text())
+    assert not config_declares_vol_trend_feature_set(config)
+    assert config_declared_vol_trend_experiment_id(config) is None

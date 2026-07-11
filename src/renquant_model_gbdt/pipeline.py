@@ -66,6 +66,15 @@ class GbdtTrainingContext:
     # None the contract Task falls back to a self-describing content hash.
     config_fingerprint: Optional[str] = None
     config_fingerprint_fields: Optional[dict[str, Any]] = None
+    # Experiment-contract identifiers for gated experimental feature sets (currently
+    # only vol_trend_v2; see panel_data.LoadPanelTask + wf_retrain_readiness). These
+    # are opaque, caller-supplied references — renquant-model does not create or
+    # interpret the preregistration/run-bundle contents, it only carries + stamps them
+    # so wf_retrain_readiness can require them before a gated recipe is promotion-
+    # eligible. Leaving both None does NOT block training/experimentation; it only
+    # means the resulting artifact cannot pass the experiment-contract readiness check.
+    experiment_id: Optional[str] = None
+    experiment_run_bundle_ref: Optional[str] = None
 
     # ── data-side (set by data-prep Tasks) ──
     train: Optional[pd.DataFrame] = None

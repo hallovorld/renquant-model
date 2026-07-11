@@ -1,28 +1,45 @@
-"""Vol/trend feature-set v2 — returns-based volatility + trend-interaction recipe.
+"""Vol/trend feature-set v2 — candidate returns-based-vol (C1) + trend-interaction
+(C2) recipe for the preregistered baseline-vs-vol_trend_v2 experiment.
 
-Why this exists (orchestrator #475 / #476): the qlib alpha158 ``STD60`` feature is
-``std(close LEVELS, 60d, ddof=1) / close_today`` — a coefficient of variation of the
-price *level*, not a measure of return volatility. On trending names the provenance
-study found 92-101% of STD60's movement is the trend/denominator component: during
-META's 2026-07-06..07-10 +11.5% rally, STD60 fell 10.2% purely through the rising
-denominator (numerator +0.1%) while 60d *returns* volatility ROSE 4.8%. A ranker fed
-STD60 therefore cannot distinguish "quiet steady riser" from "quiet dead money", and
-mechanically reads an orderly rally as "calming down".
+**Status: candidate implementation, not a validated replacement.** This module
+implements C1/C2 — the two candidate feature changes orchestrator #476 §5 lists
+for the preregistered, cross-repo experiment design specified in #476 §7. #476
+does NOT establish a general-adoption verdict that STD60 is defective; after
+Codex's review it reframes every causal claim as a **hypothesis**: H3 ("the
+qlib alpha158 STD60 feature — std(close LEVELS, 60d, ddof=1) / close_today —
+mistakes trend for calm on trending names") is "a live hypothesis — mechanical
+decomposition independently reproduced [on one path]; causal-mechanism claim not
+established" (#476 §3). The reproduced decomposition itself is real and
+re-verified: during META's 2026-07-06..07-10 +11.5% rally, STD60 fell 10.2%
+almost entirely through the rising denominator (numerator +0.1%) while 60d
+*returns* volatility ROSE 4.8% (#476 §3, #475). What is NOT established is that
+this generalizes as a general-adoption defect across trending names, or that the
+*fitted* production booster's behavior is driven by this channel rather than a
+correlated proxy feature — #476 §7 requires a preregistered, purged/embargoed
+walk-forward comparison (baseline STD-family recipe vs. this C1+C2 redesign) to
+answer that, and states explicitly that "no fix or promotion recommendation
+should be read from" the provenance document alone.
 
 This module is the canonical recipe (spec + reference implementation) for the
-``vol_trend_v2`` feature-set addendum:
+candidate ``vol_trend_v2`` feature-set addendum that experiment would evaluate;
+its existence does not itself validate or invalidate anything about the current
+STD60 feature — that determination is exactly what the (not-yet-run)
+preregistered experiment would produce.
 
-F1 — honest, returns-based volatility:
+C1 (F1) — candidate returns-based volatility measure:
   * ``ret_vol_20d``            std of daily simple returns, trailing 20 returns, ddof=1
   * ``ret_vol_60d``            std of daily simple returns, trailing 60 returns, ddof=1
   * ``ret_semivol_down_60d``   downside semi-deviation: sqrt(sum(min(r,0)^2)/(n-1))
                                over the trailing 60 returns (target 0, ddof=1 parallel)
 
-F2 — trend interactions that separate "quiet riser" from "quiet dead money":
+C2 (F2) — candidate trend-interaction features, motivated by the H3 hypothesis
+that STD60 conflates trend with dispersion (not yet established as the fitted
+model's actual mechanism — #476 §3/§7):
   * ``resid_vol_60d``               detrended level vol: regression standard error of a
                                     60d linear fit of close on time (sqrt(SSR/(n-2))),
-                                    divided by close_today. Removes exactly the trend
-                                    component that confounds STD60.
+                                    divided by close_today. By construction this
+                                    removes the trend component STD60 is hypothesized
+                                    (H3) to confound with volatility.
   * ``std60_x_ret_120d``            qlib STD60 (std(close,60,ddof=1)/close_today) times
                                     the signed 120d simple return. Low-STD60 rows split
                                     by whether the name is trending or flat.
@@ -54,9 +71,21 @@ fingerprint without a cross-repo classification-table change or a
 ``FINGERPRINT_SCHEMA_VERSION`` bump, both of which that module reserves for
 reviewed contract migrations. Absent the columns, artifacts are byte-identical to
 before this module existed (a Track-B-only panel stamps the exact pre-v2
-addendum). Adoption is exclusively via the standard gated retrain + promotion
-path (#467 weekly rail); nothing here changes the scoring of any existing
-artifact.
+addendum).
+
+Experiment-contract promotion gate (``wf_retrain_readiness``): computing/training
+under ``vol_trend_v2`` is unrestricted — this recipe can be exercised for
+experimentation with no extra declaration required. Promotion eligibility is a
+separate, stricter gate: a retrain config opting into ``vol_trend_v2`` must also
+declare an ``experiment_id`` naming the preregistered #476 §7 comparison it
+belongs to, and the resulting artifact's ``vol_trend_v2`` stamp must carry that
+same ``experiment_id`` plus a non-empty ``run_bundle_ref``. Absent either, the
+readiness report's ``ok`` is False for that artifact — permanently, since the
+check is evaluated against the stamp already baked into the fingerprint-bound
+artifact, not re-derivable after the fact by a freshness/manual-override
+promotion path. Adoption is exclusively via the standard gated retrain +
+promotion path (#467 weekly rail) with that experiment contract satisfied;
+nothing here changes the scoring of any existing artifact.
 """
 from __future__ import annotations
 
@@ -68,14 +97,17 @@ import pandas as pd
 # The minted feature-set version key (predecessor: Track B's ``feature_addendum_v1``).
 VOL_TREND_FEATURE_SET_VERSION = "vol_trend_v2"
 
-# F1 — returns-based volatility (the honest risk measure per #476).
+# C1/F1 — candidate returns-based volatility measure for the preregistered
+# baseline-vs-vol_trend_v2 experiment (#476 §5/§7).
 RET_VOL_FEATURES: tuple[str, ...] = (
     "ret_vol_20d",
     "ret_vol_60d",
     "ret_semivol_down_60d",
 )
 
-# F2 — trend interactions ("quiet steady riser" vs "quiet dead money").
+# C2/F2 — candidate trend-interaction features testing the H3 hypothesis
+# ("quiet steady riser" vs "quiet dead money"; not yet established as the
+# fitted model's actual mechanism — #476 §3/§7).
 TREND_INTERACTION_FEATURES: tuple[str, ...] = (
     "resid_vol_60d",
     "std60_x_ret_120d",
@@ -186,8 +218,9 @@ def compute_vol_trend_features(close: pd.Series) -> pd.DataFrame:
 
 
 def qlib_std60(close: pd.Series) -> pd.Series:
-    """The confounded qlib STD60 (std of close LEVELS / close_today) — exposed for
-    tests/diagnostics so the confound documented in #476 stays reproducible here."""
+    """The qlib STD60 feature (std of close LEVELS / close_today) — exposed for
+    tests/diagnostics so the reproduced #476 §3 decomposition (H3: hypothesized
+    to conflate trend with dispersion on trending names) stays reproducible here."""
     c = close.astype(np.float64)
     return c.rolling(_VOL_WINDOW, min_periods=_VOL_WINDOW).std(ddof=1) / c
 
