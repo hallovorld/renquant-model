@@ -1,7 +1,8 @@
 # Ensemble Combination Experiment Design
 
 **Date:** 2026-07-12
-**Status:** DESIGN — awaiting operator review. Do not implement until approved.
+**Status:** DESIGN — evidence protocol revised after independent review. Do not
+implement, promote, or infer expected profitability from this document.
 **Owner:** Model (research design, WF runner implementation, and the fitted
 ensemble specification — this repo owns the experiment, not just the base
 scorers). Orchestrator invokes a versioned run of this repo's WF runner and
@@ -10,6 +11,68 @@ logic). Pipeline consumes a selected, immutable ensemble specification at
 inference time (no research logic, no fitting).
 **Scope:** How to combine existing and new models into a single trading signal.
 This document decides the combination METHOD, not the models themselves.
+
+---
+
+## 0. Binding reconsideration: no profitability claim
+
+This is a **research protocol**, not evidence that an ensemble has positive
+expected return, positive incremental alpha, or a right to replace the frozen
+champion. Forecast-combination theory supplies a conditional prediction-error
+argument; it does not establish a trading result for this 104-stock universe,
+this target horizon, this portfolio mapping, or this cost model.
+
+For a combined score to improve the live decision, all of the following must
+be true at the same time:
+
+1. Each admitted expert must supply point-in-time out-of-sample forecasts with
+   correct as-of lineage and no material data-quality asymmetry.
+2. The experts must contain complementary information or errors. Averaging two
+   highly correlated, similarly biased scores normally just averages the same
+   mistake; it does not create breadth.
+3. Any forecast-level improvement must survive the actual score-to-position
+   mapping, liquidity limits, turnover, fees, slippage, borrow assumptions, and
+   risk constraints. A higher IC can leave the trade list unchanged, or can
+   make a small gross gain that is consumed by incremental turnover.
+4. The result must survive a final chronological confirmation window that was
+   not used to select experts, normalize scores, choose a method, tune a
+   parameter, choose a test, or set a deployment threshold.
+
+The correct economic estimand is therefore not "does the ensemble have a
+positive backtest?" It is the incremental, post-cost outcome relative to the
+frozen champion under the same executable policy:
+
+```
+Delta_net = NetOutcome(ensemble, fixed_policy) -
+            NetOutcome(champion, fixed_policy)
+```
+
+The null is `Delta_net <= 0`. No section below may be read as reversing that
+burden of proof. If the evidence is inconclusive, the mandated action is to
+retain the champion and publish the negative or inconclusive result.
+
+### 0.1 Theory supports a conditional hypothesis, not an expected-return prior
+
+For unbiased forecasts with stable error covariance `Sigma`, a
+covariance-aware linear combination can reduce **forecast MSE** relative to an
+individual forecast. That result depends on covariance estimation, calibration,
+and stability. It does not optimize a discontinuous top-N portfolio after
+costs, and it fails when the covariance estimate is noisy or changes across
+regimes. Equal weighting is useful precisely because it avoids estimating those
+weights; it is a robust benchmark, not an alpha theorem.
+
+The literature therefore justifies testing a small, pre-registered set of
+combination rules. It does not justify assuming that a second scorer creates
+alpha, that a lower forecast loss converts to net return, or that a learned or
+regime-conditioned rule is appropriate at the available effective sample size.
+
+### 0.2 This section controls the earlier ladder
+
+If this reconsideration conflicts with a statement elsewhere in this document,
+this section and Section 4.5 control. In particular, L4 is **not an executable
+current-stage candidate**: the available regime history is insufficient to
+support state-specific weight selection without a separate feasibility and
+power analysis. Its retained discussion is research background only.
 
 ---
 
@@ -25,8 +88,10 @@ universe:
 | Per-ticker tournament | Frozen since April (timeout) | Per-ticker |
 | Sector panel models | Not built | Sector-grouped panel |
 
-The question is: **how should we combine their scores into a single
-buy/sell/hold signal?**
+The question is not "which ensemble should we deploy?" It is: **is there
+enough independently generated, point-in-time evidence to justify testing a
+small set of combinations, and can any of them improve the frozen champion's
+post-cost outcome?**
 
 The operator's initial vision was **hard routing** — for each ticker, pick the
 one model with the best backtest and only listen to that model. This document
@@ -36,7 +101,7 @@ plan to validate it.
 
 ---
 
-## 2. Why hard routing (model selection) fails
+## 2. Why hard routing is not the default
 
 ### 2.1 The operator's proposed approach
 
@@ -50,9 +115,11 @@ through that model.
 
 ### 2.2 Why it doesn't work (literature evidence)
 
-Hard routing is a well-studied failure mode in forecast combination. The core
-problem: **selecting the "best" model on backtest data selects for noise, not
-signal.**
+Hard routing is a high-variance choice in a small sample. The core problem is
+that selecting the "best" model on backtest data can select noise rather than
+signal. This does not prove that every routing rule fails; it means routing is
+not an admissible default without stronger, separately pre-registered evidence
+than this program can currently provide.
 
 **Winner's curse (selection bias):** With K models and N tickers, you run K×N
 comparisons. For each ticker, the model with the highest backtest IC is
@@ -106,13 +173,39 @@ Key papers:
 | Error handling | One model wrong → fully exposed | One model wrong → diluted by others |
 | Noise sensitivity | Selects the noisiest backtest winner | Averages out noise across models |
 | Adaptability | Locked to historical winner | Weights can shift (L2+) |
-| OOS degradation | Systematic (winner's curse) | Minimal (errors cancel) |
-| Statistical requirement | High (must distinguish per ticker) | Low (just needs models to be somewhat uncorrelated) |
-| Literature support | Dominated in virtually all contexts | 50+ years of evidence |
+| OOS degradation | Can be severe from selection error | Not guaranteed; depends on calibration and error diversity |
+| Statistical requirement | High (must distinguish per ticker) | Still material: requires stable, complementary point-in-time forecasts |
+| Literature support | Weak prior for this small-sample use | A reason to test, not direct evidence of trading profitability |
 
 ---
 
 ## 3. Design: staged soft combination
+
+### 3.0 Stage 0 - admissibility and complementarity gate
+
+No L1-L3 comparison may start until every proposed expert passes an
+**admissibility ledger** for every historical prediction date. The ledger must
+record model/content fingerprint, training cutoff, feature/data cutoff, score
+timestamp, universe coverage, missingness, score orientation, and realized
+label availability. A model with only a retrospective score file is not an
+admitted expert.
+
+Before fitting weights, the development period must also report, without using
+the final confirmation window:
+
+- cross-sectional score correlation and rank correlation by date;
+- residual/error correlation at the actual prediction horizon;
+- disagreement coverage: the fraction of dates and names for which the expert
+  would alter the champion's rank or executable decision;
+- incremental gross contribution under a fixed policy before and after costs;
+- coverage and missingness parity versus the champion.
+
+There is no universal correlation cutoff that proves complementarity. Instead,
+the gate is falsifiable: if an expert has near-duplicate scores/errors, fails
+as-of/coverage parity, or produces no economically material decision change,
+it is excluded and the result is recorded as "no admissible incremental
+expert." Do not fit an ensemble merely because two model classes have different
+names.
 
 ### 3.1 Maturity ladder
 
@@ -132,18 +225,19 @@ L1-3E:  Equal-weight average, SAME-SET CONTROL (3 experts: XGB + PatchTST +
          ↓
 L3:     Linear stacking (meta-model, 3 experts)
          ↓ beats L2 AND beats L1-3E?
-L4:     Regime-conditional static weights
-         ↓ beats L3?
+L4:     DEFERRED - research background only; not executable at current
+        effective regime sample size
 STOP (no learned gating, no attention, no neural routing)
 ```
 
-Levels beyond L4 are explicitly excluded from this experiment program:
+The following are explicitly excluded from the **current executable** program:
 
 | Excluded | Why |
 |---|---|
 | L5: Sector panels | 104 stocks / 7 groups = 8–25 per group; insufficient sample for per-sector models. Revisit only if universe expands to 300+. |
 | L6: Learned MoE gating | ~15 regime transitions in 5 years = insufficient training data for a gating network; documented expert collapse risk. |
 | L7: Hierarchical MoE + attention | Zero production evidence at any scale. |
+| L4: Regime-conditional weights | Deferred until a separate pre-registered feasibility/power study demonstrates enough non-overlapping state-specific labels. |
 
 ### 3.1bis Same-set controls (isolating combination method from expert-set changes)
 
@@ -337,7 +431,15 @@ combination method, and the ladder deploys L1-3E (equal-weight on the
 expert addition itself is deployed. If L3 fails to beat L2 as well, deploy L2
 (or L1).
 
-### 3.5 Level 4 — Regime-conditional static weights
+### 3.5 Level 4 — Deferred research background, not a current candidate
+
+**Status: DEFERRED.** The material in this section records why L4 was
+considered and why its original grid was unsafe. It is not an implementation
+plan, an experiment authorization, or a deployment branch for the current
+104-stock/available-history setting. Reinstatement requires a separate design
+PR with a state-specific effective-sample calculation, a fixed candidate set,
+and an untouched confirmation period. Until then, a result of "L3 is best
+among admissible current candidates" is final; no L4 test is run.
 
 **What:** A fixed weight table indexed by HMM regime state:
 
@@ -502,21 +604,10 @@ classifier + dynamic mean-variance) differs from this design's mechanism
 must stand on the occupancy/shrinkage/fallback safeguards and the feasibility
 gate above, not on this citation.
 
-**Implementation:** Extends the L3 harness with regime-state indexing.
-Estimated effort: 2–3 days incremental.
-
-**Evaluation:** Same nested WF, additionally comparing L4 vs L3 — where "L4"
-means the single fitted L4 weight specification the frozen selection
-algorithm above produced for a given outer fold, not one of the 231/231³
-inner-fold candidates (see §4.4).
-
-**Advance criterion:** L4 must first clear the pre-registered feasibility
-gate above (otherwise it is declared infeasible for this dataset and the
-comparison is not run). If it clears the gate, L4 must beat L3 OOS under the
-same family-wise correction / hierarchical gatekeeping procedure specified in
-§4.4. The size of L4's inner grid (231-per-regime / 231³-joint) does not add
-to that outer accounting — see §4.4 for why. If L4 fails to beat L3, or is
-declared infeasible, deploy L3 (or whichever level won).
+**Future-only implementation note:** a future L4 proposal would need its own
+research-runner design, feasibility/power calculation, and fresh confirmation
+window. It has no current evaluation or advance criterion and cannot be used
+to choose a deployed combination in this program.
 
 ---
 
@@ -664,19 +755,16 @@ specified. The full, enumerated family is:
 3. L1-3E vs L2 (the same-set control comparison introduced in §3.1bis)
 4. L3 vs L2
 5. L3 vs L1-3E
-6. L4 vs L3 — where "L4" means the single fitted L4 weight specification
-   that the frozen selection algorithm (§3.5) produced for a given outer
-   fold, never one of the 231/231³ inner-fold candidates
-7. Final declared-winner vs frozen champion
+6. Final declared candidate vs frozen champion
 
-Beyond these seven pairwise tests, **the ladder's own level-by-level winner
+Beyond these six pairwise tests, **the ladder's own level-by-level winner
 selection is itself a data-adaptive selection step** — choosing, after the
 fact, "whichever level won" and reporting its comparison as if it were the
 only test conducted inflates the effective family further, the same way
 picking the best of several backtested models does (§2.2's winner's-curse
 logic applies here too, one level up the stack).
 
-**L4's inner-fold grid is not part of this outer family (corrected — Codex
+**Historical note on L4's inner-fold grid (corrected — Codex
 3rd-round review, 2026-07-12).** A prior revision of this document stated
 that L4's 231-per-regime / 231³-joint candidate weight tables (§3.5) "must
 also be folded into this same accounting, not treated as a separate,
@@ -684,14 +772,12 @@ uncounted search." **That was a methodological error, now corrected.** The
 231/231³ figure describes the size of L4's inner-fold hyperparameter-
 selection space — ordinary nested-CV model selection, per §3.5 — not an
 additional set of outer hypotheses: the inner grid search never touches
-outer-test data, and only the single frozen-algorithm output per outer fold
-(item 6 above) is ever compared against outer-test data. Conflating the two
+outer-test data. Conflating the two
 both misstates what is being tested and would make inference over this
 ladder needlessly impossible (a literal 12.3-million-way correction is
 neither meaningful nor intended). The outer family subject to correction is
-exactly the seven items enumerated above, unaffected by how large L4's inner
-search space is; see §3.5 for the inner-selection freeze/feasibility-gate
-discipline that keeps the inner search itself honest.
+exactly the six current items enumerated above. L4 is deferred by Section 0.2
+and Section 4.5, so no L4 candidate is in the current outer family.
 
 **Correction procedure — one of the following must be pre-registered before
 running any outer-fold evaluation:**
@@ -699,13 +785,10 @@ running any outer-fold evaluation:**
 (i) **Family-wise error correction (Holm-Bonferroni step-down).**
     Holm-Bonferroni step-down is preferred over flat Bonferroni because it is
     less conservative while remaining valid. Apply it across the **full**
-    enumerated family above (the seven items, with item 6 taken as the single
-    fitted L4 specification per outer fold, not the inner grid — see above),
+    enumerated family above (the six current items),
     including a term for the level-selection step (e.g. by including the
     "final declared-winner vs champion" comparison in the family, which is
-    where the selection step's effect ultimately surfaces). L4's inner-fold
-    grid multiplicity (§3.5) is deliberately **excluded** from this
-    correction, for the reasons given above. **OR:**
+    where the selection step's effect ultimately surfaces). **OR:**
 
 (ii) **Hierarchical/sequential gatekeeping (closed testing).** Since the
      ladder already stops at the first level that fails to beat its
@@ -761,8 +844,84 @@ costed, decision-level improvement under the fixed mapping does not advance —
 ΔIC alone is not sufficient economic evidence.
 
 A level that clears both conditions relative to every required comparison in
-its row of the hypothesis-family table above advances. Otherwise, deploy the
-previous (or same-set-control) level per the criteria in §3.1bis/§3.4/§3.5.
+its row of the hypothesis-family table above advances only to the confirmation
+stage in Section 4.5. It does not deploy directly from walk-forward results.
+
+### 4.5 Binding evidence protocol: discovery is not confirmation
+
+The earlier ladder is a candidate-generation mechanism. This section replaces
+any reading of walk-forward success as deployment evidence.
+
+#### A. Freeze the research universe before results
+
+Before the first discovery run, create an immutable experiment manifest that
+lists every considered expert, expert set, score normalization, missing-score
+rule, covariance/window rule, portfolio mapping, rebalance cadence, cost
+assumption, risk constraint, test, and stopping rule. The manifest must also
+record rejected candidates and failed runs. A variation not in the manifest is
+an exploratory follow-up, not confirmation evidence.
+
+The forecast horizon and trade cadence must be coherent. A 60-trading-day
+label does not license daily independent re-optimization: the experiment must
+declare the holding/rebalance schedule and purge/embargo implied by the actual
+label interval. The same schedule is used for champion and candidate.
+
+#### B. Use three chronological evidence stages
+
+1. **Discovery:** nested, purged walk-forward may compare the small
+   pre-registered L1/L2/L3 set and select at most one candidate. Its purpose
+   is rejection and candidate selection, not a live claim.
+2. **Confirmation:** a final chronological holdout, embargoed from discovery,
+   remains unread until the full candidate specification and portfolio mapping
+   are frozen. Evaluate exactly one selected candidate against the champion.
+   No re-ranking experts, choosing a new cost model, changing the test, or
+   adding a regime variant is permitted after this window is opened.
+3. **Operational shadow:** only a confirmed candidate may run DARK through the
+   model -> pipeline -> orchestrator path. The run must create fingerprints,
+   decision traces, portfolio deltas, and an immutable run bundle. It changes
+   no live orders. A separate reviewed authorization is required before any
+   production behavior can change.
+
+If the confirmation holdout has already been inspected for any ensemble
+decision, it is spent. Reserve a later chronological window or report that
+there is no independent confirmation evidence.
+
+#### C. Define a trading pass before observing confirmation data
+
+IC and RankIC are diagnostics; neither is a primary economic pass condition.
+The confirmation report must include block-bootstrap or other dependence-aware
+uncertainty for all of the following, under identical executable constraints:
+
+- incremental net return and risk-adjusted return versus champion;
+- incremental turnover, estimated costs, and net return per unit of turnover;
+- concentration, drawdown, gross/net exposure, and liquidity-cap compliance;
+- trade-list overlap and action delta, so a claimed gain cannot come from a
+  silent change in coverage or an unexamined handful of names;
+- base-cost and pre-registered adverse-cost scenarios, including at least a
+  2x cost stress and a reduced-liquidity/participation stress.
+
+A candidate passes only when the pre-registered, dependence-aware lower
+confidence bound for its incremental **net** outcome is positive in the base
+case, it does not fail the adverse-cost scenario, and no fixed risk or
+operational constraint is breached. The exact confidence level, bootstrap
+scheme, minimum economically material net effect, and risk tolerances must be
+in the manifest before discovery. A positive point estimate, a Sharpe ratio
+without selection adjustment, or DeltaIC >= 0.005 alone is not a pass.
+
+Because selection has occurred across experts and combination rules, the
+discovery report must additionally report a data-snooping adjustment over the
+recorded candidate universe, such as a White Reality Check / SPA-style
+bootstrap or a deflated-Sharpe analysis with the effective number of trials.
+That adjustment is a diagnostic on research credibility; it does not convert
+an already-inspected holdout into independent confirmation.
+
+#### D. Explicit non-results
+
+The protocol has three successful scientific outcomes: (1) no admissible
+incremental expert, (2) no candidate survives confirmation, or (3) one
+candidate earns a DARK operational trial. Outcomes (1) and (2) are valuable
+because they prevent a false production promotion. There is no requirement to
+advance the ladder or use the third expert merely because it is available.
 
 ---
 
@@ -772,55 +931,40 @@ previous (or same-set-control) level per the criteria in §3.1bis/§3.4/§3.5.
 
 | Prerequisite | Status | Blocking? |
 |---|---|---|
+| Stage 0 point-in-time forecast/admissibility ledger | Not built | Blocks every ensemble comparison |
+| Immutable experiment manifest and unread final confirmation window | Not built | Blocks every ensemble comparison |
 | XGB panel scorer producing daily scores | Live (primary) | No |
-| PatchTST panel scorer producing daily scores | Shadow (demoted, but scoring) | No — scores exist |
-| Per-ticker tournament unfrozen | Blocked on timeout fix (600→3600s verified) | Blocks L3/L4 (not L1/L2) |
-| Nested WF harness | Not built | Blocks L3/L4 |
-| Existing sim/backtest infrastructure | Available | No |
+| PatchTST point-in-time score ledger with parity evidence | Unknown | Blocks its admission as an expert |
+| Per-ticker tournament unfrozen and point-in-time ledgered | Blocked on timeout fix | Blocks L1-3E/L3 |
+| Nested WF + purging harness | Not built | Blocks discovery |
+| Execution-calibrated cost/liquidity scenarios | Unknown | Blocks confirmation |
 
 ### 5.2 Experiment phases
 
 | Phase | Scope | Prerequisites | Est. effort | Deliverable |
 |---|---|---|---|---|
-| **Phase A** | L1 (equal-weight XGB+PatchTST, 2 experts) vs frozen champion | XGB + PatchTST scores | 1–2 days | IC/return comparison; go/no-go for ensemble |
-| **Phase B** | L2 (inverse-variance, 2 experts, §3.3(a)-(d)) vs L1 | Phase A code | 1–1.5 days | Incremental comparison |
-| **Phase C** | Unfreeze per-ticker tournament; compute L1-3E (equal-weight, 3-expert same-set control, §3.1bis) | Timeout fix deployed | 1 day | 114+ candidates producing scores; L1-3E comparison ready |
-| **Phase D** | L3 (linear stacking, 3 experts) vs L2 AND vs L1-3E; L4 (regime weights, subject to the §3.5 feasibility gate) vs L3 | Nested WF harness + Phase C | 3–5 days | Full ladder comparison, including same-set control; L4 result may be "infeasible for this dataset" |
+| **Phase 0** | Build the admissibility ledger, cost scenarios, manifest, and unread confirmation split | Point-in-time scores and artifacts | Not estimated until data audit | Signed research manifest or a documented block |
+| **Phase A** | Discovery only: compare the smallest admitted L1/L2 set; L3 only after its third expert passes Stage 0 | Phase 0 + purged nested WF | Not estimated until Phase 0 | One selected candidate or a negative result, with all trials logged |
+| **Phase B** | One-candidate chronological confirmation under the frozen executable policy | Phase A selection + untouched holdout | Not estimated | Confirmed, rejected, or inconclusive result |
+| **Phase C** | DARK operational shadow and run-bundle parity | Phase B pass | Not estimated | Evidence for a separate production-authorization PR |
 
 ### 5.3 Go/no-go decision tree
 
 ```
-Phase A: L1 (2 experts) vs champion
-  ├── L1 loses → ensemble does not help at this scale. STOP (§3.2 —
-  │              this is a pre-committed cost-stopping rule, not a proof
-  │              that no combiner could ever win).
-  │              Deploy champion alone. Do not build more models for
-  │              combination purposes.
-  └── L1 wins  → Phase B: L2 (2 experts) vs L1
-                    ├── L2 loses → deploy L1 (equal-weight)
-                    └── L2 wins  → Phase C: unfreeze per-ticker,
-                                   compute L1-3E (3-expert same-set control)
-                                     → Phase D: build harness, test L3 vs
-                                       BOTH L2 and L1-3E (§3.1bis)
-                                         ├── L3 loses L1-3E (even if it
-                                         │   beats L2) → gain attributed to
-                                         │   the added expert, not the
-                                         │   stacking method; deploy L1-3E
-                                         ├── L3 loses L2 → deploy L2
-                                         └── L3 beats BOTH → check L4
-                                             feasibility gate (§3.5)
-                                                     ├── L4 infeasible for this
-                                                     │   dataset (gate not
-                                                     │   cleared) → deploy L3;
-                                                     │   L4's inner grid search
-                                                     │   is never run
-                                                     ├── L4 feasible, loses → deploy L3
-                                                     └── L4 feasible, wins  → deploy L4
+Phase 0: ledger, manifest, costs, and unread confirmation window
+  ├── any prerequisite fails -> report BLOCKED; champion unchanged
+  └── all pass -> Phase A: discovery on the recorded candidate universe
+                    ├── no candidate survives -> report NEGATIVE; champion unchanged
+                    └── one candidate selected -> Phase B: one-time chronological confirmation
+                                                 ├── fails/inconclusive -> report result; champion unchanged
+                                                 └── passes -> Phase C: DARK operational shadow
+                                                               ├── parity/operability fails -> champion unchanged
+                                                               └── passes -> separate authorization review;
+                                                                            no automatic production promotion
 ```
 
-All comparisons above are subject to the full pre-registered hypothesis
-family, correction procedure, and costed decision-level requirement in §4.4 —
-not IC alone.
+All comparisons above are subject to the manifest, selection-adjustment,
+confirmation, and operational-shadow requirements in §4.5 -- not IC alone.
 
 At every node, the decision is binary and pre-registered. No "let's try one
 more thing" after a negative result.
@@ -834,7 +978,7 @@ more thing" after a negative result.
 | Sector panel models | Insufficient sample (8–25 stocks per group). Revisit if universe grows to 300+. |
 | Learned gating network | ~15 regime transitions in training data; documented expert collapse risk. |
 | Attention-based cross-reference | Zero production evidence. |
-| Hard routing (per-ticker model selection) | Dominated by soft combination in 50+ years of literature (§2). |
+| Hard routing (per-ticker model selection) | Not a current candidate: the available effective sample cannot support its per-ticker selection burden. This is not a universal impossibility claim. |
 | Nonlinear meta-model | Overfitting risk at our scale (104 stocks, 3-5 base models) — see §3.4 for the full argument. (An earlier version of this row also cited QuantBench 2025 as evidence that production systems deliberately use linear meta-models; that citation has been removed — QuantBench is a benchmark-platform paper and does not support that claim. The exclusion rests on the overfitting-risk argument alone.) |
 
 These exclusions are **not permanent** — they are scoped to this experiment
@@ -854,7 +998,7 @@ method** in that design:
 | PR #45 proposed | This document |
 |---|---|
 | Sector panels (Phase 2) | Excluded — insufficient sample at 104 stocks |
-| Fixed regime weights (Phase 2) | Kept as L4, but sequenced AFTER proving L1–L3 first |
+| Fixed regime weights (Phase 2) | Deferred from the current program; current effective regime evidence is insufficient for state-specific fitting |
 | Cross-reference attention (Phase 3) | Excluded — zero production evidence |
 | Learned gating (Phase 4, contingent) | Excluded — insufficient regime transitions for training |
 
@@ -871,11 +1015,21 @@ metrics) is adopted here with minor refinements.
 
 | Ref | Paper | Year | Key finding |
 |---|---|---|---|
-| [T06] | Timmermann, "Forecast Combinations" | 2006 | Combination dominates selection across virtually all contexts |
+| [T06] | Timmermann, "Forecast Combinations" | 2006 | Broad review supporting combination as a hypothesis class; not proof of net trading benefit in this system |
 | [SW09] | Smith & Wallis, "A Simple Explanation of the Forecast Combination Puzzle" | 2009 | Selection amplifies estimation error; combination averages it out |
 | [FC22] | Wang et al., "Forecast Combinations: An Over 50-Year Review" | 2022 | arXiv:2205.04216. Equal weights surprisingly hard to beat OOS. **Plausibility, not transferability**: this review supports *testing* equal-weight and more complex combinations as a well-established empirical prior across many domains — it does not itself prove that the specific proposed L1-L4 ladder will outperform in this trading pipeline's specific 104-stock universe, turnover, and cost regime. Matches the "plausibility, not transferability" framing used for the literature review in the companion multi-panel design (model PR #45, §1). |
 | [GKX20] | Gu, Kelly & Xiu, "Empirical Asset Pricing via Machine Learning" | 2020 | RFS. Ensemble average > any single best model on 30k equities |
 | [C16] | Claeskens et al., "The Forecast Combination Puzzle" | 2016 | Model selection OOS systematically worse than model averaging |
+
+### Research-integrity and confirmation references
+
+| Ref | Paper | Year | How it constrains this protocol |
+|---|---|---|---|
+| [WRC00] | White, "A Reality Check for Data Snooping" | 2000 | Tests a selected rule against a benchmark while accounting for a recorded universe of alternatives; motivates the discovery-universe ledger and bootstrap diagnostic in Section 4.5. |
+| [DSR14] | Bailey & Lopez de Prado, "The Deflated Sharpe Ratio" | 2014 | Adjusts Sharpe-ratio interpretation for selection bias, non-normality, and multiple trials; diagnostic evidence, not a substitute for an untouched confirmation holdout. https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2460551 |
+| [CPCV18] | Lopez de Prado, "Advances in Financial Machine Learning", Ch. 12 | 2018 | Motivates purging and embargoing labels with overlapping information; this protocol still retains chronological confirmation because CPCV-like resampling cannot create an unread historical future. |
+| [SB14] | Pesaran & Pick, "Forecast Combinations under Structural Break Uncertainty" | 2014 | Shows the bias-variance tradeoff around break uncertainty; supports treating regime adaptation as a conditional hypothesis rather than a default upgrade. https://doi.org/10.1016/j.ijforecast.2013.06.003 |
+| [HFC23] | Athey et al., "Hedging Forecast Combinations" | 2023 | States that covariance-aware combination depends on estimated forecast-error moments, reinforcing that MSE-optimal weights are not automatic trading-optimal weights. https://arxiv.org/abs/2308.15384 |
 
 ### Supporting (architecture and failure modes)
 
