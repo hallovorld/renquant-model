@@ -31,6 +31,7 @@ def _good_meta(prediction_date: str = "2026-01-15") -> dict[str, Any]:
         "feature_data_cutoff": prediction_date,
         "score_timestamp": f"{prediction_date}T16:00:00Z",
         "scored_count": len(UNIVERSE),
+        "has_realized_labels": True,
     }
 
 
@@ -83,6 +84,30 @@ class TestValidateExpertDate:
         record = validate_expert_date(expert, "2026-01-15", meta, UNIVERSE)
         assert record.admitted is True
 
+    def test_rejects_score_timestamp_before_prediction_date(self) -> None:
+        meta = _good_meta()
+        meta["score_timestamp"] = "2026-01-10T09:00:00Z"  # before prediction date
+        expert = ExpertSpec(name="xgb", score_dir=Path("."))
+        record = validate_expert_date(expert, "2026-01-15", meta, UNIVERSE)
+        assert record.admitted is False
+        assert any("score_timestamp" in r for r in record.rejection_reasons)
+
+    def test_rejects_missing_score_timestamp(self) -> None:
+        meta = _good_meta()
+        meta["score_timestamp"] = "MISSING"
+        expert = ExpertSpec(name="xgb", score_dir=Path("."))
+        record = validate_expert_date(expert, "2026-01-15", meta, UNIVERSE)
+        assert record.admitted is False
+        assert any("score timestamp" in r for r in record.rejection_reasons)
+
+    def test_has_realized_labels_defaults_false(self) -> None:
+        """has_realized_labels must default to False (fail-closed)."""
+        meta = _good_meta()
+        del meta["has_realized_labels"]
+        expert = ExpertSpec(name="xgb", score_dir=Path("."))
+        record = validate_expert_date(expert, "2026-01-15", meta, UNIVERSE)
+        assert record.has_realized_labels is False
+
     def test_accumulates_multiple_rejections(self) -> None:
         meta = {
             "model_fingerprint": "MISSING",
@@ -98,10 +123,12 @@ class TestValidateExpertDate:
 
 
 class TestBuildLedger:
-    def test_builds_empty_ledger_with_no_dates(self) -> None:
+    def test_empty_ledger_fails_closed(self) -> None:
+        """Zero prediction dates -> all_experts_fully_admitted must be False."""
         experts = [ExpertSpec(name="xgb", score_dir=Path("."))]
         ledger = build_ledger(experts, [], UNIVERSE)
         assert ledger.summary["total_records"] == 0
+        assert ledger.summary["all_experts_fully_admitted"] is False
         assert ledger.experts == ["xgb"]
 
     def test_builds_ledger_with_loader(self) -> None:
