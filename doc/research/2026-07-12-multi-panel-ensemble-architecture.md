@@ -1,4 +1,4 @@
-# Multi-Panel Ensemble Architecture: Literature Survey and Hypothesis
+# Multi-Panel Ensemble Architecture: Literature Survey and Falsifiable Hypotheses
 
 **Date:** 2026-07-12
 **Origin:** Operator request — "我们可以搞多个板块的panel模型+大panel+ticker，
@@ -16,16 +16,23 @@ models, cross-referencing and regime-conditional — has plausible academic supp
 from five papers (2022–2025) and is conceptually consistent with scaled
 industrial practice (WorldQuant/Two Sigma). However, **plausibility in published
 literature does not establish transferability** to our 104-stock universe, cost
-regime, or turnover constraints. Whether multi-panel architectures beat the
-frozen champion (current XGB panel), a simple risk-abstention baseline, and a
-soft equal-weight mixture must be determined by staged OOS experiments with
-preregistered protocols, not by the survey below.
+regime, or turnover constraints. Those papers were validated on CSI300/500/1000
+(300–1000 A-shares), Russell 3000, or a 4-month live window on non-overlapping
+strategies — none of them is this universe, this label, or this cost regime.
+
+Whether multi-panel architectures beat the frozen champion (current XGB panel),
+a simple risk-abstention baseline, and a soft equal-weight mixture is an open
+empirical question to be settled by staged, out-of-sample experiments against
+three pre-registered, falsifiable hypotheses (§6) — not by the survey below.
+The literature review's job is to establish that the architecture is worth the
+cost of running those experiments, nothing more.
 
 Candidate architecture: **Hierarchical MoE with Regime-Conditional Gating** —
 three prediction levels (per-ticker, sector-panel, cross-sectional panel) whose
 outputs are combined by a gating function conditioned on HMM regime state and
-sector membership. Each phase advances only if the prior phase demonstrates OOS
-improvement over the required baselines.
+sector membership. Each phase advances only if the prior phase demonstrates a
+validated OOS edge under the criteria in §6; the program is explicitly allowed
+to end early with a negative result (§7).
 
 ---
 
@@ -60,11 +67,11 @@ Stock Market Prediction," [arXiv:2410.02241](https://arxiv.org/abs/2410.02241)
 
 **Plausibility for our system:** MIGA's "style groups" are structurally
 analogous to sector panels. The group aggregation mechanism (attention between
-experts in the same group) suggests a cross-reference path. However: MIGA
-operates on CSI300/500/1000 (300–1000 stocks), not 104; the style grouping is
-learned, not GICS-imposed; and the results are on Chinese A-shares, a different
-microstructure. Whether the architecture's advantage transfers to our universe
-is an empirical question.
+experts in the same group) suggests a cross-reference path (§4.4). However:
+MIGA operates on CSI300/500/1000 (300–1000 stocks), not 104; the style grouping
+is learned, not GICS-imposed; and the results are on Chinese A-shares, a
+different microstructure. Whether the architecture's advantage transfers to
+our universe is an empirical question, not implied by these results.
 
 ### 2.2 PPFM — Projection-Penalized Factor Model (2025)
 
@@ -84,7 +91,9 @@ Portfolio Optimization,"
 **Key insight:** The penalty is data-adaptive. Sectors that share similar latent
 factors (e.g. tech and semiconductors) naturally transfer more information.
 Heterogeneous sectors (e.g. utilities vs biotech) remain approximately
-independent.
+independent. This is the theoretical basis for letting an undersized sector
+group borrow strength from related sectors rather than being trained (or
+excluded) in isolation — see §6.4's sample/support requirement.
 
 **Results:** Superior aggregated Sharpe ratios on Russell 3000 multi-sector
 portfolios vs both independent and pooled approaches.
@@ -117,8 +126,8 @@ select among them.
 trained models (XGB panel, PatchTST panel, per-ticker tournament). AlphaMix's
 architecture suggests treating these as pre-trained experts and learning a
 routing layer on top could be viable, rather than retraining everything jointly.
-Whether the routing layer adds value over simple equal-weighting is the central
-empirical question.
+Whether the routing layer adds value over simple equal-weighting (H3, §6.1) is
+the central empirical question.
 
 ### 2.4 AlphaCrafter — Multi-Agent Cross-Sectional Trading (2025)
 
@@ -167,11 +176,12 @@ trade at all?" while the position cap answers "how much should we trust this
 specific recommendation?"
 
 **Plausibility for our system:** This maps to the F4 Option A concept (regime-
-conditional model serving). The strategy-level gate ≈ HMM regime detection →
-demote the primary in failing regimes. The position cap ≈ per-stock uncertainty
-from ensemble disagreement between panel and per-ticker models. Whether our
-HMM confidence signal is informative enough to drive a useful regime gate is
-unestablished.
+conditional model serving, §8). The strategy-level gate ≈ HMM regime detection
+→ demote the primary in failing regimes. The position cap ≈ per-stock
+uncertainty from ensemble disagreement between panel and per-ticker models.
+Whether our HMM confidence signal is informative enough to drive a useful
+regime gate is unestablished, and the position cap specifically requires a
+calibration check before it is trusted as a sizing input (§6.5).
 
 ### 2.6 Industry practice: WorldQuant / Two Sigma
 
@@ -208,8 +218,8 @@ analogy.
 sector specialization. The XGB panel treats AAPL and XOM as interchangeable
 feature vectors. Whether sector-specific dynamics (tech momentum clustering,
 energy macro sensitivity, healthcare regulatory events) are material enough to
-justify sector-specialized models is an empirical question, not an architectural
-given.
+justify sector-specialized models is an empirical question, not an
+architectural given.
 
 ---
 
@@ -248,18 +258,24 @@ given.
 - Each ticker has its own specialized model
 - Captures: idiosyncratic mean-reversion, earnings patterns, stock-specific
   momentum signatures
+- Input: ticker-specific features (price history, volume, fundamentals)
 
 **Level 2 — Sector Panel Models:**
 - NEW: sector-grouped panel models (5–7 sector groups)
-- Grouping by GICS sector with minimum group size = 10 stocks (merge small
-  sectors)
+- Grouping by GICS sector with a minimum support threshold below which a group
+  defers to Level 3 instead of getting its own model (§6.4)
 - Training: shared feature encoder (alpha158 base) + sector-specific prediction
-  heads
-- Cross-sector regularization via PPFM penalty
+  heads (per MIGA architecture)
+- Cross-sector regularization via PPFM penalty (sectors with similar factor
+  spaces share more information)
+- Captures: within-sector relative value, sector-specific factor loadings,
+  industry momentum clustering
 
 **Level 3 — Large Cross-Sectional Panel:**
 - Existing XGB and PatchTST panel scorers
 - Sees all 104 stocks simultaneously
+- Captures: broad cross-sectional patterns, market-wide factor premia,
+  inter-sector rotation signals
 
 ### 4.2 Regime-Conditional Gating
 
@@ -270,20 +286,45 @@ conditioned on:
 - Rolling volatility and correlation features
 - Sector membership of the target stock
 
-**Regime-specific behavior (hypothesized, to be tested):**
+**Regime-specific behavior (hypothesized, to be tested — not implemented in
+Phase 1/2, see §6.1's H1 definition):**
 
 | Regime | Large Panel | Sector Panel | Per-Ticker | Rationale (hypothesis) |
 |---|---|---|---|---|
 | BULL_CALM | High | High | Low | Cross-sectional patterns stable; sector rotation active |
 | BULL_VOLATILE | Medium | Low | High | Dispersion high; idiosyncratic signals dominate |
-| BEAR | High (defensive) | Medium | Low | Flight-to-quality is cross-sectional |
+| BEAR | High (defensive) | Medium | Low | Flight-to-quality is cross-sectional; sector rotation |
 
-### 4.3 Position-Level Uncertainty
+### 4.3 Position-Level Uncertainty (per arXiv:2603.13252)
 
 After the gated ensemble produces μ̂ for each stock:
 - Compute ensemble disagreement = std(Level1_score, Level2_score, Level3_score)
 - If disagreement > threshold → reduce position weight or exclude from buy list
 - If all three levels agree → high-conviction position
+- This would replace the current binary VetoWeakBuys with a continuous
+  confidence measure — **contingent on the calibration check in §6.5 passing**;
+  the mechanism is not assumed to be informative just because the referenced
+  paper found it useful in a different setting.
+
+### 4.4 Cross-Reference Mechanism (per MIGA Group Aggregation)
+
+Within sector groups, use attention-based cross-reference:
+- Sector panel scores for all stocks in a sector are concatenated
+- Multi-head self-attention produces refined scores that account for
+  within-sector relationships
+- Example: if AAPL scores high but MSFT/GOOGL score low in the same tech group,
+  the attention mechanism can flag AAPL as an outlier (potentially contrarian
+  opportunity or data anomaly)
+
+Between levels, use residual connections:
+- Level 2 (sector) receives Level 3 (large panel) scores as additional input
+- Level 1 (per-ticker) receives both Level 2 and Level 3 scores
+- Each level's output = its own prediction + learned residual from higher levels
+- This prevents lower levels from contradicting the cross-sectional picture
+  without strong evidence
+
+This mechanism is Phase 3 scope (§7) — it is described here as part of the
+candidate architecture, not as something Phase 1/2 implements or that H1 tests.
 
 ---
 
@@ -301,6 +342,12 @@ Utilities, Materials) may have 3–5 stocks. Options:
 | **C. Multi-head single model** (shared encoder + sector heads) | Parameter-efficient; one training run | Sector heads may not fully specialize |
 | **D. Sector embedding** (sector as a feature, not a model split) | No sample split; continuous | Not truly separate sector models |
 
+**Recommendation:** Start with A (merged groups), graduate to C (multi-head)
+after proving the concept. PPFM (B) is the eventual target for cross-sector
+regularization but adds significant complexity. This recommendation is a
+starting point for Phase 2 implementation, not itself validated — §6.1's H1
+tests exactly this simplest variant (A) against the frozen champion.
+
 Proposed grouping (merge to ~7 groups):
 1. Tech + Communication Services (~25 stocks)
 2. Healthcare (~15 stocks)
@@ -312,80 +359,209 @@ Proposed grouping (merge to ~7 groups):
 
 ### 5.2 Model architecture for sector panels
 
-Given our XGB-primary stack, sector panels should also be tree-based (not neural)
-to maintain interpretability and infrastructure compatibility.
+Given our XGB-primary stack, sector panels should also be tree-based (not
+neural) to maintain interpretability and infrastructure compatibility.
+
+**Option: XGB with sector-specific training sets + shared hyperparameters**
+- Train one XGB per sector group on the sector's stocks only
+- Share hyperparameter search results across sectors (but allow per-sector
+  tuning within bounds, subject to the inner-fold discipline in §6.2)
+- Feature set: same alpha158 base, but sector panels can add sector-specific
+  features (e.g., oil price for energy, yield curve for financials) — any
+  such addition is itself an inner-fold hyperparameter decision, not something
+  chosen by looking at outer-fold performance
+- Prediction target: same fwd_60d label as the frozen champion (§6.3)
+- Walk-forward validation: same nested 3-cut protocol per sector (§6.2), with
+  smaller cuts due to fewer stocks
 
 **Concern:** XGB on 10–20 stocks × ~250 trading days × 5 years = 12,500–25,000
-samples per sector. Adequate for a shallow tree (max_depth=4–6) but not deep.
+samples per sector. This is adequate for a shallow tree (max_depth=4–6, ~50
+leaves) but not for a deep model. The PPFM regularization from §2.2 helps
+here — the sector model borrows statistical strength from the full-panel
+model — but is a Phase 2+ exploratory refinement, not part of H1's simplest
+variant (§6.1).
 
-### 5.3 WF gate integration
+### 5.3 Gating implementation
+
+**Simple gating (Phase 2, this is what H1 tests):** Fixed regime-conditional
+weights, no learned gating.
+
+```python
+REGIME_WEIGHTS = {
+    "BULL_CALM":     {"panel": 0.5, "sector": 0.3, "ticker": 0.2},
+    "BULL_VOLATILE": {"panel": 0.3, "sector": 0.2, "ticker": 0.5},
+    "BEAR":          {"panel": 0.6, "sector": 0.3, "ticker": 0.1},
+}
+```
+
+Weights selected by HMM regime state, fixed before the outer-fold holdout is
+touched (weight selection happens on inner folds — §6.2). Validated by
+replaying historical regimes and measuring ensemble IC vs component IC on
+inner-fold data only; the outer-fold comparison is reserved for the H1/H2/H3
+confirmatory test.
+
+**Learned gating (Phase 4, CONTINGENT — see §7):** A small network (2-layer
+MLP, ~100 params) that maps (regime_features, sector_one_hot) → softmax
+weights. Trained on historical IC data with the same nested walk-forward
+discipline as the scorers (§6.2) — critically, the network's own fitting must
+stay inside inner folds, since a gating network is exactly the kind of
+second-stage fitting step that can silently leak outer-fold information if
+naively cross-validated. Risk: overfitting the gating network to regime
+history (only ~3 regime transitions per year on 5y data = ~15 training points
+for regime weights). Mitigated by strong regularization + leave-one-regime-out
+cross-validation, but this risk is precisely why Phase 4 is contingent on
+Phases 1–3 first showing there is complementary information worth routing at
+all.
+
+### 5.4 WF gate integration
 
 Every new model (sector panels, gating function) must pass the existing
 walk-forward gate independently before serving. The ensemble output must ALSO
 pass the gate — a passing component + failing ensemble = no deploy.
 
+Sector panels have fewer stocks per WF cut → noisier gate metrics. Consider a
+pooled gate (sector panels evaluated jointly) alongside per-sector gates. This
+is in addition to, not a replacement for, the nested outer/inner discipline in
+§6.2: passing the existing single-model WF gate is necessary but not
+sufficient once a gating layer sits on top of the scorers.
+
 ---
 
-## 6. Required baselines and experiment protocol
+## 6. Falsifiable hypotheses and experiment protocol
 
-The literature survey establishes plausibility, not efficacy for our system. Each
-phase must demonstrate OOS improvement over these baselines before advancing:
+The literature in §2 establishes plausibility, not efficacy, for this system.
+This section defines the actual test: three pre-registered hypotheses, in
+priority order, and the protocol required to test them without the specific
+leakage vectors a multi-level (scorer + gating) system introduces beyond a
+single-model WF gate.
 
-### 6.1 Required baselines (all phases)
+### 6.1 The three hypotheses (priority order)
 
-1. **Frozen champion:** Current XGB panel scorer, unchanged, with no ensemble
-   or gating. This is the bar.
-2. **Risk-abstention baseline:** Frozen champion + a simple regime-based
-   abstention rule (e.g., reduce/halt buys when HMM posterior confidence < 0.5
-   or in BEAR regime). Tests whether regime-conditioning adds value even without
-   additional models.
-3. **Soft equal-weight mixture:** Simple 1/N average of all available model
-   scores (no gating, no routing). Tests whether gating complexity adds value
-   over naive combination.
+- **H1 (primary, confirmatory).** The simplest viable multi-panel/MoE variant —
+  Phase 1+2 only: per-ticker unfreezing + sector panels + **fixed**
+  regime-conditional gating weights (§5.3's `REGIME_WEIGHTS` table, no learned
+  gating) — beats the frozen champion (current XGB panel, unchanged) OOS, net
+  of transaction costs, by a pre-registered, statistically significant margin.
+  **This is the one confirmatory comparison this research program is
+  pre-registered against.**
+- **H2 (secondary, exploratory context).** The same H1 variant beats a
+  risk-abstention baseline: the frozen champion, unchanged, plus only a
+  confidence-based position-sizing/abstention overlay (e.g., reduce/halt buys
+  when HMM posterior confidence is low or in BEAR regime) — no new sector or
+  gating models at all. H2 tests whether multi-panel complexity is even
+  necessary, or whether a cheap risk overlay captures most of the benefit.
+- **H3 (secondary, exploratory context).** The same H1 variant beats a
+  soft-mixture baseline: a simple fixed or rolling-weighted average of the
+  existing champion + shadow model(s) (e.g., XGB + PatchTST), with **no**
+  sector panels and **no** learned or fixed regime gating. H3 tests whether
+  the *specific* hierarchical architecture (sector panels, regime
+  conditioning) adds value over the cheapest possible ensemble of what
+  already exists.
 
-A candidate architecture advances only if it beats ALL THREE baselines OOS on
-the primary metric (IC, or a cost-adjusted return metric if post-Phase-2).
+H2 and H3 are context for interpreting an H1 result — they are not
+independently promotable. A variant that beats H2 or H3 but not H1 is not a
+positive result for this program. Phases 3–4 (cross-reference attention,
+learned gating, §4.4/§5.3/§7) are separate, later, contingent experiments and
+must never be folded into the H1 comparison — H1 is evaluated on the Phase
+1+2 variant only.
 
-### 6.2 Experiment protocol requirements
+### 6.2 Nested walk-forward protocol
 
-Each phase's experiment must preregister:
+A gating layer is a **second fitting step** on top of the base scorers. A flat,
+single-model WF split (train → embargo → test, once) protects the base
+scorers but does nothing to stop the gating weights/network from implicitly
+"seeing" outer-test performance during their own selection — a leakage vector
+that doesn't exist in this codebase's current single-model WF gate and that
+this program must guard against explicitly:
 
-- **Primary metric:** IC (Phases 1–2), cost-adjusted simulated return (Phases 3–4)
-- **Nested walk-forward protocol:** Same 3-cut WF used for current gate, with
-  per-sector adjustments for smaller sample sizes. No information from the
-  test period may leak into training (feature selection, hyperparameter tuning,
-  architecture decisions, or sector grouping)
-- **Leakage controls:** Sector grouping must be fixed before training begins
-  (no data-driven sector assignment using test-period information). Label
-  construction must respect the same embargo gap as the primary model
-- **Sample/support requirements:** Minimum stocks per sector group and minimum
-  WF cut length. If a sector group has fewer than N stocks (proposed: N=8),
-  it must use PPFM regularization or merge with an adjacent sector
-- **Calibration:** Ensemble scores must be calibrated to a common scale before
-  combination (z-scoring within the training window). Raw score magnitudes
-  from different model families are not comparable
-- **Multiple-comparison treatment:** If multiple sector groupings, gating
-  functions, or hyperparameter settings are tried, report the full set of
-  results with a family-wise error rate correction (e.g., Bonferroni or
-  step-down). The cherry-picked best result is not evidence
-- **Promotion criteria:** Preregistered IC improvement threshold and
-  consistency requirement (e.g., improvement must be positive in ≥2 of 3 WF
-  cuts, not just on average)
+- **Outer folds:** the final held-out test windows used ONLY for the H1/H2/H3
+  confirmatory comparison in §6.1. These windows are never touched during any
+  model training, hyperparameter search, sector-grouping choice, or
+  gating-weight/network selection, for any of the three levels or the gating
+  layer.
+- **Inner folds:** nested within each outer-train window. Used for sector-panel
+  hyperparameter tuning (§5.2) AND all gating-weight/network selection
+  (§5.3), including the fixed-weight table's own validation. Nothing about the
+  gating mechanism — fixed or learned — may be chosen by looking at outer-fold
+  performance.
 
-### 6.3 Phase-specific decision rules
+This is new discipline beyond the existing single-model WF gate specifically
+because of the gating layer; it does not replace or loosen the per-scorer WF
+gate requirement in §5.4.
 
-- **Phase 1 (per-ticker unfreeze):** If per-ticker IC ≤ panel IC in all
-  sector-regime cells → skip Level 1, focus on Level 2
-- **Phase 2 (sector panels):** If no sector group's panel beats the frozen
-  champion OOS → halt. Sector panels are not free — they add model risk,
-  maintenance burden, and WF gate surface area
-- **Phase 3 (cross-reference + uncertainty):** If ensemble disagreement does
-  not predict next-period model error → uncertainty cap adds noise, not value
-- **Phase 4 (learned gating):** CONTINGENT — only if Phases 1–3 demonstrate
-  that multiple model outputs contain complementary information worth routing.
-  With ~3 regime transitions per year on 5y data (~15 training points for
-  regime weights), overfitting the gating network is the default outcome.
-  Phase 4 is a hypothesis, not a planned implementation target
+### 6.3 Leakage controls
+
+The existing embargo convention in this codebase — a ~30-day gap between train
+and test windows on the fwd_60d label, per the WF gate's existing embargo
+discipline — is reused at every level, not reinvented:
+
+- Per-ticker (Level 1), sector-panel (Level 2), and cross-sectional panel
+  (Level 3) training all use the same embargo gap as the frozen champion.
+- The embargo applies to the **gating layer's own fitting** too, not just the
+  base scorers: gating-weight/network selection on inner folds respects the
+  same train/embargo/test boundary as any other fit, so the gating mechanism
+  cannot see label information from inside its own embargo window any more
+  than a base scorer can.
+- Sector grouping (§5.1) must be fixed before training begins using
+  information available at the group's train-window start — no data-driven
+  sector assignment using test-period information.
+
+### 6.4 Sample/support requirements
+
+A sector panel is **ineligible for its own independent WF gate**, and must not
+be trained or served as a standalone model, until it clears a minimum support
+threshold: **≥10 stocks in the group AND ≥3 years of history**, consistent
+with §5.1's sample-size discussion and the PPFM small-sector reasoning in
+§2.2. Below that threshold, the group **defers entirely to the Level 3
+cross-sectional panel** — it is not forced into an undersized independent
+model, and it is not automatically merged into an adjacent sector as a
+substitute for meeting the threshold (merging per §5.1 Option A is a valid way
+to *reach* the threshold, but a group that still falls short after merging
+defers to Level 3 rather than shipping a WF-gate-ineligible model).
+
+### 6.5 Calibration requirement (position-level uncertainty cap)
+
+Before Phase 3 ships the position-level uncertainty cap (§4.3), the mechanism
+must be validated, not assumed: does higher measured ensemble disagreement
+correlate with higher **realized** prediction error, out of sample? This
+requires an actual calibration check — e.g., bin predictions by
+disagreement quantile and compare each bin's realized error (a
+reliability-diagram-style comparison) — on inner-fold data. A disagreement
+measure that does not track realized error is not a valid sizing input
+regardless of what arXiv:2603.13252 found in its own setting (§2.5); shipping
+it unvalidated would import that paper's conclusion without importing its
+evidence.
+
+Separately, and at a different stage of the pipeline: raw scores from
+different model families are not on a comparable scale and must be
+normalized (e.g., z-scored within the training window) before any
+combination (soft mixture, H3, or gated ensemble). This is a mechanical
+score-normalization step, not a substitute for the calibration check above.
+
+### 6.6 Multiple-comparison treatment and promotion criteria
+
+The full staging plan tests 3 hypotheses × several candidate architecture
+variants (§5.1's grouping options A–D, PPFM vs no PPFM, fixed vs learned
+gating). Only one of these is confirmatory:
+
+- **H1 vs the frozen champion, using the simplest viable variant (§6.1), is
+  the ONE pre-registered primary/confirmatory test.** Every other combination
+  — alternative grouping options, PPFM regularization, learned gating,
+  cross-reference attention (§4.4) — is exploratory. Exploratory results are
+  reported as exploratory: they are never elevated to "the" result of this
+  program, and a promising exploratory finding requires a fresh, independent
+  confirmatory re-test before it can be promoted on its own.
+- If multiple exploratory variants are compared, report the full set of
+  results with a family-wise error rate correction (e.g., Bonferroni or a
+  step-down procedure). A cherry-picked best-of-N result is not evidence.
+- **Promotion criteria:** "beats champion" means a **statistically
+  significant** — not merely directionally positive — improvement in
+  net-of-transaction-cost Sharpe/IC over the frozen champion on the outer-fold
+  holdout, with the improvement holding in a pre-registered majority of the
+  outer WF cuts (not just on average). This is the same rigor this codebase's
+  existing placebo-clean / regime-conditional WF-gate promotion discipline
+  already applies to single models; this program does not get a laxer bar
+  because it is an ensemble.
 
 ---
 
@@ -394,39 +570,82 @@ Each phase's experiment must preregister:
 ### Phase 1: Unfreeze per-ticker + baseline measurement (prerequisite)
 - Fix the per-ticker tournament timeout (600→3600s, already identified)
 - Retrain per-ticker models on current data
-- Measure: per-ticker IC vs panel IC by sector and regime
-- Decision rule: see §6.3
+- Measure: per-ticker IC vs panel IC by sector and regime, on inner folds
+- If per-ticker IC ≤ panel IC everywhere → skip Level 1, focus on Level 2
+- **Dependency:** None. Can start immediately on model repo — see §9's open
+  question on authorization.
 
-### Phase 2: Sector panels with fixed gating
-- Train sector-grouped XGB panels (7 groups per §5.1)
-- Measure: sector panel IC vs large panel IC, by sector
-- Implement fixed regime-conditional weights (no learned gating)
-- Walk-forward gate each sector panel independently
-- Compare against all three baselines (§6.1) OOS
-- Decision rule: see §6.3
+### Phase 2: Sector panels with fixed gating (this is what H1 tests)
+- Train sector-grouped XGB panels (7 groups per §5.1, subject to §6.4's
+  support threshold)
+- Measure: sector panel IC vs large panel IC, by sector, on inner folds
+- Implement fixed regime-conditional weights (§5.3 simple gating), selected on
+  inner folds only
+- Run the H1/H2/H3 confirmatory comparison (§6.1) on the outer-fold holdout
+- Walk-forward gate each sector panel independently (§5.4), plus the nested
+  discipline in §6.2 for the gating weights
+- **Dependency:** Phase 1 measurement (to know if Level 1 adds value)
+- **Deliverable:** the H1 result. If H1 fails, the default outcome is to stop
+  here rather than proceed to Phase 3 (see Phase 4 note below).
 
-### Phase 3: Cross-reference and uncertainty
-- Implement group aggregation within sector groups
-- Add position-level uncertainty cap (ensemble disagreement)
-- Validate: does cross-reference improve IC? Does uncertainty cap reduce
-  drawdowns?
-- Compare against baselines with cost-adjusted return metric
+### Phase 3: Cross-reference and uncertainty (exploratory, contingent on H1)
+- Implement MIGA-style group aggregation within sector groups (§4.4)
+- Add position-level uncertainty cap (ensemble disagreement), gated on the
+  calibration check in §6.5 passing first
+- Replace binary VetoWeakBuys with continuous confidence measure only if the
+  calibration check passes
+- Validate: does cross-reference improve IC on inner folds? Does the
+  calibrated uncertainty cap reduce drawdowns on the outer-fold holdout?
+- **Dependency:** Phase 2 sector panels operational AND a validated H1 edge
+  (§6.6) — this phase is exploratory refinement of a demonstrated H1 result,
+  not a rescue plan if H1 fails.
 
-### Phase 4: Learned gating (CONTINGENT)
-- ONLY if Phases 1–3 demonstrate complementary information
-- Train gating network on historical component ICs × regime states
-- Must beat soft equal-weight mixture to justify complexity
-- Risk: overfitting to few regime transitions is the expected failure mode
+### Phase 4: Learned gating + full regime-conditional serving (CONTINGENT)
+- Train gating network on historical component ICs × regime states, with the
+  nested-fold discipline in §5.3/§6.2
+- Implement F4 Option A: in degraded regimes, primary panel demoted to shadow,
+  gating shifts weight to sector panels or per-ticker experts
+- Full regime-conditional model serving as the operator envisioned
+- **Dependency:** Phase 3 validated AND sufficient regime transition history.
+- **Explicitly not a committed implementation target.** Phase 4 is contingent
+  on Phases 1–3 demonstrating a real, validated H1 edge under §6.6's criteria.
+  It is not scheduled or resourced until that gate is cleared. **If Phases
+  1–3 fail to show a validated edge, the research program concludes there —
+  a valid, useful negative result — and does not automatically continue to
+  Phase 4.**
+- **Risk:** gating network overfitting to few regime transitions (§5.3).
 
 ---
 
-## 8. Open questions for operator
+## 8. Connection to F4 Option A (PR #479)
+
+The operator's F4 request (regime-conditional model serving, orchestrator
+#479) is structurally similar to Phase 4 of this architecture. #479's design
+was too narrow in one respect — it only considered shadow-demoting the
+primary panel without an alternative to demote *to* — and this multi-panel
+architecture, **if it validates through the staged experiments above**, is a
+potential future input to that discussion: sector panels or per-ticker
+experts as the demotion target.
+
+This research does not itself resolve or substitute for the #479 decision,
+and it should not be read as doing so. #479 concerns **serving policy**, which
+is a strategy/orchestrator-owned decision gated on an actual operator
+sign-off, matching the reviewer's own point on #479 that policy amendments
+need an actual operator decision, not research-implied justification. That
+remains true regardless of what this research program finds — a positive H1
+result would make the case for revisiting #479 stronger, but would not itself
+authorize a serving-policy change.
+
+---
+
+## 9. Open questions for operator
 
 1. **Sector grouping:** The proposed 7 groups (§5.1) — acceptable? Or prefer
    GICS Level 1 (11 sectors) with PPFM regularization for small groups?
 
 2. **Model architecture:** Sector panels as XGB (infrastructure-compatible) or
-   explore neural (LSTM/Transformer) for sectors where sequence modeling matters?
+   explore neural (LSTM/Transformer) for sectors where sequence modeling matters
+   (tech momentum)?
 
 3. **Priority vs. existing work:** This is a multi-phase research program. Where
    does it sit relative to G1 (cash drag), G2 (crypto), and the two-arm
@@ -435,6 +654,14 @@ Each phase's experiment must preregister:
 4. **Per-ticker tournament:** Phase 1 requires unfreezing the per-ticker
    tournament (fix timeout + retrain). Is this authorized given the model repo's
    current state?
+
+5. **Authorization scope for Phase 1:** Phase 1 (unfreezing the per-ticker
+   tournament, retraining) is a live-tree-adjacent research action — it
+   trains and evaluates models, even though it is scoped to the model repo
+   and produces no production behavior change on its own. Confirm it needs
+   the same ask-first authorization as other experiment-launching work in
+   this codebase before starting, rather than assuming model-repo scope alone
+   is sufficient authorization.
 
 ---
 
