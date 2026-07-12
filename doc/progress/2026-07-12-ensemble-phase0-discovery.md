@@ -1,32 +1,38 @@
-# Ensemble Phase 0 + Phase A Discovery Harness
+# Ensemble Harness Verification (diagnostic only)
 
 **Date:** 2026-07-12
-**PR:** model (this PR)
+**PR:** model #50
 **Design ref:** `doc/research/2026-07-12-ensemble-combination-experiment.md` (PR #48, merged)
 
 ## What
 
-Implements the Phase 0 admissibility + Phase A discovery experiment harness
-for the L1 equal-weight ensemble, aligned with the revised evidence protocol
-from PR #48.
+Harness smoke test for the L1 equal-weight ensemble framework. Verifies
+that the combination machinery (admissibility ledger, causal normalization,
+non-overlapping origin-date inference, Holm-Bonferroni correction, manifest)
+executes correctly end-to-end using a Ridge regression proxy as the second
+expert. This is NOT a discovery run and cannot produce a candidate verdict.
 
-## Key changes from the prior version (closed PR #49)
+## Framing: harness verification, not discovery
 
-| Aspect | Prior (#49) | This version |
-|---|---|---|
-| Admissibility | None | §3.0 ledger: per-expert coverage, missingness, fingerprint, admit/reject |
-| Inference | Plain paired t-test (assumes IID — WRONG for fwd_60d) | Non-overlapping 60-day block paired test (§4.1a) |
-| Multiple comparisons | None | Holm-Bonferroni step-down (§4.4 option i) |
-| Manifest | None | §4.5A immutable experiment manifest with hash |
-| Normalization | Ad-hoc per-date z-score | Causal z-score with orientation control (§4.1bis) |
-| Missing-expert | Inner join drops rows | Re-normalize weights to sum=1 (§4.1bis) |
-| Complementarity | None | §3.0 diagnostics: rank correlation, top-20% overlap, disagreement coverage |
-| Framing | "GO / NO-GO" verdict | "DISCOVERY — not deployment evidence" (§4.5) |
-| Stopping rules | Implicit | Pre-registered in manifest (§4.5A) |
+The script uses Ridge regression (same features as XGB, different functional
+form) as a synthetic second expert. This is a deliberately weak proxy that
+exists solely to exercise the framework with two distinct score streams.
+It cannot support any claim about PatchTST ensemble value.
 
-## Remaining work
+## What this PR validates (framework mechanics)
 
-- Wire real PatchTST scoring (currently ridge proxy)
-- Phase B chronological confirmation holdout (requires untouched window)
-- Costed decision-level outcome under fixed portfolio mapping (§4.4)
-- White's Reality Check / Deflated Sharpe diagnostic (§4.5C)
+- §3.0 admissibility ledger: coverage, missingness, fingerprint, admit/reject
+- §4.1 non-overlapping origin-date inference (spaced >= 60 trading days)
+- §4.1bis causal z-score normalization with orientation control
+- §4.1bis missing-expert re-normalization fallback
+- §3.0 complementarity diagnostics (rank correlation, disagreement coverage)
+- §4.4 Holm-Bonferroni step-down correction
+- §4.5A immutable experiment manifest with content hash
+
+## What this PR does NOT validate (prerequisites not met)
+
+- No persisted PatchTST score artifacts with as-of lineage
+- No costed portfolio construction / net outcome threshold
+- No immutable expert score artifact fingerprints
+- Admissibility ledger validates structural coverage only, not artifact provenance
+- Cannot issue candidate selection or deployment verdict

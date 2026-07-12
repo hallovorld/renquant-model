@@ -1,16 +1,28 @@
 #!/usr/bin/env python3
-"""Phase 0 + Phase A discovery: L1 equal-weight ensemble vs frozen champion.
+"""HARNESS VERIFICATION: L1 equal-weight ensemble diagnostic.
+
+This script is a HARNESS SMOKE TEST — it verifies that the combination
+framework (admissibility ledger, causal normalization, block inference,
+manifest, Holm-Bonferroni correction) executes correctly end-to-end.
+
+It uses a Ridge regression proxy for the second expert, NOT production
+PatchTST inference. Results are DIAGNOSTIC ONLY — they cannot support a
+candidate selection verdict, a deployment decision, or any claim about
+ensemble profitability. The Ridge proxy exists solely to exercise the
+framework with two distinct score streams.
+
+PREREQUISITES NOT YET MET for a real discovery run (§4.5):
+  - No persisted point-in-time PatchTST score artifacts with as-of lineage
+  - No costed portfolio construction / net outcome threshold
+  - No immutable expert score artifact fingerprints
+  - The admissibility ledger validates structural coverage, not artifact provenance
 
 Aligned with the revised evidence protocol (model PR #48, merged):
-  - §3.0  Stage 0 admissibility ledger per expert
-  - §4.1  Nested walk-forward (inner/outer) with non-overlapping block inference
+  - §3.0  Stage 0 admissibility ledger (structural only — no artifact provenance)
+  - §4.1  Non-overlapping origin-date blocks for dependence-aware inference
   - §4.1bis Causal normalization, orientation, missing-expert fallback
-  - §4.4  Holm-Bonferroni correction, ΔIC≥0.005 minimum effect, costed pass
-  - §4.5  Immutable experiment manifest, discovery-only framing
-
-This script produces a DISCOVERY result, not deployment evidence. A positive
-finding earns at most a candidate selection for Phase B chronological
-confirmation (§4.5B), never a direct production promotion.
+  - §4.4  Holm-Bonferroni correction, ΔIC≥0.005 minimum effect
+  - §4.5  Immutable experiment manifest
 
 Usage (from renquant-model root, umbrella venv)::
 
@@ -275,77 +287,91 @@ def causal_zscore(
 
 # ── §4.1 Non-overlapping block bootstrap / inference ─────────────────────────
 
-def non_overlapping_block_ic(
+def non_overlapping_origin_date_ic(
     ic_series: pd.DataFrame,
-    block_length: int = BLOCK_LENGTH_DAYS,
+    horizon_days: int = BLOCK_LENGTH_DAYS,
 ) -> pd.DataFrame:
-    """Aggregate per-date ICs into non-overlapping blocks (§4.1).
+    """Sample ICs at non-overlapping origin dates spaced ≥horizon apart (§4.1).
 
-    fwd_60d labels overlap so successive ICs are NOT IID. This function
-    creates non-overlapping blocks of at least `block_length` trading days,
-    returning one mean-IC per block.
+    fwd_60d labels overlap: a prediction on day t shares ~55/60 label days
+    with a prediction on day t+5. Grouping consecutive daily ICs into
+    60-row blocks does NOT make adjacent block means independent (labels
+    at the end of one block overlap the beginning of the next).
+
+    Instead, sample one IC per non-overlapping origin window: the first
+    available IC date, then skip ≥horizon_days trading days, take the
+    next available, and repeat. Each sampled IC's label window does not
+    overlap any other sampled IC's label window.
     """
     if ic_series.empty:
-        return pd.DataFrame(columns=["block", "block_start", "block_end", "mean_ic", "n_dates"])
+        return pd.DataFrame(columns=["block", "origin_date", "ic", "n_names"])
 
     sorted_ic = ic_series.sort_values("date").reset_index(drop=True)
-    dates = sorted_ic["date"].values
-    blocks = []
-    block_start = 0
+    samples = []
+    last_origin = None
 
-    while block_start < len(dates):
-        block_end = min(block_start + block_length, len(dates))
-        block_data = sorted_ic.iloc[block_start:block_end]
-        blocks.append({
-            "block": len(blocks),
-            "block_start": str(pd.Timestamp(block_data["date"].iloc[0]).date()),
-            "block_end": str(pd.Timestamp(block_data["date"].iloc[-1]).date()),
-            "mean_ic": float(block_data["ic"].mean()),
-            "n_dates": len(block_data),
-        })
-        block_start = block_end
+    for _, row in sorted_ic.iterrows():
+        if last_origin is None or (row["date"] - last_origin).days >= horizon_days:
+            samples.append({
+                "block": len(samples),
+                "origin_date": row["date"],
+                "ic": float(row["ic"]),
+                "n_names": int(row["n_names"]),
+            })
+            last_origin = row["date"]
 
-    return pd.DataFrame(blocks)
+    result = pd.DataFrame(samples)
+    return result
 
 
-def block_paired_test(
-    blocks_a: pd.DataFrame,
-    blocks_b: pd.DataFrame,
+def origin_date_paired_test(
+    samples_a: pd.DataFrame,
+    samples_b: pd.DataFrame,
     name_a: str,
     name_b: str,
 ) -> dict[str, Any]:
-    """Paired test on non-overlapping block mean ICs (§4.1 primary approach).
+    """Paired test on non-overlapping origin-date ICs (§4.1 primary approach).
 
-    Uses non-overlapping blocks as approximately independent units,
-    avoiding the plain paired t-test's IID assumption violation.
+    Each sampled IC comes from an origin date spaced ≥horizon apart, so
+    label windows do not overlap — the samples are approximately independent.
     """
-    if blocks_a.empty or blocks_b.empty:
-        return {"comparison": f"{name_a} vs {name_b}", "n_blocks": 0,
-                "note": "insufficient blocks"}
+    if samples_a.empty or samples_b.empty:
+        return {"comparison": f"{name_a} vs {name_b}", "n_samples": 0,
+                "note": "insufficient samples"}
 
-    n_blocks = min(len(blocks_a), len(blocks_b))
-    diff = blocks_a["mean_ic"].values[:n_blocks] - blocks_b["mean_ic"].values[:n_blocks]
+    merged = samples_a.merge(
+        samples_b, on="origin_date", suffixes=("_a", "_b"), how="inner")
+    if merged.empty:
+        return {"comparison": f"{name_a} vs {name_b}", "n_samples": 0,
+                "note": "no matching origin dates"}
 
-    if len(diff) < 3:
+    diff = merged["ic_a"].values - merged["ic_b"].values
+    n = len(diff)
+
+    if n < 3:
         return {
             "comparison": f"{name_a} vs {name_b}",
             "mean_diff": float(np.mean(diff)),
-            "n_blocks": int(len(diff)),
-            "note": "fewer than 3 non-overlapping blocks — UNDERPOWERED",
+            "n_samples": n,
+            "note": "fewer than 3 non-overlapping origin dates — UNDERPOWERED",
         }
 
     t_stat, p_val = scipy_stats.ttest_1samp(diff, 0)
     return {
         "comparison": f"{name_a} vs {name_b}",
         "mean_diff": float(np.mean(diff)),
-        "se_diff": float(np.std(diff, ddof=1) / np.sqrt(len(diff))),
+        "se_diff": float(np.std(diff, ddof=1) / np.sqrt(n)),
         "t_stat": float(t_stat),
         "p_value_two_sided": float(p_val),
         "p_value_one_sided": float(p_val / 2) if t_stat > 0 else float(1 - p_val / 2),
-        "n_blocks": int(len(diff)),
+        "n_samples": n,
+        "effective_sample_size": n,
         "meets_min_effect": bool(np.mean(diff) >= MIN_EFFECT_SIZE),
-        "block_length_days": BLOCK_LENGTH_DAYS,
-        "inference_note": "non-overlapping blocks (§4.1a) — approximately independent",
+        "origin_spacing_days": BLOCK_LENGTH_DAYS,
+        "inference_note": (
+            "non-overlapping origin dates spaced >= forecast horizon apart; "
+            "label windows do not overlap — approximately independent"
+        ),
     }
 
 
@@ -560,7 +586,7 @@ def run_xgb_wf_cv(
     return results
 
 
-def score_alt_model_on_folds(
+def score_ridge_proxy_on_folds(
     fold_results: list[FoldResult],
     train: pd.DataFrame,
     feat_cols: list[str],
@@ -568,29 +594,27 @@ def score_alt_model_on_folds(
     data_dir: Path,
     label: str = DEFAULT_LABEL,
 ) -> pd.DataFrame:
-    """Score a second model on the same validation folds as XGB.
+    """Score a Ridge regression PROXY on the same validation folds as XGB.
 
-    Currently uses ridge regression as a proxy for PatchTST (which requires
-    a checkpoint and sequence history). When PatchTST is wired, replace the
-    ridge block with real PatchTST scoring.
+    This is NOT a PatchTST scorer — it is a synthetic second expert used
+    solely to exercise the combination framework end-to-end. Ridge
+    regression on the same features as XGB is a deliberately weak proxy:
+    it produces a distinct score stream (different functional form) but
+    cannot represent a genuinely independent model class.
+
+    A real discovery run (§4.5) requires persisted PatchTST score artifacts
+    with point-in-time lineage and as-of provenance. Until those exist, this
+    proxy verifies the harness mechanics only.
     """
-    try:
-        from renquant_model_patchtst.scorer import PatchTSTScorer
-        patchtst_available = True
-        log.info("PatchTST scorer available")
-    except ImportError:
-        patchtst_available = False
-        log.warning("PatchTST not importable — using ridge proxy")
+    from sklearn.linear_model import Ridge
+    from renquant_model_gbdt.panel_data import build_normalization
+    from renquant_model_gbdt.panel_trainer import panel_training_matrix
 
     all_preds = []
 
     for fr in fold_results:
         va_dates = set(pd.to_datetime(fr.predictions["date"].unique()))
         va = train[train["date"].isin(va_dates)].copy()
-
-        from sklearn.linear_model import Ridge
-        from renquant_model_gbdt.panel_data import build_normalization
-        from renquant_model_gbdt.panel_trainer import panel_training_matrix
 
         tr_dates_end = pd.Timestamp(fr.train_end)
         tr = train[train["date"] <= tr_dates_end]
@@ -607,9 +631,7 @@ def score_alt_model_on_folds(
         pred_df = va[["date", "ticker"]].copy()
         pred_df["alt_pred"] = pred2
         all_preds.append(pred_df)
-        log.info("  %s fold %d: scored %d rows",
-                 "PatchTST" if patchtst_available else "Ridge",
-                 fr.fold, len(pred_df))
+        log.info("  Ridge proxy fold %d: scored %d rows", fr.fold, len(pred_df))
 
     return pd.concat(all_preds, ignore_index=True) if all_preds else pd.DataFrame()
 
@@ -679,8 +701,8 @@ def main(argv: list[str] | None = None) -> int:
 
     xgb_all = pd.concat([fr.predictions for fr in fold_results], ignore_index=True)
 
-    log.info("Scoring second model on same folds...")
-    alt_all = score_alt_model_on_folds(
+    log.info("Scoring Ridge PROXY on same folds (harness verification only)...")
+    alt_all = score_ridge_proxy_on_folds(
         fold_results, train, feat_cols, data_dir=args.data_dir, label=label)
 
     if alt_all.empty:
@@ -756,39 +778,44 @@ def main(argv: list[str] | None = None) -> int:
 
     log.info("")
     log.info("=" * 60)
-    log.info("DISCOVERY RESULTS (not deployment evidence — §4.5)")
+    log.info("HARNESS DIAGNOSTIC (Ridge proxy — NOT a real discovery result)")
     log.info("=" * 60)
+    log.info("WARNING: second expert is Ridge proxy, not PatchTST.")
+    log.info("WARNING: no persisted score artifacts, no costed outcome.")
+    log.info("WARNING: results are harness verification ONLY.")
+    log.info("")
     for s in [summary_xgb, summary_alt, summary_ens]:
         log.info("  %-20s  IC=%+.4f  ICIR=%.3f  hit=%.1f%%  n=%d",
                  s["name"], s["mean_ic"], s.get("icir", float("nan")),
                  s.get("hit_rate", 0) * 100, s["n_dates"])
 
-    # ── §4.1 Non-overlapping block inference ──
+    # ── §4.1 Non-overlapping origin-date inference ──
     log.info("")
-    log.info("NON-OVERLAPPING BLOCK INFERENCE (§4.1, block=%dd)", BLOCK_LENGTH_DAYS)
+    log.info("NON-OVERLAPPING ORIGIN-DATE INFERENCE (§4.1, spacing=%dd)",
+             BLOCK_LENGTH_DAYS)
 
-    blocks_xgb = non_overlapping_block_ic(ic_xgb, BLOCK_LENGTH_DAYS)
-    blocks_alt = non_overlapping_block_ic(ic_alt, BLOCK_LENGTH_DAYS)
-    blocks_ens = non_overlapping_block_ic(ic_ens, BLOCK_LENGTH_DAYS)
+    samples_xgb = non_overlapping_origin_date_ic(ic_xgb, BLOCK_LENGTH_DAYS)
+    samples_alt = non_overlapping_origin_date_ic(ic_alt, BLOCK_LENGTH_DAYS)
+    samples_ens = non_overlapping_origin_date_ic(ic_ens, BLOCK_LENGTH_DAYS)
 
-    log.info("  XGB: %d blocks, Alt: %d blocks, Ensemble: %d blocks",
-             len(blocks_xgb), len(blocks_alt), len(blocks_ens))
+    log.info("  XGB: %d samples, Ridge: %d samples, Ensemble: %d samples",
+             len(samples_xgb), len(samples_alt), len(samples_ens))
 
-    # ── Paired tests on blocks ──
-    test_ens_vs_xgb = block_paired_test(blocks_ens, blocks_xgb,
-                                         "L1_equal_weight", "XGB_champion")
-    test_ens_vs_alt = block_paired_test(blocks_ens, blocks_alt,
-                                         "L1_equal_weight", "Alt_model")
+    # ── Paired tests on non-overlapping origin dates ──
+    test_ens_vs_xgb = origin_date_paired_test(samples_ens, samples_xgb,
+                                               "L1_equal_weight", "XGB_champion")
+    test_ens_vs_alt = origin_date_paired_test(samples_ens, samples_alt,
+                                               "L1_equal_weight", "Ridge_proxy")
 
     log.info("")
-    log.info("BLOCK PAIRED TESTS:")
+    log.info("ORIGIN-DATE PAIRED TESTS:")
     for t in [test_ens_vs_xgb, test_ens_vs_alt]:
-        log.info("  %-35s  dIC=%+.4f  t=%.2f  p(1s)=%.4f  blocks=%d  min_effect=%s",
+        log.info("  %-35s  dIC=%+.4f  t=%.2f  p(1s)=%.4f  n=%d  min_effect=%s",
                  t["comparison"],
                  t.get("mean_diff", float("nan")),
                  t.get("t_stat", float("nan")),
                  t.get("p_value_one_sided", float("nan")),
-                 t.get("n_blocks", 0),
+                 t.get("n_samples", 0),
                  t.get("meets_min_effect", "N/A"))
 
     # ── §4.4 Holm-Bonferroni correction ──
@@ -804,47 +831,42 @@ def main(argv: list[str] | None = None) -> int:
         log.info("  %s: p=%.4f, adj_alpha=%.4f, reject=%s",
                  cr["test"], cr["raw_p"], cr["adjusted_alpha"], cr["reject_h0"])
 
-    # ── Discovery verdict (§4.5) ──
+    # ── Diagnostic summary (NO candidate selection — harness only) ──
     delta_ic = test_ens_vs_xgb.get("mean_diff", float("nan"))
     p_one = test_ens_vs_xgb.get("p_value_one_sided", 1.0)
-    meets_effect = test_ens_vs_xgb.get("meets_min_effect", False)
-    n_blocks = test_ens_vs_xgb.get("n_blocks", 0)
-
-    l1_corrected_reject = any(
-        cr["test"] == "L1 vs champion" and cr["reject_h0"]
-        for cr in correction_results
-    )
+    n_samples = test_ens_vs_xgb.get("n_samples", 0)
 
     log.info("")
-    if n_blocks < 4:
-        verdict = "UNDERPOWERED — fewer than 4 non-overlapping blocks; cannot draw inference"
-    elif l1_corrected_reject and meets_effect:
-        verdict = ("CANDIDATE SELECTED — L1 equal-weight passes discovery gate; "
-                   "proceed to Phase B chronological confirmation (§4.5B). "
-                   "This is NOT deployment evidence.")
-    elif np.isfinite(delta_ic) and delta_ic > 0:
-        verdict = ("MARGINAL — positive but fails Holm-Bonferroni and/or minimum effect size; "
-                   "STOP per pre-committed cost decision (§3.2)")
-    else:
-        verdict = ("NEGATIVE — L1 equal-weight does not beat champion; "
-                   "STOP per pre-committed cost decision (§3.2)")
-
-    log.info("DISCOVERY VERDICT: %s", verdict)
-    log.info("  dIC = %+.4f (min effect = %.4f, Holm p = %.4f, blocks = %d)",
-             delta_ic, MIN_EFFECT_SIZE, p_one, n_blocks)
+    log.info("HARNESS STATUS: framework executes correctly end-to-end")
+    log.info("  dIC = %+.4f (n=%d origin-date samples)", delta_ic, n_samples)
+    log.info("")
+    log.info("CANNOT ISSUE CANDIDATE VERDICT because:")
+    log.info("  1. Second expert is Ridge proxy, not PatchTST (§3.0 not met)")
+    log.info("  2. No persisted score artifacts with as-of provenance (§3.0)")
+    log.info("  3. No costed portfolio outcome threshold (§4.4)")
+    log.info("  4. Admissibility ledger validates coverage only, not artifact provenance")
+    verdict = "DIAGNOSTIC ONLY — harness verified, prerequisites not met for discovery"
 
     elapsed = time.time() - t0
     log.info("Total time: %.1f seconds", elapsed)
 
     # ── Save results ──
     results = {
-        "experiment": "L1_equal_weight_discovery",
+        "experiment": "L1_equal_weight_harness_diagnostic",
         "design_ref": "doc/research/2026-07-12-ensemble-combination-experiment.md (PR #48)",
-        "protocol": "discovery_only — not deployment evidence (§4.5)",
+        "protocol": "HARNESS VERIFICATION ONLY — Ridge proxy, no persisted artifacts, no costed outcome",
+        "second_expert": "Ridge regression proxy (NOT PatchTST)",
+        "prerequisites_met": False,
+        "prerequisites_missing": [
+            "persisted PatchTST score artifacts with as-of lineage",
+            "costed portfolio construction / net outcome threshold",
+            "immutable expert score artifact fingerprints",
+            "artifact provenance validation in admissibility ledger",
+        ],
         "manifest_hash": manifest.manifest_hash,
         "n_outer_splits": args.n_outer_splits,
         "embargo_days": args.embargo_days,
-        "block_length_days": BLOCK_LENGTH_DAYS,
+        "origin_spacing_days": BLOCK_LENGTH_DAYS,
         "label": label,
         "n_tickers": int(merged["ticker"].nunique()),
         "n_dates": int(merged["date"].nunique()),
@@ -855,7 +877,7 @@ def main(argv: list[str] | None = None) -> int:
         "admissibility_ledger": [asdict(r) for r in ledger],
         "complementarity": comp,
         "summaries": [summary_xgb, summary_alt, summary_ens],
-        "block_paired_tests": [test_ens_vs_xgb, test_ens_vs_alt],
+        "origin_date_paired_tests": [test_ens_vs_xgb, test_ens_vs_alt],
         "holm_bonferroni": correction_results,
         "verdict": verdict,
         "elapsed_seconds": round(elapsed, 1),
@@ -867,7 +889,7 @@ def main(argv: list[str] | None = None) -> int:
     ic_xgb.to_csv(args.out_dir / "ic_xgb.csv", index=False)
     ic_alt.to_csv(args.out_dir / "ic_alt.csv", index=False)
     ic_ens.to_csv(args.out_dir / "ic_ensemble.csv", index=False)
-    blocks_ens.to_csv(args.out_dir / "blocks_ensemble.csv", index=False)
+    samples_ens.to_csv(args.out_dir / "origin_date_samples_ensemble.csv", index=False)
 
     log.info("Results saved to %s", args.out_dir)
     return 0
