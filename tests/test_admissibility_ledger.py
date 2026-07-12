@@ -166,6 +166,41 @@ class TestValidateExpertDate:
         assert record.admitted is False
         assert any("causal violation" in r for r in record.rejection_reasons)
 
+    def test_rejects_missing_data_watermark(self) -> None:
+        """Missing data_watermark must reject, not silently skip."""
+        meta = _good_meta()
+        meta["data_watermark"] = "MISSING"
+        expert = ExpertSpec(name="xgb", score_dir=Path("."))
+        record = validate_expert_date(expert, "2026-01-15", meta, UNIVERSE)
+        assert record.admitted is False
+        assert any("missing data watermark" in r for r in record.rejection_reasons)
+
+    def test_rejects_unparseable_data_watermark(self) -> None:
+        """Garbage data_watermark must reject with clear message."""
+        meta = _good_meta()
+        meta["data_watermark"] = "not-a-date-at-all"
+        expert = ExpertSpec(name="xgb", score_dir=Path("."))
+        record = validate_expert_date(expert, "2026-01-15", meta, UNIVERSE)
+        assert record.admitted is False
+        assert any("unparseable" in r for r in record.rejection_reasons)
+
+    def test_rejects_data_watermark_after_prediction_date(self) -> None:
+        """data_watermark after prediction_date is lookahead."""
+        meta = _good_meta()
+        meta["data_watermark"] = "2026-01-16T09:30:00+00:00"
+        expert = ExpertSpec(name="xgb", score_dir=Path("."))
+        record = validate_expert_date(expert, "2026-01-15", meta, UNIVERSE)
+        assert record.admitted is False
+        assert any("lookahead" in r for r in record.rejection_reasons)
+
+    def test_admits_valid_timestamp_watermark(self) -> None:
+        """Timezone-aware watermark within chain is admitted."""
+        meta = _good_meta()
+        meta["data_watermark"] = "2026-01-15T09:30:00+00:00"
+        expert = ExpertSpec(name="xgb", score_dir=Path("."))
+        record = validate_expert_date(expert, "2026-01-15", meta, UNIVERSE)
+        assert record.admitted is True
+
     def test_rejects_high_missingness(self) -> None:
         meta = _good_meta()
         meta["score_keys"] = UNIVERSE[:5]  # 50% missing
@@ -657,3 +692,97 @@ class TestFingerprintMutation:
         # Remove a record and recompute — fingerprint must change.
         ledger.records.pop()
         assert ledger.compute_fingerprint() != fp_full
+
+
+class TestPerDateDecisionTimestamp:
+    """decision_timestamp must be per-(expert, prediction_date), not global.
+
+    A single global late timestamp would let a late-generated score slip
+    through for an early historical date — that is look-ahead.
+    """
+
+    def test_global_late_timestamp_blocked_per_date(self) -> None:
+        """Multi-date ledger: a score generated after an early date's EOD
+        is rejected even though it would fit a later date's window.
+
+        Previously, a global --decision-timestamp="2026-01-20T23:59:59Z"
+        would admit a Jan-17 score for a Jan-13 prediction. With per-date
+        timestamps, Jan-13 uses 2026-01-13T23:59:59+00:00 and correctly
+        rejects the late score.
+        """
+        dates = ["2026-01-13", "2026-01-14", "2026-01-15"]
+        expert = ExpertSpec(name="xgb", score_dir=Path("."))
+
+        def loader(exp: ExpertSpec, dt: str) -> dict[str, Any]:
+            meta = _good_meta(dt)
+            if dt == "2026-01-13":
+                # Score was generated on Jan 17 — late for Jan 13.
+                meta["score_timestamp"] = "2026-01-17T09:00:00+00:00"
+            return meta
+
+        # Without global override: per-date EOD applies, Jan-13 rejects.
+        ledger = build_ledger(
+            [expert], dates, UNIVERSE, score_loader=loader,
+            complementarity_assessment="PLAUSIBLE",
+        )
+        jan13_record = [
+            r for r in ledger.records if r["prediction_date"] == "2026-01-13"
+        ][0]
+        assert jan13_record["admitted"] is False
+        assert any("late score" in r for r in jan13_record["rejection_reasons"])
+
+        # Jan-14 and Jan-15 should still be admitted.
+        for dt in ["2026-01-14", "2026-01-15"]:
+            rec = [r for r in ledger.records if r["prediction_date"] == dt][0]
+            assert rec["admitted"] is True, f"{dt} should be admitted"
+
+    def test_decision_timestamp_fn_called_per_expert_date(self) -> None:
+        """Custom decision_timestamp_fn receives (expert_name, date) pairs."""
+        dates = ["2026-01-13", "2026-01-14"]
+        experts = [
+            ExpertSpec(name="xgb", score_dir=Path(".")),
+            ExpertSpec(name="patchtst", score_dir=Path(".")),
+        ]
+        calls: list[tuple[str, str]] = []
+
+        def ts_fn(expert_name: str, pred_date: str) -> str:
+            calls.append((expert_name, pred_date))
+            return f"{pred_date}T23:59:59+00:00"
+
+        def loader(exp: ExpertSpec, dt: str) -> dict[str, Any]:
+            return _good_meta(dt)
+
+        build_ledger(
+            experts, dates, UNIVERSE, score_loader=loader,
+            decision_timestamp_fn=ts_fn,
+            complementarity_assessment="PLAUSIBLE",
+        )
+        # Exactly 4 calls: 2 experts x 2 dates.
+        assert len(calls) == 4
+        assert ("xgb", "2026-01-13") in calls
+        assert ("xgb", "2026-01-14") in calls
+        assert ("patchtst", "2026-01-13") in calls
+        assert ("patchtst", "2026-01-14") in calls
+
+    def test_per_date_fn_rejects_late_score(self) -> None:
+        """A custom fn that gives each date a tight window rejects late scores."""
+        dates = ["2026-01-13"]
+        expert = ExpertSpec(name="xgb", score_dir=Path("."))
+
+        def loader(exp: ExpertSpec, dt: str) -> dict[str, Any]:
+            meta = _good_meta(dt)
+            # Score generated well after Jan 13 close.
+            meta["score_timestamp"] = "2026-01-14T10:00:00+00:00"
+            return meta
+
+        # fn returns EOD for each date.
+        def ts_fn(expert_name: str, pred_date: str) -> str:
+            return f"{pred_date}T23:59:59+00:00"
+
+        ledger = build_ledger(
+            [expert], dates, UNIVERSE, score_loader=loader,
+            decision_timestamp_fn=ts_fn,
+            complementarity_assessment="PLAUSIBLE",
+        )
+        assert ledger.records[0]["admitted"] is False
+        assert any("late score" in r for r in ledger.records[0]["rejection_reasons"])

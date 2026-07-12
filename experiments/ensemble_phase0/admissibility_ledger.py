@@ -223,17 +223,33 @@ def validate_expert_date(
             f"{prediction_date} (lookahead)"
         )
 
-    # --- Data watermark (causal: training_cutoff < data_watermark) ---
+    # --- Data watermark (causal: training_cutoff < data_watermark <= prediction_date) ---
     data_watermark = score_meta.get("data_watermark", "MISSING")
-    if (
-        training_cutoff != "MISSING"
-        and data_watermark != "MISSING"
-        and training_cutoff >= data_watermark[:10]
-    ):
-        reasons.append(
-            f"training cutoff {training_cutoff} >= data watermark "
-            f"{data_watermark[:10]} (causal violation)"
-        )
+    if data_watermark == "MISSING":
+        reasons.append("missing data watermark")
+    else:
+        try:
+            parsed_watermark = _parse_timestamp(data_watermark)
+            # training_cutoff < data_watermark
+            if training_cutoff != "MISSING":
+                try:
+                    parsed_tc = _parse_timestamp(training_cutoff)
+                    if parsed_tc >= parsed_watermark:
+                        reasons.append(
+                            f"training cutoff {training_cutoff} >= data watermark "
+                            f"{data_watermark} (causal violation)"
+                        )
+                except (ValueError, TypeError):
+                    pass  # training_cutoff parse error handled above
+            # data_watermark <= prediction_date
+            parsed_pred_for_wm = _parse_timestamp(prediction_date)
+            if parsed_watermark > parsed_pred_for_wm:
+                reasons.append(
+                    f"data watermark {data_watermark} > prediction date "
+                    f"{prediction_date} (lookahead)"
+                )
+        except (ValueError, TypeError):
+            reasons.append(f"data_watermark unparseable: {data_watermark!r}")
 
     # --- Score timestamp (causal: score_timestamp <= decision_timestamp) ---
     score_ts = score_meta.get("score_timestamp", "MISSING")
@@ -439,7 +455,7 @@ def build_ledger(
     universe_tickers: list[str],
     score_loader: Any = None,
     *,
-    decision_timestamp: str | None = None,
+    decision_timestamp_fn: Any = None,
     require_realized_labels: bool = True,
     complementarity_assessment: str | None = None,
 ) -> AdmissibilityLedger:
@@ -450,8 +466,15 @@ def build_ledger(
     For testing, the ledger can be built from pre-extracted metadata.
 
     Args:
-        decision_timestamp: ISO-8601 timestamp upper bound for score
-            generation.  If None, each date uses its own end-of-day.
+        decision_timestamp_fn: callable ``(expert_name: str, prediction_date: str) -> str``
+            returning a per-(expert, prediction_date) ISO-8601 decision
+            timestamp.  Scores generated after this timestamp are
+            look-ahead for that date.  If None, each date uses its own
+            end-of-day UTC (``{prediction_date}T23:59:59+00:00``).
+            A single global timestamp is deliberately NOT accepted —
+            it would let a late cutoff authorise scores for earlier
+            dates that were generated after those dates' actual
+            decisions (look-ahead).
         require_realized_labels: if True, experts without realized labels
             are rejected (correct for historical evaluation).
         complementarity_assessment: result string from
@@ -486,9 +509,14 @@ def build_ledger(
                     "score_keys": [],
                 }
 
+            if decision_timestamp_fn is not None:
+                dt_ts = decision_timestamp_fn(expert.name, dt)
+            else:
+                dt_ts = None  # validate_expert_date defaults to end-of-day
+
             record = validate_expert_date(
                 expert, dt, score_meta, universe_tickers,
-                decision_timestamp=decision_timestamp,
+                decision_timestamp=dt_ts,
                 require_realized_labels=require_realized_labels,
             )
             ledger.records.append(asdict(record))
@@ -591,15 +619,12 @@ def main() -> None:
         default="experiments/ensemble_phase0/output",
         help="Output directory for ledger files",
     )
-    parser.add_argument(
-        "--decision-timestamp",
-        default=None,
-        help=(
-            "ISO-8601 timestamp upper bound for score generation "
-            "(e.g. 2026-01-15T16:30:00-05:00). "
-            "If omitted, each prediction date uses end-of-day UTC."
-        ),
-    )
+    # NOTE: --decision-timestamp was removed. A single global timestamp
+    # is a look-ahead vector: a late cutoff authorises early-date scores
+    # generated after the actual decision for those dates. Each prediction
+    # date now uses its own end-of-day UTC as the decision timestamp.
+    # For custom per-date timestamps, use the Python API with
+    # decision_timestamp_fn.
     args = parser.parse_args()
 
     if len(args.expert) != len(args.score_dir):
@@ -656,7 +681,6 @@ def main() -> None:
     ledger_pass1 = build_ledger(
         experts, prediction_dates, universe_tickers,
         score_loader=_file_score_loader,
-        decision_timestamp=args.decision_timestamp,
     )
 
     # Compute complementarity report (§3.0) — required for admission.
@@ -693,7 +717,6 @@ def main() -> None:
     ledger = build_ledger(
         experts, prediction_dates, universe_tickers,
         score_loader=_file_score_loader,
-        decision_timestamp=args.decision_timestamp,
         complementarity_assessment=comp_assessment,
     )
     output_path = write_ledger(ledger, Path(args.output_dir))
