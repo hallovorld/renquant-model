@@ -12,9 +12,11 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parents[1] / "experiments" / "ensemble_phase0"))
 
 from admissibility_ledger import (
+    FINGERPRINT_RE,
     AdmissibilityLedger,
     ExpertAdmissibilityRecord,
     ExpertSpec,
+    _assess_complementarity,
     build_complementarity_report,
     build_ledger,
     extract_metadata_from_score,
@@ -25,13 +27,15 @@ from admissibility_ledger import (
 
 
 UNIVERSE = ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "JPM", "V", "JNJ"]
+VALID_FP = "sha256:" + "0123456789abcdef" * 4  # 64 hex chars
 
 
 def _good_meta(prediction_date: str = "2026-01-15") -> dict[str, Any]:
     return {
-        "model_fingerprint": "sha256:abc123",
+        "model_fingerprint": VALID_FP,
         "training_cutoff": "2025-12-31",
         "feature_data_cutoff": prediction_date,
+        "data_watermark": prediction_date,
         "score_timestamp": f"{prediction_date}T16:00:00Z",
         "score_keys": list(UNIVERSE),
         "has_realized_labels": True,
@@ -41,7 +45,7 @@ def _good_meta(prediction_date: str = "2026-01-15") -> dict[str, Any]:
 class TestExtractMetadata:
     def test_extracts_has_realized_labels_true(self) -> None:
         score_data = {
-            "model_content_sha256": "sha256:abc",
+            "model_content_sha256": VALID_FP,
             "training_cutoff": "2025-12-31",
             "as_of_date": "2026-01-15",
             "score_timestamp": "2026-01-15T16:00:00Z",
@@ -54,7 +58,7 @@ class TestExtractMetadata:
 
     def test_has_realized_labels_defaults_false(self) -> None:
         score_data = {
-            "model_content_sha256": "sha256:abc",
+            "model_content_sha256": VALID_FP,
             "scores": {},
         }
         meta = extract_metadata_from_score(score_data, ExpertSpec(name="xgb", score_dir=Path(".")))
@@ -66,6 +70,25 @@ class TestExtractMetadata:
         }
         meta = extract_metadata_from_score(score_data, ExpertSpec(name="x", score_dir=Path(".")))
         assert set(meta["score_keys"]) == {"AAPL", "GOOGL", "UNKNOWN"}
+
+    def test_data_watermark_extracted(self) -> None:
+        score_data = {
+            "model_content_sha256": VALID_FP,
+            "as_of_date": "2026-01-15",
+            "data_watermark": "2026-01-15T09:30:00Z",
+            "scores": {},
+        }
+        meta = extract_metadata_from_score(score_data, ExpertSpec(name="xgb", score_dir=Path(".")))
+        assert meta["data_watermark"] == "2026-01-15T09:30:00Z"
+
+    def test_data_watermark_defaults_to_feature_cutoff(self) -> None:
+        score_data = {
+            "model_content_sha256": VALID_FP,
+            "as_of_date": "2026-01-15",
+            "scores": {},
+        }
+        meta = extract_metadata_from_score(score_data, ExpertSpec(name="xgb", score_dir=Path(".")))
+        assert meta["data_watermark"] == "2026-01-15"
 
 
 class TestValidateExpertDate:
@@ -86,6 +109,37 @@ class TestValidateExpertDate:
         assert record.admitted is False
         assert any("fingerprint" in r for r in record.rejection_reasons)
 
+    def test_rejects_invalid_fingerprint_syntax(self) -> None:
+        """Non-SHA-256 fingerprint string is rejected."""
+        meta = _good_meta()
+        meta["model_fingerprint"] = "sha256:abc123"  # too short
+        expert = ExpertSpec(name="xgb", score_dir=Path("."))
+        record = validate_expert_date(expert, "2026-01-15", meta, UNIVERSE)
+        assert record.admitted is False
+        assert any("invalid fingerprint syntax" in r for r in record.rejection_reasons)
+
+    def test_rejects_uppercase_hex_fingerprint(self) -> None:
+        """Uppercase hex is rejected — canonical form is lowercase."""
+        meta = _good_meta()
+        meta["model_fingerprint"] = "sha256:" + "ABCDEF01" * 8  # 64 uppercase
+        expert = ExpertSpec(name="xgb", score_dir=Path("."))
+        record = validate_expert_date(expert, "2026-01-15", meta, UNIVERSE)
+        assert record.admitted is False
+        assert any("invalid fingerprint syntax" in r for r in record.rejection_reasons)
+
+    def test_rejects_wrong_prefix_fingerprint(self) -> None:
+        meta = _good_meta()
+        meta["model_fingerprint"] = "md5:" + "a" * 64
+        expert = ExpertSpec(name="xgb", score_dir=Path("."))
+        record = validate_expert_date(expert, "2026-01-15", meta, UNIVERSE)
+        assert record.admitted is False
+        assert any("invalid fingerprint syntax" in r for r in record.rejection_reasons)
+
+    def test_fingerprint_regex_matches_valid(self) -> None:
+        assert FINGERPRINT_RE.match(VALID_FP)
+        assert not FINGERPRINT_RE.match("sha256:abc123")
+        assert not FINGERPRINT_RE.match("sha256:" + "G" * 64)
+
     def test_rejects_training_cutoff_lookahead(self) -> None:
         meta = _good_meta()
         meta["training_cutoff"] = "2026-02-01"
@@ -102,6 +156,16 @@ class TestValidateExpertDate:
         assert record.admitted is False
         assert any("lookahead" in r for r in record.rejection_reasons)
 
+    def test_rejects_training_cutoff_after_data_watermark(self) -> None:
+        """Causal violation: training on data at/after inference watermark."""
+        meta = _good_meta()
+        meta["training_cutoff"] = "2026-01-15"
+        meta["data_watermark"] = "2026-01-15"
+        expert = ExpertSpec(name="xgb", score_dir=Path("."))
+        record = validate_expert_date(expert, "2026-01-16", meta, UNIVERSE)
+        assert record.admitted is False
+        assert any("causal violation" in r for r in record.rejection_reasons)
+
     def test_rejects_high_missingness(self) -> None:
         meta = _good_meta()
         meta["score_keys"] = UNIVERSE[:5]  # 50% missing
@@ -117,21 +181,29 @@ class TestValidateExpertDate:
         record = validate_expert_date(expert, "2026-01-15", meta, UNIVERSE)
         assert record.admitted is True
 
-    def test_rejects_score_timestamp_before_prediction_date(self) -> None:
+    def test_admits_d_minus_1_overnight_scoring(self) -> None:
+        """D-1 overnight scoring is valid: score produced after D-1 close."""
+        meta = _good_meta()
+        meta["score_timestamp"] = "2026-01-14T22:00:00Z"
+        expert = ExpertSpec(name="xgb", score_dir=Path("."))
+        record = validate_expert_date(expert, "2026-01-15", meta, UNIVERSE)
+        assert record.admitted is True
+
+    def test_admits_pre_prediction_date_scoring(self) -> None:
+        """Pre-D scoring is valid when within decision window."""
         meta = _good_meta()
         meta["score_timestamp"] = "2026-01-10T09:00:00Z"
         expert = ExpertSpec(name="xgb", score_dir=Path("."))
         record = validate_expert_date(expert, "2026-01-15", meta, UNIVERSE)
-        assert record.admitted is False
-        assert any("score_timestamp" in r for r in record.rejection_reasons)
+        assert record.admitted is True
 
-    def test_rejects_score_timestamp_after_decision_cutoff(self) -> None:
+    def test_rejects_score_timestamp_after_decision_timestamp(self) -> None:
         meta = _good_meta()
         meta["score_timestamp"] = "2026-01-17T09:00:00Z"
         expert = ExpertSpec(name="xgb", score_dir=Path("."))
         record = validate_expert_date(
             expert, "2026-01-15", meta, UNIVERSE,
-            decision_timestamp_max="2026-01-16",
+            decision_timestamp="2026-01-16T23:59:59+00:00",
         )
         assert record.admitted is False
         assert any("late score" in r for r in record.rejection_reasons)
@@ -144,6 +216,25 @@ class TestValidateExpertDate:
         assert record.admitted is False
         assert any("late score" in r for r in record.rejection_reasons)
 
+    def test_handles_timezone_offset_in_score_timestamp(self) -> None:
+        """Score at 11pm ET (4am+1 UTC) on prediction date is within window."""
+        meta = _good_meta()
+        meta["score_timestamp"] = "2026-01-15T23:00:00-05:00"  # 4am UTC Jan 16
+        expert = ExpertSpec(name="xgb", score_dir=Path("."))
+        # Default decision_timestamp = 2026-01-15T23:59:59+00:00 (UTC)
+        # 23:00 ET = 04:00 UTC Jan 16 > 23:59:59 UTC Jan 15 → rejected
+        record = validate_expert_date(expert, "2026-01-15", meta, UNIVERSE)
+        assert record.admitted is False
+        assert any("late score" in r for r in record.rejection_reasons)
+
+    def test_admits_within_timezone_offset_window(self) -> None:
+        """Score at 6pm ET on prediction date is within UTC end-of-day."""
+        meta = _good_meta()
+        meta["score_timestamp"] = "2026-01-15T18:00:00-05:00"  # 23:00 UTC
+        expert = ExpertSpec(name="xgb", score_dir=Path("."))
+        record = validate_expert_date(expert, "2026-01-15", meta, UNIVERSE)
+        assert record.admitted is True
+
     def test_rejects_missing_score_timestamp(self) -> None:
         meta = _good_meta()
         meta["score_timestamp"] = "MISSING"
@@ -152,12 +243,36 @@ class TestValidateExpertDate:
         assert record.admitted is False
         assert any("score timestamp" in r for r in record.rejection_reasons)
 
-    def test_has_realized_labels_defaults_false(self) -> None:
+    def test_has_realized_labels_defaults_false_and_rejects(self) -> None:
+        """Missing has_realized_labels defaults to False and rejects."""
         meta = _good_meta()
         del meta["has_realized_labels"]
         expert = ExpertSpec(name="xgb", score_dir=Path("."))
         record = validate_expert_date(expert, "2026-01-15", meta, UNIVERSE)
         assert record.has_realized_labels is False
+        assert record.admitted is False
+        assert any("no realized labels" in r for r in record.rejection_reasons)
+
+    def test_no_labels_admitted_when_not_required(self) -> None:
+        """When require_realized_labels=False, absent labels do not reject."""
+        meta = _good_meta()
+        meta["has_realized_labels"] = False
+        expert = ExpertSpec(name="xgb", score_dir=Path("."))
+        record = validate_expert_date(
+            expert, "2026-01-15", meta, UNIVERSE,
+            require_realized_labels=False,
+        )
+        assert record.has_realized_labels is False
+        assert record.admitted is True
+
+    def test_rejects_absent_realized_labels(self) -> None:
+        """Explicit has_realized_labels=False under default policy rejects."""
+        meta = _good_meta()
+        meta["has_realized_labels"] = False
+        expert = ExpertSpec(name="xgb", score_dir=Path("."))
+        record = validate_expert_date(expert, "2026-01-15", meta, UNIVERSE)
+        assert record.admitted is False
+        assert any("no realized labels" in r for r in record.rejection_reasons)
 
     def test_rejects_unknown_tickers(self) -> None:
         meta = _good_meta()
@@ -352,9 +467,10 @@ class TestIntegrationArtifactToLedger:
     def _write_score(
         self, score_dir: Path, dt: str, *,
         tickers: list[str] | None = None,
-        fingerprint: str = "sha256:abc",
+        fingerprint: str = VALID_FP,
         training_cutoff: str = "2025-12-31",
         feature_cutoff: str | None = None,
+        data_watermark: str | None = None,
         score_timestamp: str | None = None,
         has_labels: bool = True,
     ) -> Path:
@@ -368,6 +484,7 @@ class TestIntegrationArtifactToLedger:
             "model_content_sha256": fingerprint,
             "training_cutoff": training_cutoff,
             "as_of_date": feature_cutoff,
+            "data_watermark": data_watermark or feature_cutoff,
             "score_timestamp": score_timestamp,
             "has_realized_labels": has_labels,
             "scores": {t: 0.01 * i for i, t in enumerate(tickers)},
@@ -455,3 +572,88 @@ class TestIntegrationArtifactToLedger:
         )
         assert ledger.summary["all_experts_fully_admitted"] is False
         assert ledger.summary["complementarity_ok"] is False
+
+
+class TestComplementarityNaN:
+    """NaN/constant score streams must be rejected, not slip through as PLAUSIBLE."""
+
+    def test_assess_rejects_nan_pearson(self) -> None:
+        result = _assess_complementarity(float("nan"), 0.5, 0.3)
+        assert "NON_FINITE" in result
+
+    def test_assess_rejects_nan_spearman(self) -> None:
+        result = _assess_complementarity(0.5, float("nan"), 0.3)
+        assert "NON_FINITE" in result
+
+    def test_assess_rejects_inf(self) -> None:
+        result = _assess_complementarity(float("inf"), 0.5, 0.3)
+        assert "NON_FINITE" in result
+
+    def test_assess_rejects_nan_disagree(self) -> None:
+        result = _assess_complementarity(0.5, 0.5, float("nan"))
+        assert "NON_FINITE" in result
+
+    def test_assess_none_is_insufficient(self) -> None:
+        result = _assess_complementarity(None, None, None)
+        assert result == "INSUFFICIENT_DATA"
+
+    def test_constant_scores_produce_degenerate_report(self) -> None:
+        """Constant score streams across all tickers produce NaN correlation."""
+        pytest.importorskip("numpy")
+        pytest.importorskip("scipy")
+
+        expert_scores = {
+            "const_expert": {
+                "2026-01-15": {t: 0.5 for t in UNIVERSE},  # constant
+            },
+            "varied_expert": {
+                "2026-01-15": {t: 0.01 * i for i, t in enumerate(UNIVERSE)},
+            },
+        }
+        report = build_complementarity_report(
+            expert_scores, ["2026-01-15"], UNIVERSE
+        )
+        # Constant vs. varied should produce NaN Pearson (std=0 for const).
+        assert report["n_degenerate_pairs"] >= 1
+        # Assessment must NOT be PLAUSIBLE.
+        assert "PLAUSIBLE" not in report["complementarity_assessment"]
+
+
+class TestFingerprintMutation:
+    """Tamper detection: mutating records after creation changes the fingerprint."""
+
+    def test_mutation_changes_fingerprint(self) -> None:
+        experts = [ExpertSpec(name="xgb", score_dir=Path("."))]
+        dates = ["2026-01-13"]
+
+        def loader(expert: ExpertSpec, dt: str) -> dict[str, Any]:
+            return _good_meta(dt)
+
+        ledger = build_ledger(
+            experts, dates, UNIVERSE, score_loader=loader,
+            complementarity_assessment="PLAUSIBLE",
+        )
+        original_fp = ledger.ledger_fingerprint
+        assert original_fp.startswith("sha256:")
+
+        # Tamper: flip admission status on the first record.
+        ledger.records[0]["admitted"] = not ledger.records[0]["admitted"]
+        tampered_fp = ledger.compute_fingerprint()
+        assert tampered_fp != original_fp
+
+    def test_fingerprint_covers_all_records(self) -> None:
+        experts = [ExpertSpec(name="xgb", score_dir=Path("."))]
+        dates = ["2026-01-13", "2026-01-14"]
+
+        def loader(expert: ExpertSpec, dt: str) -> dict[str, Any]:
+            return _good_meta(dt)
+
+        ledger = build_ledger(
+            experts, dates, UNIVERSE, score_loader=loader,
+            complementarity_assessment="PLAUSIBLE",
+        )
+        fp_full = ledger.ledger_fingerprint
+
+        # Remove a record and recompute — fingerprint must change.
+        ledger.records.pop()
+        assert ledger.compute_fingerprint() != fp_full
