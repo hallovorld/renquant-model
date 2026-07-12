@@ -17,6 +17,42 @@ defects (conflating L4's inner-fold selection space with outer hypothesis
 multiplicity; an occupancy floor that cannot support the stated fitting
 problem) plus 1 internal inconsistency (L1-3E deployment wording).
 
+## Independent reconsideration (Codex, 2026-07-12)
+
+The earlier revisions made the proposed ladder harder to overfit, but they did
+not establish that an ensemble should have positive expected return or that a
+walk-forward winner can be promoted. This pass changes the decision standard:
+
+1. **No alpha presumption.** The research question is now incremental,
+   post-cost outcome versus the frozen champion under the same executable
+   policy. Forecast-combination theory is explicitly treated as a conditional
+   MSE argument, not a proof of positive return, portfolio benefit, or
+   production eligibility.
+2. **Stage 0 admissibility.** Every expert now requires a point-in-time
+   forecast ledger (training/data cutoff, timestamp, fingerprint, coverage,
+   orientation and label availability) plus measured score/error diversity,
+   action delta, and missingness parity. Different model names are not treated
+   as independent information.
+3. **Discovery / confirmation / operational shadow separation.** Nested,
+   purged walk-forward can select at most one candidate from a frozen research
+   universe. A later unread chronological window confirms exactly that frozen
+   candidate. Only then can DARK operational shadow evidence be collected;
+   production remains a separate authorization decision.
+4. **Economic and anti-snooping evidence.** IC is diagnostic only. A pass now
+   requires dependence-aware incremental net performance, cost/turnover/risk
+   evidence, trade-list delta, and pre-registered adverse-cost/liquidity
+   stress. The documented candidate universe must receive a data-snooping
+   diagnostic (Reality Check/SPA-style bootstrap or Deflated Sharpe), which is
+   explicitly not allowed to replace the untouched confirmation split.
+5. **L4 deferred.** The HMM/static-weight rung is removed from the current
+   executable program. Four effective blocks cannot support a credible
+   state-specific selection claim; it may return only through a separate
+   feasibility/power design with a fresh confirmation window.
+
+The revision cites White's Reality Check, Bailey and Lopez de Prado's Deflated
+Sharpe Ratio, purged/embargoed evaluation, and structural-break combination
+work. It changes no code, config, or production behavior.
+
 ## Revision note (round 2)
 
 Codex's review (independently verified: both cited RegimeFolio and QuantBench
