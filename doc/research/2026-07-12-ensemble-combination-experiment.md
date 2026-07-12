@@ -168,9 +168,18 @@ introduces a new expert must be compared against both**:
     costs, and outer folds.
 
 Call this new, explicitly named control **L1-3E** (equal-weight on the
-3-expert set). L1-3E is not a new rung on the maturity ladder in its own
-right — it never advances to production on its own — it is a control
-computed solely to give L3 a same-set baseline to beat.
+3-expert set). L1-3E's primary purpose in this design is as a control: it is
+computed to give L3 (and, transitively, L4) a same-set baseline to beat,
+isolating the combination method's own contribution from the expert-set
+change. That control role does not preclude L1-3E from reaching production:
+if no higher rung (L3, or L4) beats L1-3E at the 3-expert set, L1-3E — being
+the best validated combination method at the current 3-expert set — is a
+legitimate deployment candidate, exactly like any other ladder rung (see
+§3.4, §5.3). L1-3E is not a permanent, independently-advancing rung the way
+L1/L2/L3/L4 are (it only exists once a 3rd expert is available, and it is
+computed specifically to be compared against L3), but whenever it wins that
+comparison it can and does deploy — the same way L1 or L2 deploy when they
+win theirs.
 
 **L3's advance criterion (revised, see also §3.4)**: L3 (stacking, 3 experts)
 must beat **both** L2 (its predecessor, 2 experts) **and** L1-3E (the same-set
@@ -340,53 +349,143 @@ REGIME_WEIGHTS = {
 }
 ```
 
-The weight values above are illustrative. The actual values are selected by
-grid search on inner-fold data (§4.2) with a coarse grid (weights in 0.05
-increments, summing to 1.0).
+The weight values above are illustrative. The actual values are selected on
+inner-fold data (§4.2) from a small, pre-specified candidate list per regime
+— not a fine 0.05-increment grid — for the reasons given below.
 
-**Corrected combinatorics (this document previously understated this by an
-order of magnitude or more):** with 3 experts and weights constrained to 0.05
-increments summing to 1.0, the number of distinct weight-simplex points **per
-regime** is C(22,2) = 231 — not "~200" as an earlier version of this document
-stated. If the three regimes' weight tables were selected **jointly** as a
-single combinatorial search (rather than fit independently per regime), that
-is 231³ ≈ 12.3 million joint three-regime weight-table combinations — a
-massive, previously uncounted multiplicity burden, not "~200 × 3 ≈ 600." This
-multiplicity must be folded into the same family-wise error accounting as the
-rest of the ladder (§4.2/§4.4), not treated as a separate, uncounted search.
-To keep this tractable and honest, L4 adds the following safeguards:
+**Inner-fold search space vs. outer hypothesis multiplicity (corrected —
+Codex 3rd-round review, 2026-07-12).** With 3 experts and weights constrained
+to 0.05 increments summing to 1.0, the number of distinct weight-simplex
+points **per regime** is C(22,2) = 231 — not "~200" as an earlier version of
+this document stated. If the three regimes' weight tables were selected
+**jointly** as a single combinatorial search (rather than fit independently
+per regime), that is 231³ ≈ 12.3 million joint three-regime weight-table
+combinations, not "~200 × 3 ≈ 600."
 
-- **Causal regime classification.** The HMM regime state used to index the
-  weight table must be fit using only data available strictly before each
-  prediction date within the outer-train window — no full-sample or smoothed
-  HMM fit that uses future information to label past regimes (this is a
-  restatement/tightening of the existing §4.2 causal-HMM control, applied
-  explicitly to L4's own fitting, not just to regime *labels* used elsewhere).
-- **State-occupancy minima.** A regime state must have at least a proposed
-  floor of **60 trading days** (roughly one full label-horizon's worth,
-  consistent with this document's own "~15 regime transitions in 5 years"
-  observation) in the inner-train window before its own weight-table entry
-  may be independently grid-searched. This is a **proposed floor, not a
-  proven-optimal one** — flagged here explicitly as a judgment call. Below
-  this floor, that regime falls back to a **pooled (all-regime) weight table**
-  or to L1-3E equal-weight, whichever the inner-fold validation prefers.
-- **Regularization/shrinkage toward equal weights.** Every fitted per-regime
-  table must be shrunk toward equal weights: the final per-regime weight is
+These numbers describe the **size of L4's inner-fold search space** — this is
+ordinary nested-CV hyperparameter/model selection, exactly analogous to
+grid-searching any ML hyperparameter inside a single outer-fold's training
+data. It does **not**, by itself, inflate the outer hypothesis count (§4.4),
+because the search never touches outer-test data: every candidate is scored
+only against inner-fold data, and only the single winning candidate per
+outer-train window is ever carried forward to touch an outer-test window. A
+prior revision of this document stated that this multiplicity "must be folded
+into the same family-wise error accounting as the rest of the ladder
+(§4.2/§4.4)." **That was a methodological error, corrected in this
+revision:** conflating the size of an inner-fold selection space with the
+outer hypothesis count both misstates what is being tested (a literal
+12.3-million-way correction is neither meaningful nor intended) and would
+make inference over the ladder needlessly impossible. §4.4's outer hypothesis
+family is unaffected by the size of L4's inner grid — see §4.4 for the
+corrected accounting.
+
+To make this rigorous rather than merely asserted: **the entire L4 selection
+algorithm — the candidate grid (redefined below), the causal HMM
+specification, the occupancy rule (below), and the shrinkage rule — must be
+fully specified and FROZEN before any outer-fold evaluation begins.** Within
+each outer-train window, this frozen algorithm runs exactly once, entirely on
+that window's inner-fold data (per §4.1's nested split), and produces a
+single fitted L4 weight specification for that fold — exactly like fitting a
+single model's hyperparameters via inner-CV and then evaluating only the one
+resulting model once, on the outer holdout. The corollary: if, after seeing
+outer-fold results, a different L4 algorithm *variant* is tried (a different
+occupancy threshold, a different shrinkage scheme, a different candidate
+grid, etc.), that new variant constitutes a **new outer hypothesis** — it
+must either (a) be added to the pre-registered outer family (§4.4) with its
+own correction budget from the start, or (b) be evaluated only on a
+completely fresh, previously-untouched holdout split, since the original
+outer-test data is "spent" the moment it informs a decision to try a new
+variant.
+
+The occupancy floor, shrinkage, and equal-weight fallback below remain
+necessary safeguards — but their purpose is to control **inner-fold
+overfitting/selection risk** (preventing the inner search from fitting noise
+even though it never touches outer data), not to satisfy an outer-multiplicity
+correction; this purpose distinction is stated explicitly wherever these
+mechanisms recur (§4.2, §4.4).
+
+**The proposed 60-trading-day floor does not support this fitting problem —
+redefined in effective non-overlapping blocks, with a pre-registered
+feasibility gate.** An earlier version of this document proposed a **60
+trading day** floor before a regime's own weight-table entry could be
+grid-searched. That is wrong: with `fwd_60d` labels, 60 raw trading days is
+approximately **one overlapping label-horizon's worth of data** — as this
+document's own §4.1 already establishes for the broader non-IID problem — not
+60 independent observations. It cannot identify 231 per-state weight
+candidates, a shrinkage intensity, and a causal HMM configuration
+simultaneously. This is corrected as follows:
+
+- **Occupancy eligibility, redefined in effective non-overlapping blocks.**
+  Using the same non-overlapping-block concept already defined in §4.1 (block
+  length ≥ the label horizon [60 trading days] plus the existing embargo
+  gap), count how many such genuinely non-overlapping blocks fall within a
+  given regime state's occupied days inside the inner-train window. A
+  regime's own weight-table entry may be attempted only if that count meets a
+  pre-registered minimum of **4 non-overlapping blocks** (chosen as roughly
+  the smallest count that allows both a handful of training blocks and a
+  held-out inner-inner validation block for the shrinkage step below — this
+  is a judgment call, flagged explicitly, not a derived optimum). **Stated
+  openly, not engineered to pass:** given this document's own "~15 regime
+  transitions in 5 years" observation, most individual regime spells will be
+  well under one full non-overlapping block's length, so most regimes in a
+  typical 5-year sample will likely fail to clear even this small block-count
+  minimum — this is an expected, disclosed consequence of the fitting
+  problem's actual effective sample size, not a bar to be tuned until
+  something passes.
+- **A much smaller, coarser, explicitly enumerated candidate set — not a fine
+  grid.** Given the effective sample size above, the fine 0.05-increment /
+  231-point grid is replaced with a small, pre-specified candidate list per
+  regime: **4 candidates** — the equal-weight vector (1/3, 1/3, 1/3), and one
+  directional tilt toward each of the 3 experts (a {0.5, 0.3, 0.2} vector,
+  rotated so each expert in turn is the one receiving 0.5). Four is
+  deliberately close to the minimum needed to ask a meaningful question at
+  all ("does tilting toward any one expert help, versus equal weight, in this
+  regime") while adding as few free selection choices as the effective sample
+  can support — this is not a de-tuned version of the original 231-point
+  grid, it is a different, much smaller design chosen because the effective
+  sample cannot support fine-grained search.
+- **Regularization/shrinkage toward equal weights** (retained from the prior
+  revision; purpose reframed above). Every fitted per-regime table must still
+  be shrunk toward equal weights: the final per-regime weight is
   `shrinkage_intensity × grid_optimal + (1 - shrinkage_intensity) ×
   equal_weight`, with `shrinkage_intensity` chosen via **inner-inner**
   validation (a validation split within the inner-train window, held out from
   the grid search itself) — never via the same grid search that picked the
   raw optimum.
-- **Equal-weight fallback.** If a regime does not clear the occupancy minimum,
-  or the shrinkage-adjusted table does not beat equal-weight on a held-out
-  inner-validation split, that regime uses L1 (or L1-3E, if the 3-expert set
-  is in use) equal-weight instead of a custom per-regime table.
+- **Equal-weight fallback** (retained). If a regime does not clear the
+  occupancy minimum, or the shrinkage-adjusted table does not beat equal
+  weight on a held-out inner-validation split, that regime uses L1 (or
+  L1-3E, if the 3-expert set is in use) equal-weight instead of a custom
+  per-regime table.
+- **Causal regime classification** (retained from the prior revision). The
+  HMM regime state used to index the weight table must be fit using only data
+  available strictly before each prediction date within the outer-train
+  window — no full-sample or smoothed HMM fit that uses future information to
+  label past regimes (this restates/tightens the existing §4.2 causal-HMM
+  control, applied explicitly to L4's own fitting, not just to regime
+  *labels* used elsewhere).
+
+**Pre-registered power/feasibility gate — checked before any inner-fold grid
+search for L4 is attempted.** If a regime's state-specific effective
+non-overlapping-block sample does not clear the pre-registered minimum above,
+**L4 must be declared infeasible for this dataset** for that regime — a
+valid, honest negative/inconclusive finding, not something to silently paper
+over via regularization or a lower occupancy bar. If no regime clears the
+minimum, the entire L4 rung is declared infeasible for this dataset, and the
+ladder stops at L3 (or whichever level won) without ever running L4's inner
+grid search for any regime. **This is the central evidence threshold for
+rejecting learned MoE** (per PR #45's Phase 4 contingency, already rejected
+for insufficient regime-transition data) — the static L4 alternative must be
+held to the **same** evidentiary standard, not a lower one just because it is
+the mechanically "simpler" of the two.
 
 **Why static, not learned:** ~3 regime transitions per year × 5 years = ~15
 training points for regime-conditional behavior. A learned gating network
-would have far more parameters than training points. A fixed table with
-grid-searched values on inner folds, subject to the occupancy/shrinkage/
-fallback safeguards above, is the most that this data can support.
+would have far more parameters than training points. A fixed table selected
+from the small candidate set on inner folds, subject to the
+occupancy/shrinkage/fallback safeguards and the feasibility gate above (or
+declared infeasible where that gate is not cleared), is the most that this
+data can support.
 
 **Literature support (narrowly qualified — see also §8):** RegimeFolio is a
 **2025** preprint (arXiv:2510.14986; an earlier version of this document
@@ -400,18 +499,24 @@ conditioning combination weights on a market-regime signal is a viable,
 literature-supported idea. RegimeFolio's own specific mechanism (VIX
 classifier + dynamic mean-variance) differs from this design's mechanism
 (HMM classifier + static per-regime weight table), so this design's L4 choice
-must stand on the occupancy/shrinkage/fallback safeguards above, not on this
-citation.
+must stand on the occupancy/shrinkage/fallback safeguards and the feasibility
+gate above, not on this citation.
 
 **Implementation:** Extends the L3 harness with regime-state indexing.
 Estimated effort: 2–3 days incremental.
 
-**Evaluation:** Same nested WF, additionally comparing L4 vs L3.
+**Evaluation:** Same nested WF, additionally comparing L4 vs L3 — where "L4"
+means the single fitted L4 weight specification the frozen selection
+algorithm above produced for a given outer fold, not one of the 231/231³
+inner-fold candidates (see §4.4).
 
-**Advance criterion:** L4 must beat L3 OOS, under the same family-wise
-correction / hierarchical gatekeeping procedure specified in §4.4 (which now
-explicitly folds in the 231-per-regime / 231³-joint multiplicity above). If
-it doesn't, deploy L3 (or whichever level won).
+**Advance criterion:** L4 must first clear the pre-registered feasibility
+gate above (otherwise it is declared infeasible for this dataset and the
+comparison is not run). If it clears the gate, L4 must beat L3 OOS under the
+same family-wise correction / hierarchical gatekeeping procedure specified in
+§4.4. The size of L4's inner grid (231-per-regime / 231³-joint) does not add
+to that outer accounting — see §4.4 for why. If L4 fails to beat L3, or is
+declared infeasible, deploy L3 (or whichever level won).
 
 ---
 
@@ -530,7 +635,9 @@ L2's scale-invariance problem (§3.3(a)).
 | Per-window IC observations are not IID (`fwd_60d` overlap) | Non-overlapping outer blocks ≥ label horizon + embargo, or dependence-robust bootstrap/HAC inference (§4.1) — NOT a plain paired t-test |
 | Expert-set change confounded with combination method (L2→L3 adds a 3rd expert) | Same-set equal-weight control L1-3E (§3.1bis); L3 must beat both L2 and L1-3E |
 | Base-model score scale/orientation/staleness inconsistency | Causal normalization, consistent orientation, exact as-of discipline, missing-expert fallback, immutable fingerprints (§4.1bis) |
-| Multiple comparisons across the full ladder, INCLUDING the data-adaptive level-by-level winner-selection step itself | See the full enumerated hypothesis family and correction procedure in §4.4 — this is materially larger than "3 comparisons" and now also folds in L4's 231-per-regime / 231³-joint grid multiplicity (§3.5) |
+| Multiple comparisons across the full ladder, INCLUDING the data-adaptive level-by-level winner-selection step itself | See the full enumerated hypothesis family and correction procedure in §4.4 — this is materially larger than "3 comparisons." L4's inner grid (231-per-regime / 231³-joint, §3.5) is a separate, inner-fold-only selection problem and is NOT part of this outer accounting — see §4.4 for why. |
+| L4's inner-fold candidate search treated as if it were outer hypothesis multiplicity | L4's selection algorithm (grid, causal HMM spec, occupancy rule, shrinkage rule) is frozen before outer evaluation and runs once per outer fold entirely on inner-fold data (§3.5); only the resulting single fitted spec per fold is ever compared against outer-test data (item 6 of §4.4's family) |
+| L4 state-occupancy floor understates the fitting problem (60 raw days ≈ 1 overlapping label-horizon, not 60 independent observations) | Occupancy redefined in effective non-overlapping blocks (§4.1's block concept), small pre-specified candidate set, pre-registered feasibility gate — L4 declared infeasible for a regime (or the whole rung) if the gate is not cleared, held to the same evidentiary standard as rejected learned MoE (§3.5) |
 
 ### 4.3 Evaluation metrics
 
@@ -557,7 +664,9 @@ specified. The full, enumerated family is:
 3. L1-3E vs L2 (the same-set control comparison introduced in §3.1bis)
 4. L3 vs L2
 5. L3 vs L1-3E
-6. L4 vs L3
+6. L4 vs L3 — where "L4" means the single fitted L4 weight specification
+   that the frozen selection algorithm (§3.5) produced for a given outer
+   fold, never one of the 231/231³ inner-fold candidates
 7. Final declared-winner vs frozen champion
 
 Beyond these seven pairwise tests, **the ladder's own level-by-level winner
@@ -565,10 +674,24 @@ selection is itself a data-adaptive selection step** — choosing, after the
 fact, "whichever level won" and reporting its comparison as if it were the
 only test conducted inflates the effective family further, the same way
 picking the best of several backtested models does (§2.2's winner's-curse
-logic applies here too, one level up the stack). L4's grid search (§3.5) adds
-231 per-regime / 231³-joint candidate weight tables, which must also be
-folded into this same accounting, not treated as a separate, uncounted
-search.
+logic applies here too, one level up the stack).
+
+**L4's inner-fold grid is not part of this outer family (corrected — Codex
+3rd-round review, 2026-07-12).** A prior revision of this document stated
+that L4's 231-per-regime / 231³-joint candidate weight tables (§3.5) "must
+also be folded into this same accounting, not treated as a separate,
+uncounted search." **That was a methodological error, now corrected.** The
+231/231³ figure describes the size of L4's inner-fold hyperparameter-
+selection space — ordinary nested-CV model selection, per §3.5 — not an
+additional set of outer hypotheses: the inner grid search never touches
+outer-test data, and only the single frozen-algorithm output per outer fold
+(item 6 above) is ever compared against outer-test data. Conflating the two
+both misstates what is being tested and would make inference over this
+ladder needlessly impossible (a literal 12.3-million-way correction is
+neither meaningful nor intended). The outer family subject to correction is
+exactly the seven items enumerated above, unaffected by how large L4's inner
+search space is; see §3.5 for the inner-selection freeze/feasibility-gate
+discipline that keeps the inner search itself honest.
 
 **Correction procedure — one of the following must be pre-registered before
 running any outer-fold evaluation:**
@@ -576,10 +699,13 @@ running any outer-fold evaluation:**
 (i) **Family-wise error correction (Holm-Bonferroni step-down).**
     Holm-Bonferroni step-down is preferred over flat Bonferroni because it is
     less conservative while remaining valid. Apply it across the **full**
-    enumerated family above, including a term for the level-selection step
-    (e.g. by including the "final declared-winner vs champion" comparison in
-    the family, which is where the selection step's effect ultimately
-    surfaces) and for the L4 grid multiplicity (§3.5). **OR:**
+    enumerated family above (the seven items, with item 6 taken as the single
+    fitted L4 specification per outer fold, not the inner grid — see above),
+    including a term for the level-selection step (e.g. by including the
+    "final declared-winner vs champion" comparison in the family, which is
+    where the selection step's effect ultimately surfaces). L4's inner-fold
+    grid multiplicity (§3.5) is deliberately **excluded** from this
+    correction, for the reasons given above. **OR:**
 
 (ii) **Hierarchical/sequential gatekeeping (closed testing).** Since the
      ladder already stops at the first level that fails to beat its
@@ -659,7 +785,7 @@ previous (or same-set-control) level per the criteria in §3.1bis/§3.4/§3.5.
 | **Phase A** | L1 (equal-weight XGB+PatchTST, 2 experts) vs frozen champion | XGB + PatchTST scores | 1–2 days | IC/return comparison; go/no-go for ensemble |
 | **Phase B** | L2 (inverse-variance, 2 experts, §3.3(a)-(d)) vs L1 | Phase A code | 1–1.5 days | Incremental comparison |
 | **Phase C** | Unfreeze per-ticker tournament; compute L1-3E (equal-weight, 3-expert same-set control, §3.1bis) | Timeout fix deployed | 1 day | 114+ candidates producing scores; L1-3E comparison ready |
-| **Phase D** | L3 (linear stacking, 3 experts) vs L2 AND vs L1-3E; L4 (regime weights) vs L3 | Nested WF harness + Phase C | 3–5 days | Full ladder comparison, including same-set control |
+| **Phase D** | L3 (linear stacking, 3 experts) vs L2 AND vs L1-3E; L4 (regime weights, subject to the §3.5 feasibility gate) vs L3 | Nested WF harness + Phase C | 3–5 days | Full ladder comparison, including same-set control; L4 result may be "infeasible for this dataset" |
 
 ### 5.3 Go/no-go decision tree
 
@@ -681,9 +807,15 @@ Phase A: L1 (2 experts) vs champion
                                          │   the added expert, not the
                                          │   stacking method; deploy L1-3E
                                          ├── L3 loses L2 → deploy L2
-                                         └── L3 beats BOTH → test L4
-                                                     ├── L4 loses → deploy L3
-                                                     └── L4 wins  → deploy L4
+                                         └── L3 beats BOTH → check L4
+                                             feasibility gate (§3.5)
+                                                     ├── L4 infeasible for this
+                                                     │   dataset (gate not
+                                                     │   cleared) → deploy L3;
+                                                     │   L4's inner grid search
+                                                     │   is never run
+                                                     ├── L4 feasible, loses → deploy L3
+                                                     └── L4 feasible, wins  → deploy L4
 ```
 
 All comparisons above are subject to the full pre-registered hypothesis
