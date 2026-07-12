@@ -81,18 +81,18 @@ class AdmissibilityLedger:
         return f"sha256:{hashlib.sha256(content).hexdigest()}"
 
 
+SUPPORTED_SCORE_FORMATS = {".json"}
+
+
 def load_score_file(path: Path) -> dict[str, Any] | None:
-    """Load a single score file (JSON or parquet)."""
+    """Load a single score file. Only JSON is supported.
+
+    Parquet is rejected: it cannot carry the same provenance metadata
+    (fingerprint, training cutoff, score timestamp, etc.) inline.
+    A versioned parquet+sidecar schema may be added later.
+    """
     if path.suffix == ".json":
         return json.loads(path.read_text())
-    if path.suffix == ".parquet":
-        try:
-            import pandas as pd
-
-            df = pd.read_parquet(path)
-            return {"data": df, "path": str(path)}
-        except ImportError:
-            return None
     return None
 
 
@@ -120,12 +120,16 @@ def extract_metadata_from_score(
         score_data.get("created_at", "MISSING"),
     )
 
+    meta["has_realized_labels"] = bool(
+        score_data.get("has_realized_labels", False)
+    )
+
     scores = score_data.get("scores", {})
     if isinstance(scores, dict):
-        meta["scored_count"] = len(scores)
+        meta["score_keys"] = list(scores.keys())
         meta["scores"] = scores
     else:
-        meta["scored_count"] = 0
+        meta["score_keys"] = []
         meta["scores"] = {}
 
     return meta
@@ -136,8 +140,17 @@ def validate_expert_date(
     prediction_date: str,
     score_meta: dict[str, Any],
     universe_tickers: list[str],
+    *,
+    decision_timestamp_max: str | None = None,
 ) -> ExpertAdmissibilityRecord:
-    """Validate one expert on one prediction date against Stage 0 requirements."""
+    """Validate one expert on one prediction date against Stage 0 requirements.
+
+    Args:
+        decision_timestamp_max: upper bound for score_timestamp (ISO-8601 date
+            prefix). If provided, scores generated AFTER this date are rejected
+            as potential look-ahead. If absent, defaults to prediction_date
+            (same-day cap).
+    """
     reasons: list[str] = []
 
     fingerprint = score_meta.get("model_fingerprint", "MISSING")
@@ -163,23 +176,42 @@ def validate_expert_date(
         )
 
     score_ts = score_meta.get("score_timestamp", "MISSING")
+    ts_upper = decision_timestamp_max or prediction_date
     if score_ts == "MISSING":
         reasons.append("missing score timestamp")
     elif score_ts != "MISSING":
-        # Validate score_timestamp does not precede the prediction date.
-        # Accept ISO-8601 strings; compare the date portion.
         try:
-            ts_date = score_ts[:10]  # "YYYY-MM-DD" prefix
+            ts_date = score_ts[:10]
             if ts_date < prediction_date:
                 reasons.append(
                     f"score_timestamp date {ts_date} < prediction date "
                     f"{prediction_date} (score generated before prediction date)"
                 )
+            if ts_date > ts_upper:
+                reasons.append(
+                    f"score_timestamp date {ts_date} > decision cutoff "
+                    f"{ts_upper} (late score — potential look-ahead)"
+                )
         except (TypeError, IndexError):
             reasons.append(f"score_timestamp unparseable: {score_ts!r}")
 
-    scored = score_meta.get("scored_count", 0)
+    # Universe coverage: intersect scored keys with expected universe.
+    score_keys = score_meta.get("score_keys", [])
+    universe_set = set(universe_tickers)
+    scored_set = set(score_keys)
+    unknown_keys = scored_set - universe_set
+    if unknown_keys:
+        reasons.append(
+            f"{len(unknown_keys)} unknown ticker(s) not in universe: "
+            f"{sorted(unknown_keys)[:5]}"
+        )
+    duplicate_keys = len(score_keys) - len(scored_set)
+    if duplicate_keys > 0:
+        reasons.append(f"{duplicate_keys} duplicate score key(s)")
+
+    scored_expected = universe_set & scored_set
     universe_size = len(universe_tickers)
+    scored = len(scored_expected)
     missing = universe_size - scored
     missingness = missing / universe_size if universe_size > 0 else 1.0
 
@@ -188,8 +220,7 @@ def validate_expert_date(
             f"missingness {missingness:.1%} exceeds 20% threshold"
         )
 
-    # Fail-closed: labels absent until proven present.
-    has_labels = score_meta.get("has_realized_labels", False)
+    has_labels = bool(score_meta.get("has_realized_labels", False))
 
     return ExpertAdmissibilityRecord(
         expert_name=expert.name,
@@ -320,12 +351,20 @@ def build_ledger(
     prediction_dates: list[str],
     universe_tickers: list[str],
     score_loader: Any = None,
+    *,
+    complementarity_assessment: str | None = None,
 ) -> AdmissibilityLedger:
     """Build the complete admissibility ledger.
 
     This is the main entry point. In production use, pass a score_loader
     callable that returns score metadata for (expert, date) pairs.
     For testing, the ledger can be built from pre-extracted metadata.
+
+    Args:
+        complementarity_assessment: result string from
+            build_complementarity_report. Must be "PLAUSIBLE" for
+            all_experts_fully_admitted to be True. None = not yet
+            evaluated (fail-closed).
     """
     ledger = AdmissibilityLedger(
         created_at=datetime.utcnow().isoformat() + "Z",
@@ -351,7 +390,7 @@ def build_ledger(
                     "training_cutoff": "MISSING",
                     "feature_data_cutoff": "MISSING",
                     "score_timestamp": "MISSING",
-                    "scored_count": 0,
+                    "score_keys": [],
                 }
 
             record = validate_expert_date(
@@ -375,17 +414,21 @@ def build_ledger(
         }
 
     total_records = len(ledger.records)
+    per_expert_ok = (
+        total_records > 0
+        and all(
+            s["admitted"] > 0 and s["rejected"] == 0
+            for s in per_expert_stats.values()
+        )
+    )
+    complementarity_ok = complementarity_assessment == "PLAUSIBLE"
+
     ledger.summary = {
         "total_records": total_records,
         "per_expert": per_expert_stats,
-        # Fail-closed: zero records = NOT admitted (no vacuous truth).
-        "all_experts_fully_admitted": (
-            total_records > 0
-            and all(
-                s["admitted"] > 0 and s["rejected"] == 0
-                for s in per_expert_stats.values()
-            )
-        ),
+        "complementarity_assessment": complementarity_assessment or "NOT_EVALUATED",
+        "complementarity_ok": complementarity_ok,
+        "all_experts_fully_admitted": per_expert_ok and complementarity_ok,
     }
     ledger.ledger_fingerprint = ledger.compute_fingerprint()
 
@@ -417,7 +460,8 @@ def _discover_prediction_dates(experts: list[ExpertSpec]) -> list[str]:
     """
     import re
 
-    date_re = re.compile(r"^(\d{4}-\d{2}-\d{2})\.(json|parquet)$")
+    suffixes = "|".join(s.lstrip(".") for s in SUPPORTED_SCORE_FORMATS)
+    date_re = re.compile(rf"^(\d{{4}}-\d{{2}}-\d{{2}})\.({suffixes})$")
     dates: set[str] = set()
     for expert in experts:
         if expert.score_dir.is_dir():
@@ -492,7 +536,7 @@ def main() -> None:
 
     def _file_score_loader(expert: ExpertSpec, dt: str) -> dict[str, Any]:
         """Load score metadata from the expert's score directory."""
-        for suffix in (".json", ".parquet"):
+        for suffix in SUPPORTED_SCORE_FORMATS:
             candidate = expert.score_dir / f"{dt}{suffix}"
             if candidate.exists():
                 data = load_score_file(candidate)
@@ -506,39 +550,51 @@ def main() -> None:
             "scored_count": 0,
         }
 
-    ledger = build_ledger(
-        experts, prediction_dates, universe_tickers, score_loader=_file_score_loader
+    # First pass: build ledger without complementarity to collect scores.
+    ledger_pass1 = build_ledger(
+        experts, prediction_dates, universe_tickers,
+        score_loader=_file_score_loader,
     )
-    output_path = write_ledger(ledger, Path(args.output_dir))
-    print(f"Ledger written to {output_path}")
-    print(f"Fingerprint: {ledger.ledger_fingerprint}")
 
-    # Compute complementarity report (§3.0).
+    # Compute complementarity report (§3.0) — required for admission.
     expert_scores: dict[str, dict[str, dict[str, float]]] = {}
-    for record in ledger.records:
+    for record in ledger_pass1.records:
         name = record["expert_name"]
         dt = record["prediction_date"]
         if name not in expert_scores:
             expert_scores[name] = {}
-        # Try to reload actual scores for complementarity analysis.
         for exp in experts:
             if exp.name == name:
                 meta = _file_score_loader(exp, dt)
                 scores = meta.get("scores", {})
                 if scores:
                     expert_scores[name][dt] = {
-                        k: float(v) for k, v in scores.items() if isinstance(v, (int, float))
+                        k: float(v) for k, v in scores.items()
+                        if isinstance(v, (int, float))
                     }
                 break
 
+    comp_assessment: str | None = None
     if len(expert_scores) >= 2:
         comp = build_complementarity_report(
             expert_scores, prediction_dates, universe_tickers
         )
+        comp_assessment = comp.get("complementarity_assessment")
         comp_path = Path(args.output_dir) / "complementarity_report.json"
+        comp_path.parent.mkdir(parents=True, exist_ok=True)
         comp_path.write_text(json.dumps(comp, indent=2) + "\n")
         print(f"Complementarity report written to {comp_path}")
-        print(f"  Assessment: {comp.get('complementarity_assessment', 'N/A')}")
+        print(f"  Assessment: {comp_assessment}")
+
+    # Rebuild ledger with complementarity result bound in.
+    ledger = build_ledger(
+        experts, prediction_dates, universe_tickers,
+        score_loader=_file_score_loader,
+        complementarity_assessment=comp_assessment,
+    )
+    output_path = write_ledger(ledger, Path(args.output_dir))
+    print(f"Ledger written to {output_path}")
+    print(f"Fingerprint: {ledger.ledger_fingerprint}")
 
     # Fail-closed verdict.
     if ledger.summary.get("all_experts_fully_admitted"):
@@ -548,6 +604,12 @@ def main() -> None:
         for name, stats in ledger.summary.get("per_expert", {}).items():
             if stats["rejected"] > 0:
                 print(f"  {name}: {stats['rejected']}/{stats['total']} rejected")
+        if not ledger.summary.get("complementarity_ok"):
+            print(
+                f"  complementarity: {ledger.summary.get('complementarity_assessment')} "
+                f"(must be PLAUSIBLE)",
+                file=sys.stderr,
+            )
         sys.exit(1)
 
 

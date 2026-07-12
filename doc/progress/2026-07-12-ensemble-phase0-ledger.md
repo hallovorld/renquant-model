@@ -8,7 +8,7 @@
 
 Phase 0 prerequisite tooling for the ensemble experiment: admissibility ledger
 and immutable experiment manifest. This v2 PR strips the L1 experiment runner
-code that was out of scope and fixes three review issues from Codex on PR #50.
+code that was out of scope and fixes review issues from Codex.
 
 ### Components
 
@@ -16,10 +16,15 @@ code that was out of scope and fixes three review issues from Codex on PR #50.
    - Per-expert, per-date validation: fingerprint, training cutoff, feature/data
      cutoff, score timestamp, universe coverage, missingness, score orientation
    - Lookahead detection (training cutoff >= prediction date)
-   - Score timestamp validation against prediction date
-   - Missingness threshold (>20% = rejected)
+   - Score timestamp validation: lower bound (prediction date) AND upper bound
+     (decision cutoff, defaults to same-day cap)
+   - Universe coverage: intersection-based scoring, unknown/duplicate ticker
+     rejection, missingness derived from expected universe only
+   - `has_realized_labels` extracted from score artifact (fail-closed default)
+   - Parquet rejected — JSON only (no provenance parity for parquet)
+   - Complementarity report: required prerequisite for admission (must be
+     "PLAUSIBLE" or all_experts_fully_admitted = False)
    - Deterministic SHA-256 fingerprinted ledger output
-   - Complementarity report (cross-sectional correlation, rank disagreement)
    - CLI discovers dates from score directories and runs complementarity analysis
 
 2. **Experiment manifest builder** (`experiments/ensemble_phase0/experiment_manifest.py`)
@@ -27,21 +32,29 @@ code that was out of scope and fixes three review issues from Codex on PR #50.
    - 3 experts, 2 expert sets, 6-hypothesis family, hierarchical gatekeeping
    - Tamper detection via fingerprint verification
 
-### Fixes from PR #50 review (Codex CHANGES_REQUESTED)
+### Fixes from Codex review (CHANGES_REQUESTED on #50 and #51)
 
-1. **Removed L1 experiment runner** -- `experiments/ensemble_l1_equal_weight/`
-   and related progress docs removed. Only Phase 0 prerequisite tooling remains.
+1. **`extract_metadata_from_score` extracts `has_realized_labels`** — previously
+   never copied from the score artifact; now explicitly extracted with
+   fail-closed False default.
 
-2. **CLI fail-open bug fixed** -- `build_ledger` with zero dates/records now sets
-   `all_experts_fully_admitted = False` (no vacuous truth). CLI discovers
-   prediction dates from score directories; exits 1 if zero dates found or
-   experts not fully admitted.
+2. **Score timestamp upper bound enforced** — `decision_timestamp_max` parameter
+   caps how late a score can be generated. Defaults to prediction_date (same-day
+   cap). Late scores rejected as potential look-ahead.
 
-3. **Validation gaps closed**:
-   - `has_realized_labels` defaults to `False` (fail-closed, was `True`)
-   - `score_timestamp` validated against prediction date (rejects if scored
-     before prediction date or if timestamp is missing)
-   - CLI computes and writes the complementarity report
+3. **Universe coverage via intersection** — `scored_count` now measures
+   `universe ∩ score_keys` (not raw `len(scores)`). Unknown tickers outside the
+   universe are rejected. Duplicate keys are rejected. Missingness derived only
+   from expected universe names.
+
+4. **Parquet explicitly rejected** — `load_score_file` only supports JSON.
+   Parquet cannot carry inline provenance metadata; a versioned parquet+sidecar
+   schema may be added later. `SUPPORTED_SCORE_FORMATS` constant controls this.
+
+5. **Complementarity is a prerequisite** — `build_ledger` accepts
+   `complementarity_assessment` parameter. `all_experts_fully_admitted` requires
+   both per-expert admission AND complementarity = "PLAUSIBLE". INSUFFICIENT_DATA,
+   NEAR_DUPLICATE, LOW_DISAGREEMENT, or NOT_EVALUATED all block Phase A.
 
 ## Why
 
@@ -50,7 +63,9 @@ L1-L3 comparison. Without them, any experiment result is not credible.
 
 ## Status
 
-- 22/22 tests pass (15 ledger + 7 manifest).
+- 42/42 tests pass (36 ledger + 6 manifest).
+- Integration tests cover: valid/stale/late/malformed/mismatched-universe/
+  insufficient-complementarity cases.
 - These are experiment-side tools, not production code changes.
 - Next: run the ledger against actual XGB + PatchTST score histories to produce
   the first admissibility audit.
