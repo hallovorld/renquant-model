@@ -112,6 +112,7 @@ class AdmissibilityLedger:
 
 SUPPORTED_SCORE_FORMATS = {".json"}
 FINGERPRINT_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 MIN_COMMON_NAMES = 10
 
 
@@ -130,15 +131,18 @@ def _decision_ts_from_schedule(
     return utc_dt.isoformat()
 
 
-def load_score_file(path: Path) -> dict[str, Any] | None:
-    """Load a single score file. Only JSON is supported.
+def load_score_file(path: Path) -> tuple[dict[str, Any], str] | None:
+    """Load a single score file and compute its content digest.
 
-    Parquet is rejected: it cannot carry the same provenance metadata
-    (fingerprint, training cutoff, score timestamp, etc.) inline.
-    A versioned parquet+sidecar schema may be added later.
+    Returns ``(parsed_data, digest_string)`` where digest_string is
+    ``sha256:<64 hex chars>`` computed from the exact bytes on disk.
+    Only JSON is supported. Parquet is rejected: it cannot carry the
+    same provenance metadata inline.
     """
     if path.suffix == ".json":
-        return json.loads(path.read_text())
+        raw_bytes = path.read_bytes()
+        digest = f"sha256:{hashlib.sha256(raw_bytes).hexdigest()}"
+        return json.loads(raw_bytes), digest
     return None
 
 
@@ -315,6 +319,13 @@ def validate_expert_date(
 
     # =================================================================
     # Phase 3: Causal chain checks (using parsed tz-aware datetimes).
+    #
+    # Full causal ordering enforced:
+    #   training_cutoff < data_watermark <= feature_data_cutoff <= decision_timestamp
+    #   score_timestamp <= decision_timestamp
+    #
+    # ALL available-time fields are compared to the actual decision
+    # timestamp, not a date-only end-of-day surrogate.
     # =================================================================
 
     # training_cutoff < prediction_date
@@ -322,14 +333,6 @@ def validate_expert_date(
         if parsed_training >= parsed_pred:
             reasons.append(
                 f"training cutoff {training_cutoff_raw} >= prediction date "
-                f"{prediction_date} (lookahead)"
-            )
-
-    # feature_data_cutoff <= prediction_date
-    if parsed_feature is not None and parsed_pred is not None:
-        if parsed_feature > parsed_pred:
-            reasons.append(
-                f"feature cutoff {feature_cutoff_raw} > prediction date "
                 f"{prediction_date} (lookahead)"
             )
 
@@ -341,12 +344,28 @@ def validate_expert_date(
                 f"{data_watermark_raw} (causal violation)"
             )
 
-    # data_watermark <= prediction_date
-    if parsed_watermark is not None and parsed_pred is not None:
-        if parsed_watermark > parsed_pred:
+    # data_watermark <= decision_timestamp
+    if parsed_watermark is not None and parsed_decision is not None:
+        if parsed_watermark > parsed_decision:
             reasons.append(
-                f"data watermark {data_watermark_raw} > prediction date "
-                f"{prediction_date} (lookahead)"
+                f"data_watermark {data_watermark_raw} > decision_timestamp "
+                f"{decision_timestamp} (post-decision data -- look-ahead)"
+            )
+
+    # feature_data_cutoff <= decision_timestamp
+    if parsed_feature is not None and parsed_decision is not None:
+        if parsed_feature > parsed_decision:
+            reasons.append(
+                f"feature_data_cutoff {feature_cutoff_raw} > decision_timestamp "
+                f"{decision_timestamp} (post-decision features -- look-ahead)"
+            )
+
+    # data_watermark <= feature_data_cutoff (ordering within the chain)
+    if parsed_watermark is not None and parsed_feature is not None:
+        if parsed_watermark > parsed_feature:
+            reasons.append(
+                f"data_watermark {data_watermark_raw} > feature_data_cutoff "
+                f"{feature_cutoff_raw} (causal violation)"
             )
 
     # score_timestamp <= decision_timestamp
@@ -385,7 +404,7 @@ def validate_expert_date(
         )
 
     # =================================================================
-    # Phase 5: Realized labels + artifact provenance (Item 3).
+    # Phase 5: Realized labels + artifact provenance.
     # =================================================================
     has_labels = bool(score_meta.get("has_realized_labels", False))
     if require_realized_labels and not has_labels:
@@ -395,15 +414,40 @@ def validate_expert_date(
     label_artifact_ref = score_meta.get("label_artifact_ref", "MISSING")
     label_observation_end = score_meta.get("label_observation_end", "MISSING")
 
+    # score_artifact_digest: require canonical sha256:<64 hex>, never MISSING.
+    if score_artifact_digest == "MISSING":
+        reasons.append("missing score_artifact_digest (required)")
+    elif not DIGEST_RE.match(score_artifact_digest):
+        reasons.append(
+            f"invalid score_artifact_digest syntax "
+            f"(expected sha256:<64 hex chars>): {score_artifact_digest!r}"
+        )
+
     if has_labels:
         if label_artifact_ref == "MISSING":
             reasons.append(
                 "has_realized_labels=True but label_artifact_ref is MISSING"
             )
+        elif not DIGEST_RE.match(label_artifact_ref):
+            reasons.append(
+                f"invalid label_artifact_ref syntax "
+                f"(expected sha256:<64 hex chars>): {label_artifact_ref!r}"
+            )
         if label_observation_end == "MISSING":
             reasons.append(
                 "has_realized_labels=True but label_observation_end is MISSING"
             )
+        else:
+            parsed_label_end = _try_parse_timestamp(
+                label_observation_end, "label_observation_end", reasons
+            )
+            if parsed_label_end is not None and parsed_pred is not None:
+                if parsed_label_end <= parsed_pred:
+                    reasons.append(
+                        f"label_observation_end {label_observation_end} <= "
+                        f"prediction_date {prediction_date} "
+                        f"(label horizon must extend beyond prediction)"
+                    )
 
     return ExpertAdmissibilityRecord(
         expert_name=expert.name,
@@ -585,12 +629,13 @@ def build_ledger(
         decision_timestamp_fn: optional override callable
             ``(expert_name: str, prediction_date: str) -> str``
             returning a per-(expert, prediction_date) ISO-8601 decision
-            timestamp.  When provided, takes precedence over the schedule.
-            Scores generated after this timestamp are look-ahead for that
-            date.  A single global timestamp is deliberately NOT accepted --
-            it would let a late cutoff authorise scores for earlier dates
-            that were generated after those dates' actual decisions
-            (look-ahead).
+            timestamp.  When provided, its output is validated: it must
+            not exceed the schedule's decision time for that date.  A
+            caller cannot silently widen the window beyond the declared
+            schedule.  A single global timestamp is deliberately NOT
+            accepted -- it would let a late cutoff authorise scores for
+            earlier dates that were generated after those dates' actual
+            decisions (look-ahead).
         require_realized_labels: if True, experts without realized labels
             are rejected (correct for historical evaluation).
         complementarity_assessment: result string from
@@ -625,10 +670,20 @@ def build_ledger(
                     "score_keys": [],
                 }
 
+            schedule_ts = _decision_ts_from_schedule(decision_schedule, dt)
             if decision_timestamp_fn is not None:
                 dt_ts = decision_timestamp_fn(expert.name, dt)
+                fn_dt = _parse_timestamp(dt_ts)
+                sched_dt = _parse_timestamp(schedule_ts)
+                if fn_dt > sched_dt:
+                    raise ValueError(
+                        f"decision_timestamp_fn returned {dt_ts} for "
+                        f"({expert.name}, {dt}), which exceeds the "
+                        f"declared schedule decision time {schedule_ts}. "
+                        f"Overrides must not widen the decision window."
+                    )
             else:
-                dt_ts = _decision_ts_from_schedule(decision_schedule, dt)
+                dt_ts = schedule_ts
 
             record = validate_expert_date(
                 expert, dt, score_meta, universe_tickers,
@@ -776,9 +831,10 @@ def main() -> None:
         for suffix in SUPPORTED_SCORE_FORMATS:
             candidate = expert.score_dir / f"{dt}{suffix}"
             if candidate.exists():
-                raw_bytes = candidate.read_bytes()
-                file_digest = f"sha256:{hashlib.sha256(raw_bytes).hexdigest()}"
-                data = json.loads(raw_bytes)
+                result = load_score_file(candidate)
+                if result is None:
+                    continue
+                data, file_digest = result
                 meta = extract_metadata_from_score(data, expert)
                 meta["score_artifact_digest"] = file_digest
                 return meta
