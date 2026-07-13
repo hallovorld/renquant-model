@@ -10,6 +10,7 @@ import pytest
 
 from renquant_model_common.signal_contract import (
     SignalArtifactContract,
+    compute_signal_snapshot_digest,
     load_and_verify_signal_artifact,
 )
 
@@ -23,8 +24,16 @@ _NOW = datetime.now(timezone.utc)
 
 
 def _make_manifest(**overrides) -> dict:
-    """Return a minimal valid artifact manifest dict."""
-    base = {
+    """Return a minimal valid artifact manifest dict.
+
+    ``signal_snapshot_digest`` is computed from the *other* fields (after
+    overrides are applied) via ``compute_signal_snapshot_digest``, so the
+    default manifest is self-consistent under the loader's digest-recompute
+    check. Pass ``signal_snapshot_digest=...`` explicitly to override it
+    verbatim (e.g. to test mismatch/tamper scenarios) — in that case it is
+    NOT recomputed.
+    """
+    content = {
         "schema_version": 1,
         "producer_run_id": "run-20260712-001",
         "universe_hash": "univ-abc123",
@@ -33,11 +42,32 @@ def _make_manifest(**overrides) -> dict:
         "data_watermark": "2026-07-12T00:00:00+00:00",
         "decision_timestamp": "2026-07-12T01:00:00+00:00",
         "session_date": "2026-07-12",
-        "signal_snapshot_digest": _VALID_DIGEST,
         "signals": {"AAPL": 0.42, "MSFT": -0.13},
     }
-    base.update(overrides)
-    return base
+    explicit_digest = overrides.pop("signal_snapshot_digest", None)
+    content.update(overrides)
+    if explicit_digest is not None:
+        content["signal_snapshot_digest"] = explicit_digest
+    else:
+        try:
+            content["signal_snapshot_digest"] = compute_signal_snapshot_digest(
+                schema_version=content["schema_version"],
+                producer_run_id=content["producer_run_id"],
+                universe_hash=content["universe_hash"],
+                model_content_digest=content["model_content_digest"],
+                calibrator_content_digest=content["calibrator_content_digest"],
+                data_watermark=datetime.fromisoformat(content["data_watermark"]),
+                decision_timestamp=datetime.fromisoformat(content["decision_timestamp"]),
+                session_date=date.fromisoformat(content["session_date"]),
+                signals=content["signals"],
+            )
+        except (TypeError, ValueError):
+            # A negative-path test intentionally corrupted a content field
+            # (e.g. an unparsable timestamp) to something that can't feed
+            # the digest formula; that test fails earlier in the loader
+            # (before the digest check), so a placeholder here is harmless.
+            content["signal_snapshot_digest"] = _VALID_DIGEST
+    return content
 
 
 def _write_artifact(tmp_path: Path, manifest: dict | None = None) -> Path:
@@ -90,7 +120,7 @@ class TestHappyPath:
         assert contract.universe_hash == "univ-abc123"
         assert contract.model_content_digest == _VALID_DIGEST
         assert contract.calibrator_content_digest == _VALID_DIGEST
-        assert contract.signal_snapshot_digest == _VALID_DIGEST
+        assert contract.signal_snapshot_digest == manifest["signal_snapshot_digest"]
         assert contract.data_watermark.tzinfo is not None
         assert contract.decision_timestamp.tzinfo is not None
         assert contract.session_date == date(2026, 7, 12)
@@ -181,12 +211,14 @@ class TestNewFields:
         assert contract.session_date == date(2026, 7, 12)
 
     def test_signal_snapshot_digest(self, tmp_path):
-        digest = "e" * 64
-        p = _write_artifact(
-            tmp_path, _make_manifest(signal_snapshot_digest=digest)
-        )
+        """A signal_snapshot_digest that is genuinely consistent with the
+        rest of the manifest (here, a manifest with different signals) is
+        extracted correctly. (An arbitrary/unrelated digest value is no
+        longer accepted verbatim — see TestSignalSnapshotDigestSelfConsistency.)"""
+        manifest = _make_manifest(signals={"BTC/USD": 0.9})
+        p = _write_artifact(tmp_path, manifest)
         contract, _ = load_and_verify_signal_artifact(str(p))
-        assert contract.signal_snapshot_digest == digest
+        assert contract.signal_snapshot_digest == manifest["signal_snapshot_digest"]
 
 
 # ====================================================================
@@ -355,18 +387,128 @@ class TestCallerProvenanceMismatch:
 
 
 class TestMismatchedSnapshotMetadata:
-    def test_snapshot_digest_mismatch(self, tmp_path):
-        """If a consumer has a prior snapshot digest, it can detect change."""
-        m1 = _make_manifest(signal_snapshot_digest="a" * 64)
+    def test_different_self_consistent_snapshots_have_different_digests(self, tmp_path):
+        """Two genuinely different (each self-consistent) manifests produce
+        different signal_snapshot_digest and content_digest values."""
+        m1 = _make_manifest(universe_hash="universe-a")
         p = _write_artifact(tmp_path, m1)
         c1, _ = load_and_verify_signal_artifact(str(p))
 
-        m2 = _make_manifest(signal_snapshot_digest="b" * 64)
+        m2 = _make_manifest(universe_hash="universe-b")
         p.write_text(json.dumps(m2), encoding="utf-8")
         c2, _ = load_and_verify_signal_artifact(str(p))
 
         assert c1.signal_snapshot_digest != c2.signal_snapshot_digest
         assert c1.content_digest != c2.content_digest
+
+    def test_stale_digest_after_field_tamper_is_rejected(self, tmp_path):
+        """A field changed without recomputing signal_snapshot_digest must
+        be caught — a raw file digest alone cannot detect this, since the
+        whole point is that *some* field disagrees with the declared
+        snapshot identity."""
+        manifest = _make_manifest()
+        stale_digest = manifest["signal_snapshot_digest"]
+        # Tamper universe_hash but keep the (now stale) digest from before.
+        manifest["universe_hash"] = "attacker-supplied-universe-hash"
+        manifest["signal_snapshot_digest"] = stale_digest
+        p = _write_artifact(tmp_path, manifest)
+
+        with pytest.raises(ValueError, match="signal_snapshot_digest mismatch"):
+            load_and_verify_signal_artifact(str(p))
+
+    def test_tampered_signals_with_stale_digest_is_rejected(self, tmp_path):
+        manifest = _make_manifest()
+        stale_digest = manifest["signal_snapshot_digest"]
+        manifest["signals"] = {"AAPL": 999.0}
+        manifest["signal_snapshot_digest"] = stale_digest
+        p = _write_artifact(tmp_path, manifest)
+
+        with pytest.raises(ValueError, match="signal_snapshot_digest mismatch"):
+            load_and_verify_signal_artifact(str(p))
+
+    def test_valid_self_consistent_digest_round_trips(self, tmp_path):
+        manifest = _make_manifest()
+        p = _write_artifact(tmp_path, manifest)
+        contract, _ = load_and_verify_signal_artifact(str(p))
+        assert contract.signal_snapshot_digest == manifest["signal_snapshot_digest"]
+
+
+class TestSignalsPayloadValidation:
+    def test_signals_not_object_rejected(self, tmp_path):
+        manifest = _make_manifest(signals="not-a-mapping")
+        p = _write_artifact(tmp_path, manifest)
+        with pytest.raises(ValueError, match="signals"):
+            load_and_verify_signal_artifact(str(p))
+
+    def test_signals_null_rejected(self, tmp_path):
+        manifest = _make_manifest(signals=None)
+        p = _write_artifact(tmp_path, manifest)
+        with pytest.raises(ValueError, match="signals"):
+            load_and_verify_signal_artifact(str(p))
+
+    def test_signals_list_rejected(self, tmp_path):
+        manifest = _make_manifest(signals=[1, 2, 3])
+        p = _write_artifact(tmp_path, manifest)
+        with pytest.raises(ValueError, match="signals"):
+            load_and_verify_signal_artifact(str(p))
+
+    def test_signals_empty_object_rejected(self, tmp_path):
+        manifest = _make_manifest(signals={})
+        p = _write_artifact(tmp_path, manifest)
+        with pytest.raises(ValueError, match="signals"):
+            load_and_verify_signal_artifact(str(p))
+
+
+class TestAllowedRootsPolicy:
+    """``allowed_roots`` — the path-policy allowlist requested alongside the
+    other fixes, previously entirely absent (only the unrelated ``..``
+    traversal guard existed, which does not stop an absolute path outside
+    any trust boundary)."""
+
+    def test_no_allowed_roots_is_unrestricted(self, tmp_path):
+        p = _write_artifact(tmp_path)
+        contract, _ = load_and_verify_signal_artifact(str(p), allowed_roots=None)
+        assert contract.producer_run_id == "run-20260712-001"
+
+    def test_path_under_allowed_root_accepted(self, tmp_path):
+        root = tmp_path / "trusted"
+        root.mkdir()
+        p = _write_artifact(root)
+        contract, _ = load_and_verify_signal_artifact(str(p), allowed_roots=[root])
+        assert contract.producer_run_id == "run-20260712-001"
+
+    def test_path_outside_allowed_root_rejected(self, tmp_path):
+        trusted = tmp_path / "trusted"
+        trusted.mkdir()
+        untrusted = tmp_path / "untrusted"
+        untrusted.mkdir()
+        p = _write_artifact(untrusted)
+        with pytest.raises(ValueError, match="not under any allowed root"):
+            load_and_verify_signal_artifact(str(p), allowed_roots=[trusted])
+
+    def test_traversal_lookalike_sibling_prefix_rejected(self, tmp_path):
+        """A sibling directory whose name string-prefixes the allowed root
+        (e.g. ``trusted-evil/`` vs ``trusted/``) must still be rejected —
+        this requires real path/parent-chain checks, not string-prefix
+        matching."""
+        root = tmp_path / "trusted"
+        root.mkdir()
+        lookalike = tmp_path / "trusted-evil"
+        lookalike.mkdir()
+        p = _write_artifact(lookalike)
+        with pytest.raises(ValueError, match="not under any allowed root"):
+            load_and_verify_signal_artifact(str(p), allowed_roots=[root])
+
+    def test_multiple_allowed_roots_any_match_accepted(self, tmp_path):
+        root_a = tmp_path / "root_a"
+        root_b = tmp_path / "root_b"
+        root_a.mkdir()
+        root_b.mkdir()
+        p = _write_artifact(root_b)
+        contract, _ = load_and_verify_signal_artifact(
+            str(p), allowed_roots=[root_a, root_b]
+        )
+        assert contract.producer_run_id == "run-20260712-001"
 
 
 class TestSchemaVersionIncompatibility:

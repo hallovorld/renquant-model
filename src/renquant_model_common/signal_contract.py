@@ -6,10 +6,37 @@ file exactly once, validates the embedded manifest, and returns both a
 frozen contract and the raw bytes — eliminating the verify-then-read
 race condition.
 
+Two additional guarantees beyond byte-identity:
+
+* ``signal_snapshot_digest`` is not merely format-checked — it is
+  *recomputed* from the manifest's own other fields (via
+  ``compute_signal_snapshot_digest``) and the load fails closed if the
+  declared value disagrees. A raw whole-file digest alone cannot catch a
+  hand-edited single field (e.g. a bumped ``universe_hash``) left next to a
+  stale digest; this check can.
+* ``allowed_roots`` lets a caller with a real trust boundary (e.g. a
+  scheduler) restrict loading to a configured set of trusted directories,
+  so it cannot be pointed at an arbitrary local file. This is a positive
+  allowlist, checked via ``Path.resolve()`` + parent-chain membership (not
+  string-prefix matching); it is distinct from — and in addition to — the
+  existing ``..`` path-traversal rejection, which alone does not stop an
+  absolute path outside any trust boundary.
+
+Neither of these — nor anything else in this module — proves *who* was
+authorized to write a genuine artifact in the first place; that is a
+process/access-control concern for whatever writes into the configured
+``allowed_roots``, outside this module's scope. Nor does loading an
+envelope tell a consumer whether its contents are what *it* currently
+expects (e.g. the right session/day) — a scheduler must still derive its
+own expected identity independently and compare it against the loaded
+contract, rather than treating the envelope's self-reported provenance as
+authoritative on its own.
+
 Typical usage::
 
     contract, payload = load_and_verify_signal_artifact(
         "signals/panel_scores.json",
+        allowed_roots=[trusted_signal_dir],
     )
     # contract.producer_run_id, .model_content_digest, etc. are
     # extracted from the artifact envelope — never caller-supplied.
@@ -23,10 +50,11 @@ import re
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Sequence, Tuple
 
 __all__ = [
     "SignalArtifactContract",
+    "compute_signal_snapshot_digest",
     "load_and_verify_signal_artifact",
 ]
 
@@ -71,6 +99,44 @@ def _parse_tz_aware_datetime(value: str, field_name: str) -> datetime:
             f"{field_name} must be timezone-aware, got naive datetime: {value!r}"
         )
     return dt
+
+
+def compute_signal_snapshot_digest(
+    *,
+    schema_version: int,
+    producer_run_id: str,
+    universe_hash: str,
+    model_content_digest: str,
+    calibrator_content_digest: str,
+    data_watermark: datetime,
+    decision_timestamp: datetime,
+    session_date: date,
+    signals: Any,
+) -> str:
+    """Compute the canonical digest over every provenance field + the signals payload.
+
+    This is the single source of truth for the digest formula — used both to
+    verify an artifact's embedded ``signal_snapshot_digest`` for internal
+    self-consistency at load time, and importable by producers when
+    constructing a compliant envelope, so the formula is not hand-copied
+    (and does not drift) across the write and read sides.
+    """
+    canonical = json.dumps(
+        {
+            "schema_version": schema_version,
+            "producer_run_id": producer_run_id,
+            "universe_hash": universe_hash,
+            "model_content_digest": model_content_digest,
+            "calibrator_content_digest": calibrator_content_digest,
+            "data_watermark": data_watermark.astimezone(timezone.utc).isoformat(),
+            "decision_timestamp": decision_timestamp.astimezone(timezone.utc).isoformat(),
+            "session_date": session_date.isoformat(),
+            "signals": signals,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -150,6 +216,8 @@ class SignalArtifactContract:
 
 def load_and_verify_signal_artifact(
     artifact_path: str,
+    *,
+    allowed_roots: Sequence[str | Path] | None = None,
 ) -> Tuple[SignalArtifactContract, bytes]:
     """Read, hash, parse, and validate a signal artifact in one pass.
 
@@ -167,6 +235,16 @@ def load_and_verify_signal_artifact(
     ----------
     artifact_path:
         Path to the signal artifact JSON file.
+    allowed_roots:
+        Optional allowlist of trusted directories. If provided, the
+        resolved absolute path must fall under one of these roots (checked
+        via ``Path.resolve()`` + parent-chain membership, not string-prefix
+        matching, to avoid a sibling directory whose name happens to
+        string-prefix an allowed root) or loading fails closed. If
+        omitted, any local path is accepted (subject only to the ``..``
+        traversal guard below) — callers with a real trust boundary (e.g.
+        a scheduler that must not be pointed at an arbitrary local file)
+        MUST pass this.
 
     Returns
     -------
@@ -178,8 +256,11 @@ def load_and_verify_signal_artifact(
     FileNotFoundError
         If *artifact_path* does not exist.
     ValueError
-        If the file is empty, too large, not valid JSON, or has
-        missing / malformed manifest fields.
+        If the file is empty, too large, not valid JSON, has missing /
+        malformed manifest fields, the resolved path falls outside
+        ``allowed_roots`` (when given), ``signals`` is not a non-empty
+        JSON object, or the embedded ``signal_snapshot_digest`` does not
+        match the digest recomputed from the manifest's own other fields.
     """
     # Path traversal guard (before touching the filesystem)
     if ".." in Path(artifact_path).parts:
@@ -188,6 +269,19 @@ def load_and_verify_signal_artifact(
         )
 
     p = Path(artifact_path)
+
+    if allowed_roots is not None:
+        resolved_candidate = p.resolve()
+        resolved_roots = [Path(root).resolve() for root in allowed_roots]
+        if not any(
+            resolved_candidate == root or root in resolved_candidate.parents
+            for root in resolved_roots
+        ):
+            raise ValueError(
+                f"artifact path {resolved_candidate} is not under any allowed root: "
+                f"{[str(r) for r in resolved_roots]}"
+            )
+
     if not p.is_file():
         raise FileNotFoundError(f"Signal artifact not found: {artifact_path}")
 
@@ -258,6 +352,36 @@ def load_and_verify_signal_artifact(
         raise ValueError(
             f"session_date: invalid ISO-8601 date: {raw_session_date!r}"
         ) from exc
+
+    signals = manifest["signals"]
+    if not isinstance(signals, dict) or not signals:
+        raise ValueError(
+            f"signals must be a non-empty JSON object, got {type(signals).__name__}"
+        )
+
+    # Self-consistency: the declared signal_snapshot_digest must actually be
+    # the digest of the manifest's own other fields, not merely a
+    # well-formatted string. Without this, a single hand-edited field (e.g.
+    # universe_hash bumped without recomputing the digest) would pass
+    # through with a stale-but-valid-format digest undetected.
+    expected_snapshot_digest = compute_signal_snapshot_digest(
+        schema_version=schema_version,
+        producer_run_id=producer_run_id,
+        universe_hash=universe_hash,
+        model_content_digest=manifest["model_content_digest"],
+        calibrator_content_digest=manifest["calibrator_content_digest"],
+        data_watermark=data_watermark,
+        decision_timestamp=decision_timestamp,
+        session_date=session_date,
+        signals=signals,
+    )
+    declared_snapshot_digest = manifest["signal_snapshot_digest"]
+    if declared_snapshot_digest != expected_snapshot_digest:
+        raise ValueError(
+            f"signal_snapshot_digest mismatch: declared={declared_snapshot_digest[:16]}..., "
+            f"recomputed={expected_snapshot_digest[:16]}... — envelope fields are "
+            f"internally inconsistent (tampered, hand-edited, or stale digest)"
+        )
 
     contract = SignalArtifactContract(
         artifact_path=artifact_path,
