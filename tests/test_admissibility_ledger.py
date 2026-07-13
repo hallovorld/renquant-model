@@ -13,10 +13,13 @@ sys.path.insert(0, str(Path(__file__).parents[1] / "experiments" / "ensemble_pha
 
 from admissibility_ledger import (
     FINGERPRINT_RE,
+    US_EQUITY_CLOSE,
     AdmissibilityLedger,
+    DecisionSchedule,
     ExpertAdmissibilityRecord,
     ExpertSpec,
     _assess_complementarity,
+    _decision_ts_from_schedule,
     build_complementarity_report,
     build_ledger,
     extract_metadata_from_score,
@@ -28,6 +31,8 @@ from admissibility_ledger import (
 
 UNIVERSE = ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "JPM", "V", "JNJ"]
 VALID_FP = "sha256:" + "0123456789abcdef" * 4  # 64 hex chars
+VALID_LABEL_REF = "sha256:" + "ef567890ab123456" * 4
+VALID_SCORE_DIGEST = "sha256:" + "abcd1234abcd1234" * 4
 
 
 def _good_meta(prediction_date: str = "2026-01-15") -> dict[str, Any]:
@@ -39,6 +44,9 @@ def _good_meta(prediction_date: str = "2026-01-15") -> dict[str, Any]:
         "score_timestamp": f"{prediction_date}T16:00:00Z",
         "score_keys": list(UNIVERSE),
         "has_realized_labels": True,
+        "score_artifact_digest": VALID_SCORE_DIGEST,
+        "label_artifact_ref": VALID_LABEL_REF,
+        "label_observation_end": "2026-03-16",
     }
 
 
@@ -90,6 +98,23 @@ class TestExtractMetadata:
         meta = extract_metadata_from_score(score_data, ExpertSpec(name="xgb", score_dir=Path(".")))
         assert meta["data_watermark"] == "2026-01-15"
 
+    def test_label_artifact_ref_extracted(self) -> None:
+        score_data = {
+            "model_content_sha256": VALID_FP,
+            "scores": {},
+            "label_artifact_ref": "sha256:abc123",
+            "label_observation_end": "2026-03-16",
+        }
+        meta = extract_metadata_from_score(score_data, ExpertSpec(name="xgb", score_dir=Path(".")))
+        assert meta["label_artifact_ref"] == "sha256:abc123"
+        assert meta["label_observation_end"] == "2026-03-16"
+
+    def test_label_fields_default_to_missing(self) -> None:
+        score_data = {"scores": {}}
+        meta = extract_metadata_from_score(score_data, ExpertSpec(name="xgb", score_dir=Path(".")))
+        assert meta["label_artifact_ref"] == "MISSING"
+        assert meta["label_observation_end"] == "MISSING"
+
 
 class TestValidateExpertDate:
     def test_admits_valid_record(self) -> None:
@@ -119,7 +144,7 @@ class TestValidateExpertDate:
         assert any("invalid fingerprint syntax" in r for r in record.rejection_reasons)
 
     def test_rejects_uppercase_hex_fingerprint(self) -> None:
-        """Uppercase hex is rejected — canonical form is lowercase."""
+        """Uppercase hex is rejected -- canonical form is lowercase."""
         meta = _good_meta()
         meta["model_fingerprint"] = "sha256:" + "ABCDEF01" * 8  # 64 uppercase
         expert = ExpertSpec(name="xgb", score_dir=Path("."))
@@ -257,7 +282,7 @@ class TestValidateExpertDate:
         meta["score_timestamp"] = "2026-01-15T23:00:00-05:00"  # 4am UTC Jan 16
         expert = ExpertSpec(name="xgb", score_dir=Path("."))
         # Default decision_timestamp = 2026-01-15T23:59:59+00:00 (UTC)
-        # 23:00 ET = 04:00 UTC Jan 16 > 23:59:59 UTC Jan 15 → rejected
+        # 23:00 ET = 04:00 UTC Jan 16 > 23:59:59 UTC Jan 15 -> rejected
         record = validate_expert_date(expert, "2026-01-15", meta, UNIVERSE)
         assert record.admitted is False
         assert any("late score" in r for r in record.rejection_reasons)
@@ -292,6 +317,9 @@ class TestValidateExpertDate:
         """When require_realized_labels=False, absent labels do not reject."""
         meta = _good_meta()
         meta["has_realized_labels"] = False
+        # When labels are not required and not claimed, artifact refs can be MISSING.
+        meta["label_artifact_ref"] = "MISSING"
+        meta["label_observation_end"] = "MISSING"
         expert = ExpertSpec(name="xgb", score_dir=Path("."))
         record = validate_expert_date(
             expert, "2026-01-15", meta, UNIVERSE,
@@ -304,6 +332,8 @@ class TestValidateExpertDate:
         """Explicit has_realized_labels=False under default policy rejects."""
         meta = _good_meta()
         meta["has_realized_labels"] = False
+        meta["label_artifact_ref"] = "MISSING"
+        meta["label_observation_end"] = "MISSING"
         expert = ExpertSpec(name="xgb", score_dir=Path("."))
         record = validate_expert_date(expert, "2026-01-15", meta, UNIVERSE)
         assert record.admitted is False
@@ -347,11 +377,228 @@ class TestValidateExpertDate:
         assert record.admitted is False
         assert len(record.rejection_reasons) >= 3
 
+    def test_record_includes_score_artifact_digest(self) -> None:
+        meta = _good_meta()
+        meta["score_artifact_digest"] = "sha256:" + "aa" * 32
+        expert = ExpertSpec(name="xgb", score_dir=Path("."))
+        record = validate_expert_date(expert, "2026-01-15", meta, UNIVERSE)
+        assert record.score_artifact_digest == "sha256:" + "aa" * 32
+
+    def test_score_artifact_digest_defaults_to_missing(self) -> None:
+        meta = _good_meta()
+        del meta["score_artifact_digest"]
+        expert = ExpertSpec(name="xgb", score_dir=Path("."))
+        record = validate_expert_date(expert, "2026-01-15", meta, UNIVERSE)
+        assert record.score_artifact_digest == "MISSING"
+        # MISSING digest does not reject by itself.
+        assert record.admitted is True
+
+
+class TestMalformedTimestamps:
+    """Item 2: malformed timestamp/date fields are immediately rejected."""
+
+    def test_rejects_malformed_training_cutoff(self) -> None:
+        meta = _good_meta()
+        meta["training_cutoff"] = "not-a-date"
+        expert = ExpertSpec(name="xgb", score_dir=Path("."))
+        record = validate_expert_date(expert, "2026-01-15", meta, UNIVERSE)
+        assert record.admitted is False
+        assert any(
+            "training_cutoff" in r and "unparseable" in r
+            for r in record.rejection_reasons
+        )
+
+    def test_rejects_malformed_feature_data_cutoff(self) -> None:
+        meta = _good_meta()
+        meta["feature_data_cutoff"] = "31/01/2026"
+        expert = ExpertSpec(name="xgb", score_dir=Path("."))
+        record = validate_expert_date(expert, "2026-01-15", meta, UNIVERSE)
+        assert record.admitted is False
+        assert any(
+            "feature_data_cutoff" in r and "unparseable" in r
+            for r in record.rejection_reasons
+        )
+
+    def test_rejects_malformed_score_timestamp(self) -> None:
+        meta = _good_meta()
+        meta["score_timestamp"] = "yesterday"
+        expert = ExpertSpec(name="xgb", score_dir=Path("."))
+        record = validate_expert_date(expert, "2026-01-15", meta, UNIVERSE)
+        assert record.admitted is False
+        assert any(
+            "score_timestamp" in r and "unparseable" in r
+            for r in record.rejection_reasons
+        )
+
+    def test_rejects_malformed_data_watermark(self) -> None:
+        meta = _good_meta()
+        meta["data_watermark"] = "not-a-date-at-all"
+        expert = ExpertSpec(name="xgb", score_dir=Path("."))
+        record = validate_expert_date(expert, "2026-01-15", meta, UNIVERSE)
+        assert record.admitted is False
+        assert any(
+            "data_watermark" in r and "unparseable" in r
+            for r in record.rejection_reasons
+        )
+
+
+class TestDecisionSchedule:
+    """Item 1: decision clock via DecisionSchedule, not default end-of-day UTC."""
+
+    def test_us_equity_close_constant(self) -> None:
+        assert US_EQUITY_CLOSE.session_timezone == "America/New_York"
+        from datetime import time as _time
+        assert US_EQUITY_CLOSE.decision_time == _time(16, 0)
+
+    def test_schedule_computes_utc_timestamp(self) -> None:
+        """DecisionSchedule correctly converts local time to UTC."""
+        ts = _decision_ts_from_schedule(US_EQUITY_CLOSE, "2026-01-15")
+        # Jan 15 is EST (-05:00), so 16:00 ET = 21:00 UTC.
+        assert "21:00:00" in ts
+
+    def test_schedule_handles_dst(self) -> None:
+        """Summer date uses EDT (-04:00), so 16:00 ET = 20:00 UTC."""
+        ts = _decision_ts_from_schedule(US_EQUITY_CLOSE, "2026-07-15")
+        assert "20:00:00" in ts
+
+    def test_post_close_score_rejected(self) -> None:
+        """Score generated at 16:30 ET is after 16:00 ET close -- rejected."""
+        meta = _good_meta()
+        # 16:30 ET on Jan 15 = 21:30 UTC (EST)
+        meta["score_timestamp"] = "2026-01-15T21:30:00+00:00"
+        expert = ExpertSpec(name="xgb", score_dir=Path("."))
+
+        # Compute decision timestamp from schedule: 16:00 ET = 21:00 UTC.
+        dt_ts = _decision_ts_from_schedule(US_EQUITY_CLOSE, "2026-01-15")
+        record = validate_expert_date(
+            expert, "2026-01-15", meta, UNIVERSE,
+            decision_timestamp=dt_ts,
+        )
+        assert record.admitted is False
+        assert any("late score" in r for r in record.rejection_reasons)
+
+    def test_pre_close_score_admitted(self) -> None:
+        """Score generated at 15:00 ET is before 16:00 ET close -- admitted."""
+        meta = _good_meta()
+        # 15:00 ET on Jan 15 = 20:00 UTC (EST)
+        meta["score_timestamp"] = "2026-01-15T20:00:00+00:00"
+        expert = ExpertSpec(name="xgb", score_dir=Path("."))
+
+        dt_ts = _decision_ts_from_schedule(US_EQUITY_CLOSE, "2026-01-15")
+        record = validate_expert_date(
+            expert, "2026-01-15", meta, UNIVERSE,
+            decision_timestamp=dt_ts,
+        )
+        assert record.admitted is True
+
+    def test_build_ledger_uses_schedule(self) -> None:
+        """build_ledger computes decision timestamps from the schedule."""
+        experts = [ExpertSpec(name="xgb", score_dir=Path("."))]
+        dates = ["2026-01-15"]
+
+        def loader(expert: ExpertSpec, dt: str) -> dict[str, Any]:
+            meta = _good_meta(dt)
+            # Score at 16:30 ET = 21:30 UTC -- after US equity close.
+            meta["score_timestamp"] = "2026-01-15T21:30:00+00:00"
+            return meta
+
+        ledger = build_ledger(
+            experts, dates, UNIVERSE, score_loader=loader,
+            decision_schedule=US_EQUITY_CLOSE,
+            complementarity_assessment="PLAUSIBLE",
+        )
+        assert ledger.records[0]["admitted"] is False
+        assert any("late score" in r for r in ledger.records[0]["rejection_reasons"])
+
+    def test_build_ledger_schedule_is_required(self) -> None:
+        """build_ledger without decision_schedule raises TypeError."""
+        experts = [ExpertSpec(name="xgb", score_dir=Path("."))]
+        with pytest.raises(TypeError, match="decision_schedule"):
+            build_ledger(experts, [], UNIVERSE)  # type: ignore[call-arg]
+
+
+class TestLabelArtifactProvenance:
+    """Item 3: score artifact digest + label artifact ref/observation end."""
+
+    def test_self_attested_labels_without_artifact_ref_rejected(self) -> None:
+        """has_realized_labels=True without label_artifact_ref is rejected."""
+        meta = _good_meta()
+        meta["has_realized_labels"] = True
+        meta["label_artifact_ref"] = "MISSING"
+        expert = ExpertSpec(name="xgb", score_dir=Path("."))
+        record = validate_expert_date(expert, "2026-01-15", meta, UNIVERSE)
+        assert record.admitted is False
+        assert any("label_artifact_ref" in r for r in record.rejection_reasons)
+
+    def test_self_attested_labels_without_observation_end_rejected(self) -> None:
+        """has_realized_labels=True without label_observation_end is rejected."""
+        meta = _good_meta()
+        meta["has_realized_labels"] = True
+        meta["label_observation_end"] = "MISSING"
+        expert = ExpertSpec(name="xgb", score_dir=Path("."))
+        record = validate_expert_date(expert, "2026-01-15", meta, UNIVERSE)
+        assert record.admitted is False
+        assert any("label_observation_end" in r for r in record.rejection_reasons)
+
+    def test_no_labels_allows_missing_artifact_ref(self) -> None:
+        """has_realized_labels=False with MISSING refs is fine."""
+        meta = _good_meta()
+        meta["has_realized_labels"] = False
+        meta["label_artifact_ref"] = "MISSING"
+        meta["label_observation_end"] = "MISSING"
+        expert = ExpertSpec(name="xgb", score_dir=Path("."))
+        record = validate_expert_date(
+            expert, "2026-01-15", meta, UNIVERSE,
+            require_realized_labels=False,
+        )
+        assert record.admitted is True
+        assert record.label_artifact_ref == "MISSING"
+        assert record.label_observation_end == "MISSING"
+
+    def test_valid_labels_with_artifact_ref_admitted(self) -> None:
+        """Complete provenance (labels + ref + end) admits."""
+        meta = _good_meta()
+        expert = ExpertSpec(name="xgb", score_dir=Path("."))
+        record = validate_expert_date(expert, "2026-01-15", meta, UNIVERSE)
+        assert record.admitted is True
+        assert record.label_artifact_ref == VALID_LABEL_REF
+        assert record.label_observation_end == "2026-03-16"
+
+    def test_artifact_fields_in_fingerprint(self) -> None:
+        """score_artifact_digest and label fields affect ledger fingerprint."""
+        experts = [ExpertSpec(name="xgb", score_dir=Path("."))]
+        dates = ["2026-01-13"]
+
+        def loader_a(expert: ExpertSpec, dt: str) -> dict[str, Any]:
+            meta = _good_meta(dt)
+            meta["score_artifact_digest"] = "sha256:" + "aa" * 32
+            return meta
+
+        def loader_b(expert: ExpertSpec, dt: str) -> dict[str, Any]:
+            meta = _good_meta(dt)
+            meta["score_artifact_digest"] = "sha256:" + "bb" * 32
+            return meta
+
+        la = build_ledger(
+            experts, dates, UNIVERSE, score_loader=loader_a,
+            decision_schedule=US_EQUITY_CLOSE,
+            complementarity_assessment="PLAUSIBLE",
+        )
+        lb = build_ledger(
+            experts, dates, UNIVERSE, score_loader=loader_b,
+            decision_schedule=US_EQUITY_CLOSE,
+            complementarity_assessment="PLAUSIBLE",
+        )
+        assert la.ledger_fingerprint != lb.ledger_fingerprint
+
 
 class TestBuildLedger:
     def test_empty_ledger_fails_closed(self) -> None:
         experts = [ExpertSpec(name="xgb", score_dir=Path("."))]
-        ledger = build_ledger(experts, [], UNIVERSE)
+        ledger = build_ledger(
+            experts, [], UNIVERSE,
+            decision_schedule=US_EQUITY_CLOSE,
+        )
         assert ledger.summary["total_records"] == 0
         assert ledger.summary["all_experts_fully_admitted"] is False
         assert ledger.experts == ["xgb"]
@@ -368,6 +615,7 @@ class TestBuildLedger:
 
         ledger = build_ledger(
             experts, dates, UNIVERSE, score_loader=loader,
+            decision_schedule=US_EQUITY_CLOSE,
             complementarity_assessment="PLAUSIBLE",
         )
         assert ledger.summary["total_records"] == 6
@@ -384,7 +632,10 @@ class TestBuildLedger:
         def loader(expert: ExpertSpec, dt: str) -> dict[str, Any]:
             return _good_meta(dt)
 
-        ledger = build_ledger(experts, dates, UNIVERSE, score_loader=loader)
+        ledger = build_ledger(
+            experts, dates, UNIVERSE, score_loader=loader,
+            decision_schedule=US_EQUITY_CLOSE,
+        )
         assert ledger.summary["complementarity_assessment"] == "NOT_EVALUATED"
         assert ledger.summary["all_experts_fully_admitted"] is False
 
@@ -397,6 +648,7 @@ class TestBuildLedger:
 
         ledger = build_ledger(
             experts, dates, UNIVERSE, score_loader=loader,
+            decision_schedule=US_EQUITY_CLOSE,
             complementarity_assessment="INSUFFICIENT_DATA",
         )
         assert ledger.summary["all_experts_fully_admitted"] is False
@@ -410,7 +662,8 @@ class TestBuildLedger:
 
         ledger = build_ledger(
             experts, dates, UNIVERSE, score_loader=loader,
-            complementarity_assessment="NEAR_DUPLICATE — experts produce near-identical scores",
+            decision_schedule=US_EQUITY_CLOSE,
+            complementarity_assessment="NEAR_DUPLICATE -- experts produce near-identical scores",
         )
         assert ledger.summary["all_experts_fully_admitted"] is False
 
@@ -435,6 +688,7 @@ class TestBuildLedger:
 
         ledger = build_ledger(
             experts, dates, UNIVERSE, score_loader=loader,
+            decision_schedule=US_EQUITY_CLOSE,
             complementarity_assessment="PLAUSIBLE",
         )
         assert ledger.summary["all_experts_fully_admitted"] is False
@@ -449,8 +703,14 @@ class TestBuildLedger:
         def loader(expert: ExpertSpec, dt: str) -> dict[str, Any]:
             return _good_meta(dt)
 
-        l1 = build_ledger(experts, dates, UNIVERSE, score_loader=loader)
-        l2 = build_ledger(experts, dates, UNIVERSE, score_loader=loader)
+        l1 = build_ledger(
+            experts, dates, UNIVERSE, score_loader=loader,
+            decision_schedule=US_EQUITY_CLOSE,
+        )
+        l2 = build_ledger(
+            experts, dates, UNIVERSE, score_loader=loader,
+            decision_schedule=US_EQUITY_CLOSE,
+        )
         assert l1.ledger_fingerprint == l2.ledger_fingerprint
         assert l1.ledger_fingerprint.startswith("sha256:")
 
@@ -465,6 +725,7 @@ class TestWriteLedger:
 
         ledger = build_ledger(
             experts, dates, UNIVERSE, score_loader=loader,
+            decision_schedule=US_EQUITY_CLOSE,
             complementarity_assessment="PLAUSIBLE",
         )
         output_path = write_ledger(ledger, tmp_path)
@@ -508,6 +769,8 @@ class TestIntegrationArtifactToLedger:
         data_watermark: str | None = None,
         score_timestamp: str | None = None,
         has_labels: bool = True,
+        label_artifact_ref: str = VALID_LABEL_REF,
+        label_observation_end: str = "2026-03-16",
     ) -> Path:
         if tickers is None:
             tickers = list(UNIVERSE)
@@ -522,6 +785,8 @@ class TestIntegrationArtifactToLedger:
             "data_watermark": data_watermark or feature_cutoff,
             "score_timestamp": score_timestamp,
             "has_realized_labels": has_labels,
+            "label_artifact_ref": label_artifact_ref,
+            "label_observation_end": label_observation_end,
             "scores": {t: 0.01 * i for i, t in enumerate(tickers)},
         }
         p = score_dir / f"{dt}.json"
@@ -603,6 +868,7 @@ class TestIntegrationArtifactToLedger:
 
         ledger = build_ledger(
             experts, dates, UNIVERSE, score_loader=loader,
+            decision_schedule=US_EQUITY_CLOSE,
             complementarity_assessment="INSUFFICIENT_DATA",
         )
         assert ledger.summary["all_experts_fully_admitted"] is False
@@ -666,6 +932,7 @@ class TestFingerprintMutation:
 
         ledger = build_ledger(
             experts, dates, UNIVERSE, score_loader=loader,
+            decision_schedule=US_EQUITY_CLOSE,
             complementarity_assessment="PLAUSIBLE",
         )
         original_fp = ledger.ledger_fingerprint
@@ -685,11 +952,12 @@ class TestFingerprintMutation:
 
         ledger = build_ledger(
             experts, dates, UNIVERSE, score_loader=loader,
+            decision_schedule=US_EQUITY_CLOSE,
             complementarity_assessment="PLAUSIBLE",
         )
         fp_full = ledger.ledger_fingerprint
 
-        # Remove a record and recompute — fingerprint must change.
+        # Remove a record and recompute -- fingerprint must change.
         ledger.records.pop()
         assert ledger.compute_fingerprint() != fp_full
 
@@ -698,7 +966,7 @@ class TestPerDateDecisionTimestamp:
     """decision_timestamp must be per-(expert, prediction_date), not global.
 
     A single global late timestamp would let a late-generated score slip
-    through for an early historical date — that is look-ahead.
+    through for an early historical date -- that is look-ahead.
     """
 
     def test_global_late_timestamp_blocked_per_date(self) -> None:
@@ -707,8 +975,8 @@ class TestPerDateDecisionTimestamp:
 
         Previously, a global --decision-timestamp="2026-01-20T23:59:59Z"
         would admit a Jan-17 score for a Jan-13 prediction. With per-date
-        timestamps, Jan-13 uses 2026-01-13T23:59:59+00:00 and correctly
-        rejects the late score.
+        timestamps, Jan-13 uses the schedule-derived decision point and
+        correctly rejects the late score.
         """
         dates = ["2026-01-13", "2026-01-14", "2026-01-15"]
         expert = ExpertSpec(name="xgb", score_dir=Path("."))
@@ -716,13 +984,14 @@ class TestPerDateDecisionTimestamp:
         def loader(exp: ExpertSpec, dt: str) -> dict[str, Any]:
             meta = _good_meta(dt)
             if dt == "2026-01-13":
-                # Score was generated on Jan 17 — late for Jan 13.
+                # Score was generated on Jan 17 -- late for Jan 13.
                 meta["score_timestamp"] = "2026-01-17T09:00:00+00:00"
             return meta
 
-        # Without global override: per-date EOD applies, Jan-13 rejects.
+        # Per-date schedule applies, Jan-13 rejects.
         ledger = build_ledger(
             [expert], dates, UNIVERSE, score_loader=loader,
+            decision_schedule=US_EQUITY_CLOSE,
             complementarity_assessment="PLAUSIBLE",
         )
         jan13_record = [
@@ -754,6 +1023,7 @@ class TestPerDateDecisionTimestamp:
 
         build_ledger(
             experts, dates, UNIVERSE, score_loader=loader,
+            decision_schedule=US_EQUITY_CLOSE,
             decision_timestamp_fn=ts_fn,
             complementarity_assessment="PLAUSIBLE",
         )
@@ -781,6 +1051,7 @@ class TestPerDateDecisionTimestamp:
 
         ledger = build_ledger(
             [expert], dates, UNIVERSE, score_loader=loader,
+            decision_schedule=US_EQUITY_CLOSE,
             decision_timestamp_fn=ts_fn,
             complementarity_assessment="PLAUSIBLE",
         )

@@ -13,6 +13,8 @@ The ledger records per-expert, per-prediction-date:
   - missingness (fraction of universe with missing scores)
   - score orientation (higher = more bullish? sign convention)
   - realized label availability (whether fwd_60d labels exist for evaluation)
+  - score artifact digest (SHA-256 of the score file bytes)
+  - label artifact reference and observation end date
 
 Usage:
     python experiments/ensemble_phase0/admissibility_ledger.py \
@@ -31,9 +33,30 @@ import math
 import re
 import sys
 from dataclasses import asdict, dataclass, field
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
+
+
+@dataclass(frozen=True)
+class DecisionSchedule:
+    """Declares the decision-point clock for a trading session.
+
+    Every admissibility evaluation needs an explicit decision time:
+    scores generated after that point are look-ahead for that date.
+
+    Examples::
+
+        US_EQUITY_CLOSE = DecisionSchedule("America/New_York", time(16, 0))
+        US_EQUITY_OPEN  = DecisionSchedule("America/New_York", time(9, 30))
+    """
+
+    session_timezone: str  # IANA tz name, e.g. "America/New_York"
+    decision_time: time  # local-time decision point, e.g. time(16, 0)
+
+
+US_EQUITY_CLOSE = DecisionSchedule("America/New_York", time(16, 0))
 
 
 @dataclass(frozen=True)
@@ -53,6 +76,9 @@ class ExpertAdmissibilityRecord:
     missingness_rate: float
     score_orientation: str
     has_realized_labels: bool
+    score_artifact_digest: str
+    label_artifact_ref: str
+    label_observation_end: str
     admitted: bool
     rejection_reasons: list[str] = field(default_factory=list)
 
@@ -87,6 +113,21 @@ class AdmissibilityLedger:
 SUPPORTED_SCORE_FORMATS = {".json"}
 FINGERPRINT_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 MIN_COMMON_NAMES = 10
+
+
+def _decision_ts_from_schedule(
+    schedule: DecisionSchedule,
+    prediction_date_str: str,
+) -> str:
+    """Compute a UTC decision timestamp from a schedule and prediction date.
+
+    Returns an ISO-8601 string in UTC.
+    """
+    tz = ZoneInfo(schedule.session_timezone)
+    pred_date = date.fromisoformat(prediction_date_str)
+    local_dt = datetime.combine(pred_date, schedule.decision_time, tzinfo=tz)
+    utc_dt = local_dt.astimezone(timezone.utc)
+    return utc_dt.isoformat()
 
 
 def load_score_file(path: Path) -> dict[str, Any] | None:
@@ -134,6 +175,12 @@ def extract_metadata_from_score(
         score_data.get("has_realized_labels", False)
     )
 
+    # Label artifact provenance (Item 3).
+    meta["label_artifact_ref"] = score_data.get("label_artifact_ref", "MISSING")
+    meta["label_observation_end"] = score_data.get(
+        "label_observation_end", "MISSING"
+    )
+
     scores = score_data.get("scores", {})
     if isinstance(scores, dict):
         meta["score_keys"] = list(scores.keys())
@@ -163,6 +210,19 @@ def _parse_timestamp(ts: str) -> datetime:
     return dt
 
 
+def _try_parse_timestamp(
+    raw: str,
+    field_name: str,
+    reasons: list[str],
+) -> datetime | None:
+    """Try to parse a timestamp; append rejection reason on failure."""
+    try:
+        return _parse_timestamp(raw)
+    except (ValueError, TypeError):
+        reasons.append(f"{field_name} unparseable: {raw!r}")
+        return None
+
+
 def validate_expert_date(
     expert: ExpertSpec,
     prediction_date: str,
@@ -179,7 +239,9 @@ def validate_expert_date(
             the decision is made.  Scores generated after this are
             look-ahead.  If absent, defaults to end-of-day on
             ``prediction_date`` (``{prediction_date}T23:59:59+00:00``).
-        require_realized_labels: if True (default — for historical
+            Callers should prefer :class:`DecisionSchedule` via
+            :func:`build_ledger` rather than using this default.
+        require_realized_labels: if True (default -- for historical
             evaluation), ``has_realized_labels=False`` produces a
             rejection.
 
@@ -193,8 +255,56 @@ def validate_expert_date(
     if decision_timestamp is None:
         decision_timestamp = f"{prediction_date}T23:59:59+00:00"
 
-    # --- Fingerprint: presence + SHA-256 digest syntax ---
+    # =================================================================
+    # Phase 1: Parse ALL timestamps/dates upfront (Item 2).
+    # Any parse failure is an immediate reject with clear reason.
+    # =================================================================
+    parsed_pred = _try_parse_timestamp(prediction_date, "prediction_date", reasons)
+    parsed_decision = _try_parse_timestamp(
+        decision_timestamp, "decision_timestamp", reasons
+    )
+
     fingerprint = score_meta.get("model_fingerprint", "MISSING")
+    training_cutoff_raw = score_meta.get("training_cutoff", "MISSING")
+    feature_cutoff_raw = score_meta.get("feature_data_cutoff", "MISSING")
+    data_watermark_raw = score_meta.get("data_watermark", "MISSING")
+    score_ts_raw = score_meta.get("score_timestamp", "MISSING")
+
+    parsed_training: datetime | None = None
+    if training_cutoff_raw == "MISSING":
+        reasons.append("missing training cutoff date")
+    else:
+        parsed_training = _try_parse_timestamp(
+            training_cutoff_raw, "training_cutoff", reasons
+        )
+
+    parsed_feature: datetime | None = None
+    if feature_cutoff_raw == "MISSING":
+        reasons.append("missing feature/data cutoff")
+    else:
+        parsed_feature = _try_parse_timestamp(
+            feature_cutoff_raw, "feature_data_cutoff", reasons
+        )
+
+    parsed_watermark: datetime | None = None
+    if data_watermark_raw == "MISSING":
+        reasons.append("missing data watermark")
+    else:
+        parsed_watermark = _try_parse_timestamp(
+            data_watermark_raw, "data_watermark", reasons
+        )
+
+    parsed_score_ts: datetime | None = None
+    if score_ts_raw == "MISSING":
+        reasons.append("missing score timestamp")
+    else:
+        parsed_score_ts = _try_parse_timestamp(
+            score_ts_raw, "score_timestamp", reasons
+        )
+
+    # =================================================================
+    # Phase 2: Fingerprint validation.
+    # =================================================================
     if fingerprint == "MISSING":
         reasons.append("missing model fingerprint")
     elif not FINGERPRINT_RE.match(fingerprint):
@@ -203,71 +313,53 @@ def validate_expert_date(
             f"{fingerprint!r}"
         )
 
-    # --- Training cutoff ---
-    training_cutoff = score_meta.get("training_cutoff", "MISSING")
-    if training_cutoff == "MISSING":
-        reasons.append("missing training cutoff date")
-    elif training_cutoff >= prediction_date:
-        reasons.append(
-            f"training cutoff {training_cutoff} >= prediction date "
-            f"{prediction_date} (lookahead)"
-        )
+    # =================================================================
+    # Phase 3: Causal chain checks (using parsed tz-aware datetimes).
+    # =================================================================
 
-    # --- Feature / data cutoff ---
-    feature_cutoff = score_meta.get("feature_data_cutoff", "MISSING")
-    if feature_cutoff == "MISSING":
-        reasons.append("missing feature/data cutoff")
-    elif feature_cutoff > prediction_date:
-        reasons.append(
-            f"feature cutoff {feature_cutoff} > prediction date "
-            f"{prediction_date} (lookahead)"
-        )
+    # training_cutoff < prediction_date
+    if parsed_training is not None and parsed_pred is not None:
+        if parsed_training >= parsed_pred:
+            reasons.append(
+                f"training cutoff {training_cutoff_raw} >= prediction date "
+                f"{prediction_date} (lookahead)"
+            )
 
-    # --- Data watermark (causal: training_cutoff < data_watermark <= prediction_date) ---
-    data_watermark = score_meta.get("data_watermark", "MISSING")
-    if data_watermark == "MISSING":
-        reasons.append("missing data watermark")
-    else:
-        try:
-            parsed_watermark = _parse_timestamp(data_watermark)
-            # training_cutoff < data_watermark
-            if training_cutoff != "MISSING":
-                try:
-                    parsed_tc = _parse_timestamp(training_cutoff)
-                    if parsed_tc >= parsed_watermark:
-                        reasons.append(
-                            f"training cutoff {training_cutoff} >= data watermark "
-                            f"{data_watermark} (causal violation)"
-                        )
-                except (ValueError, TypeError):
-                    pass  # training_cutoff parse error handled above
-            # data_watermark <= prediction_date
-            parsed_pred_for_wm = _parse_timestamp(prediction_date)
-            if parsed_watermark > parsed_pred_for_wm:
-                reasons.append(
-                    f"data watermark {data_watermark} > prediction date "
-                    f"{prediction_date} (lookahead)"
-                )
-        except (ValueError, TypeError):
-            reasons.append(f"data_watermark unparseable: {data_watermark!r}")
+    # feature_data_cutoff <= prediction_date
+    if parsed_feature is not None and parsed_pred is not None:
+        if parsed_feature > parsed_pred:
+            reasons.append(
+                f"feature cutoff {feature_cutoff_raw} > prediction date "
+                f"{prediction_date} (lookahead)"
+            )
 
-    # --- Score timestamp (causal: score_timestamp <= decision_timestamp) ---
-    score_ts = score_meta.get("score_timestamp", "MISSING")
-    if score_ts == "MISSING":
-        reasons.append("missing score timestamp")
-    else:
-        try:
-            parsed_score = _parse_timestamp(score_ts)
-            parsed_decision = _parse_timestamp(decision_timestamp)
-            if parsed_score > parsed_decision:
-                reasons.append(
-                    f"score_timestamp {score_ts} > decision_timestamp "
-                    f"{decision_timestamp} (late score — potential look-ahead)"
-                )
-        except (ValueError, TypeError):
-            reasons.append(f"score_timestamp unparseable: {score_ts!r}")
+    # training_cutoff < data_watermark
+    if parsed_training is not None and parsed_watermark is not None:
+        if parsed_training >= parsed_watermark:
+            reasons.append(
+                f"training cutoff {training_cutoff_raw} >= data watermark "
+                f"{data_watermark_raw} (causal violation)"
+            )
 
-    # --- Universe coverage ---
+    # data_watermark <= prediction_date
+    if parsed_watermark is not None and parsed_pred is not None:
+        if parsed_watermark > parsed_pred:
+            reasons.append(
+                f"data watermark {data_watermark_raw} > prediction date "
+                f"{prediction_date} (lookahead)"
+            )
+
+    # score_timestamp <= decision_timestamp
+    if parsed_score_ts is not None and parsed_decision is not None:
+        if parsed_score_ts > parsed_decision:
+            reasons.append(
+                f"score_timestamp {score_ts_raw} > decision_timestamp "
+                f"{decision_timestamp} (late score -- potential look-ahead)"
+            )
+
+    # =================================================================
+    # Phase 4: Universe coverage.
+    # =================================================================
     score_keys = score_meta.get("score_keys", [])
     universe_set = set(universe_tickers)
     scored_set = set(score_keys)
@@ -292,25 +384,44 @@ def validate_expert_date(
             f"missingness {missingness:.1%} exceeds 20% threshold"
         )
 
-    # --- Realized labels ---
+    # =================================================================
+    # Phase 5: Realized labels + artifact provenance (Item 3).
+    # =================================================================
     has_labels = bool(score_meta.get("has_realized_labels", False))
     if require_realized_labels and not has_labels:
         reasons.append("no realized labels for evaluation")
+
+    score_artifact_digest = score_meta.get("score_artifact_digest", "MISSING")
+    label_artifact_ref = score_meta.get("label_artifact_ref", "MISSING")
+    label_observation_end = score_meta.get("label_observation_end", "MISSING")
+
+    if has_labels:
+        if label_artifact_ref == "MISSING":
+            reasons.append(
+                "has_realized_labels=True but label_artifact_ref is MISSING"
+            )
+        if label_observation_end == "MISSING":
+            reasons.append(
+                "has_realized_labels=True but label_observation_end is MISSING"
+            )
 
     return ExpertAdmissibilityRecord(
         expert_name=expert.name,
         prediction_date=prediction_date,
         model_fingerprint=fingerprint,
-        training_cutoff=training_cutoff,
-        feature_data_cutoff=feature_cutoff,
-        data_watermark=data_watermark,
-        score_timestamp=score_meta.get("score_timestamp", "MISSING"),
+        training_cutoff=training_cutoff_raw,
+        feature_data_cutoff=feature_cutoff_raw,
+        data_watermark=data_watermark_raw,
+        score_timestamp=score_ts_raw,
         universe_size=universe_size,
         scored_count=scored,
         missing_count=missing,
         missingness_rate=missingness,
         score_orientation=expert.orientation,
         has_realized_labels=has_labels,
+        score_artifact_digest=score_artifact_digest,
+        label_artifact_ref=label_artifact_ref,
+        label_observation_end=label_observation_end,
         admitted=len(reasons) == 0,
         rejection_reasons=reasons,
     )
@@ -321,7 +432,7 @@ def build_complementarity_report(
     prediction_dates: list[str],
     universe_tickers: list[str],
 ) -> dict[str, Any]:
-    """Build the complementarity diagnostics required by §3.0.
+    """Build the complementarity diagnostics required by S3.0.
 
     Reports cross-sectional score correlation, rank correlation,
     and disagreement coverage between experts.
@@ -354,7 +465,7 @@ def build_complementarity_report(
                 r_spearman = float(stats.spearmanr(v1, v2).statistic)
 
                 if not math.isfinite(r_pearson) or not math.isfinite(r_spearman):
-                    # Degenerate/constant scores — flag and skip.
+                    # Degenerate/constant scores -- flag and skip.
                     n_degenerate += 1
                     correlations.append(
                         {
@@ -434,19 +545,19 @@ def _assess_complementarity(
     avg_spearman: float | None,
     avg_disagree: float | None,
 ) -> str:
-    """Produce a falsifiable complementarity assessment per §3.0."""
+    """Produce a falsifiable complementarity assessment per S3.0."""
     if avg_pearson is None or avg_spearman is None:
         return "INSUFFICIENT_DATA"
     if not math.isfinite(avg_pearson) or not math.isfinite(avg_spearman):
-        return "NON_FINITE_CORRELATION — degenerate or constant score streams"
+        return "NON_FINITE_CORRELATION -- degenerate or constant score streams"
     if abs(avg_pearson) > 0.95 and abs(avg_spearman) > 0.95:
-        return "NEAR_DUPLICATE — experts produce near-identical scores"
+        return "NEAR_DUPLICATE -- experts produce near-identical scores"
     if avg_disagree is not None:
         if not math.isfinite(avg_disagree):
-            return "NON_FINITE_CORRELATION — degenerate disagreement metric"
+            return "NON_FINITE_CORRELATION -- degenerate disagreement metric"
         if avg_disagree < 0.05:
-            return "LOW_DISAGREEMENT — experts rarely alter each other's rankings"
-    return "PLAUSIBLE — experts show sufficient score diversity for combination"
+            return "LOW_DISAGREEMENT -- experts rarely alter each other's rankings"
+    return "PLAUSIBLE -- experts show sufficient score diversity for combination"
 
 
 def build_ledger(
@@ -455,6 +566,7 @@ def build_ledger(
     universe_tickers: list[str],
     score_loader: Any = None,
     *,
+    decision_schedule: DecisionSchedule,
     decision_timestamp_fn: Any = None,
     require_realized_labels: bool = True,
     complementarity_assessment: str | None = None,
@@ -466,15 +578,19 @@ def build_ledger(
     For testing, the ledger can be built from pre-extracted metadata.
 
     Args:
-        decision_timestamp_fn: callable ``(expert_name: str, prediction_date: str) -> str``
+        decision_schedule: **required** -- declares the session timezone and
+            decision time.  The schedule is used to compute a per-date
+            decision timestamp (converted to UTC).  There is no default:
+            callers must explicitly declare when decisions are made.
+        decision_timestamp_fn: optional override callable
+            ``(expert_name: str, prediction_date: str) -> str``
             returning a per-(expert, prediction_date) ISO-8601 decision
-            timestamp.  Scores generated after this timestamp are
-            look-ahead for that date.  If None, each date uses its own
-            end-of-day UTC (``{prediction_date}T23:59:59+00:00``).
-            A single global timestamp is deliberately NOT accepted —
-            it would let a late cutoff authorise scores for earlier
-            dates that were generated after those dates' actual
-            decisions (look-ahead).
+            timestamp.  When provided, takes precedence over the schedule.
+            Scores generated after this timestamp are look-ahead for that
+            date.  A single global timestamp is deliberately NOT accepted --
+            it would let a late cutoff authorise scores for earlier dates
+            that were generated after those dates' actual decisions
+            (look-ahead).
         require_realized_labels: if True, experts without realized labels
             are rejected (correct for historical evaluation).
         complementarity_assessment: result string from
@@ -483,7 +599,7 @@ def build_ledger(
             evaluated (fail-closed).
     """
     ledger = AdmissibilityLedger(
-        created_at=datetime.utcnow().isoformat() + "Z",
+        created_at=datetime.now(tz=timezone.utc).isoformat(),
         experts=[e.name for e in experts],
         universe_size=len(universe_tickers),
         date_range=(
@@ -512,7 +628,7 @@ def build_ledger(
             if decision_timestamp_fn is not None:
                 dt_ts = decision_timestamp_fn(expert.name, dt)
             else:
-                dt_ts = None  # validate_expert_date defaults to end-of-day
+                dt_ts = _decision_ts_from_schedule(decision_schedule, dt)
 
             record = validate_expert_date(
                 expert, dt, score_meta, universe_tickers,
@@ -619,12 +735,6 @@ def main() -> None:
         default="experiments/ensemble_phase0/output",
         help="Output directory for ledger files",
     )
-    # NOTE: --decision-timestamp was removed. A single global timestamp
-    # is a look-ahead vector: a late cutoff authorises early-date scores
-    # generated after the actual decision for those dates. Each prediction
-    # date now uses its own end-of-day UTC as the decision timestamp.
-    # For custom per-date timestamps, use the Python API with
-    # decision_timestamp_fn.
     args = parser.parse_args()
 
     if len(args.expert) != len(args.score_dir):
@@ -651,7 +761,7 @@ def main() -> None:
     prediction_dates = _discover_prediction_dates(experts)
     if not prediction_dates:
         print(
-            "ERROR: no prediction dates discovered from score directories — "
+            "ERROR: no prediction dates discovered from score directories -- "
             "cannot build a ledger with zero dates (fail-closed)",
             file=sys.stderr,
         )
@@ -666,14 +776,18 @@ def main() -> None:
         for suffix in SUPPORTED_SCORE_FORMATS:
             candidate = expert.score_dir / f"{dt}{suffix}"
             if candidate.exists():
-                data = load_score_file(candidate)
-                if data is not None:
-                    return extract_metadata_from_score(data, expert)
+                raw_bytes = candidate.read_bytes()
+                file_digest = f"sha256:{hashlib.sha256(raw_bytes).hexdigest()}"
+                data = json.loads(raw_bytes)
+                meta = extract_metadata_from_score(data, expert)
+                meta["score_artifact_digest"] = file_digest
+                return meta
         return {
             "model_fingerprint": "MISSING",
             "training_cutoff": "MISSING",
             "feature_data_cutoff": "MISSING",
             "score_timestamp": "MISSING",
+            "score_artifact_digest": "MISSING",
             "scored_count": 0,
         }
 
@@ -681,9 +795,10 @@ def main() -> None:
     ledger_pass1 = build_ledger(
         experts, prediction_dates, universe_tickers,
         score_loader=_file_score_loader,
+        decision_schedule=US_EQUITY_CLOSE,
     )
 
-    # Compute complementarity report (§3.0) — required for admission.
+    # Compute complementarity report (S3.0) -- required for admission.
     expert_scores: dict[str, dict[str, dict[str, float]]] = {}
     for record in ledger_pass1.records:
         name = record["expert_name"]
@@ -717,6 +832,7 @@ def main() -> None:
     ledger = build_ledger(
         experts, prediction_dates, universe_tickers,
         score_loader=_file_score_loader,
+        decision_schedule=US_EQUITY_CLOSE,
         complementarity_assessment=comp_assessment,
     )
     output_path = write_ledger(ledger, Path(args.output_dir))
@@ -725,9 +841,9 @@ def main() -> None:
 
     # Fail-closed verdict.
     if ledger.summary.get("all_experts_fully_admitted"):
-        print("RESULT: All experts fully admitted — Phase A may proceed")
+        print("RESULT: All experts fully admitted -- Phase A may proceed")
     else:
-        print("RESULT: FAIL — not all experts fully admitted", file=sys.stderr)
+        print("RESULT: FAIL -- not all experts fully admitted", file=sys.stderr)
         for name, stats in ledger.summary.get("per_expert", {}).items():
             if stats["rejected"] > 0:
                 print(f"  {name}: {stats['rejected']}/{stats['total']} rejected")
