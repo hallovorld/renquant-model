@@ -11,6 +11,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parents[1] / "experiments" / "ensemble_phase0"))
 
 from experiment_manifest import (
+    NESTED_WF_HARNESS_APPLIED,
+    NESTED_WF_HARNESS_NOT_BUILT,
     ExperimentManifest,
     build_default_manifest,
     load_and_verify_manifest,
@@ -104,3 +106,19 @@ class TestResolveChampionName:
             expert["status"] = "primary_live"
         with pytest.raises(ValueError, match="primary_live"):
             resolve_champion_name(manifest)
+
+
+class TestNestedWfHarnessStatus:
+    """Round 5, finding 2: default manifests must declare the nested-WF
+    harness NOT built, and that status must be part of the fingerprint
+    so it can't be silently flipped after the manifest is frozen."""
+
+    def test_default_manifest_declares_not_built(self) -> None:
+        manifest = build_default_manifest()
+        assert manifest.nested_wf_harness_status == NESTED_WF_HARNESS_NOT_BUILT
+
+    def test_status_is_part_of_the_fingerprint(self) -> None:
+        m1 = build_default_manifest()
+        m2 = build_default_manifest()
+        m2.nested_wf_harness_status = NESTED_WF_HARNESS_APPLIED
+        assert m1.compute_fingerprint() != m2.compute_fingerprint()

@@ -703,10 +703,31 @@ class TestRunPhaseA:
         experts, rets = _build_n_date_fixture(tmp_path, 10, seed=3)
         result = run_phase_a(
             experts, rets, champion_name="xgb", top_n=3, block_length_days=1,
+            nested_wf_harness_status=par.NESTED_WF_HARNESS_APPLIED,
         )
         assert result.test_method == TEST_METHOD_NON_OVERLAPPING
         assert result.n_test_dates == 10
         assert result.verdict in ("L1_BEATS_CHAMPION", "CHAMPION_RETAINED", "INCONCLUSIVE")
+
+    def test_nested_wf_harness_not_built_caps_an_otherwise_reachable_verdict(self, tmp_path):
+        """Codex review 2026-07-13 round 5, finding 2: the same inputs
+        that reach a real (non-EXPLORATORY_ONLY) verdict when the manifest
+        attests NESTED_WF_HARNESS_APPLIED must be capped to
+        EXPLORATORY_ONLY when that attestation is absent -- regardless of
+        how favorable the underlying statistics are."""
+        experts, rets = _build_n_date_fixture(tmp_path, 10, seed=3)
+        gated = run_phase_a(
+            experts, rets, champion_name="xgb", top_n=3, block_length_days=1,
+        )
+        applied = run_phase_a(
+            experts, rets, champion_name="xgb", top_n=3, block_length_days=1,
+            nested_wf_harness_status=par.NESTED_WF_HARNESS_APPLIED,
+        )
+        assert gated.nested_wf_harness_status == par.NESTED_WF_HARNESS_NOT_BUILT
+        assert gated.verdict == "EXPLORATORY_ONLY"
+        assert applied.verdict != "EXPLORATORY_ONLY"
+        assert "nested_wf_harness_status" in gated.verdict_detail
+        assert applied.verdict in ("L1_BEATS_CHAMPION", "CHAMPION_RETAINED", "INCONCLUSIVE")
 
     def test_cost_bps_is_applied_and_recorded(self, experts):
         zero_cost = run_phase_a(experts, FORWARD_RETURNS, champion_name="xgb", top_n=5, cost_bps=0.0)
@@ -947,6 +968,19 @@ class TestManifestLedgerBinding:
         rc = par.main(_cli_argv(fixture))
         assert rc == 1
 
+    def test_rejects_empty_ledger_fingerprint(self, tmp_path, capsys):
+        """An unset admissibility_ledger_fingerprint must be rejected
+        outright, not merely warned about -- a warning-only check would
+        let a caller trivially skip the binding requirement just by
+        leaving the field blank (Codex round 5, finding 1)."""
+        fixture = _build_cli_fixture(
+            tmp_path,
+            admissibility_ledger_fingerprint="",
+        )
+        rc = par.main(_cli_argv(fixture))
+        assert rc == 1
+        assert "empty" in capsys.readouterr().err
+
     def test_rejects_expert_set_not_in_manifest(self, tmp_path, capsys):
         """Experts [xgb, per_ticker] don't match any registered expert_sets."""
         fixture = _build_cli_fixture(tmp_path)
@@ -961,6 +995,32 @@ class TestManifestLedgerBinding:
         rc = par.main(argv)
         assert rc == 1
         assert "expert_sets" in capsys.readouterr().err
+
+
+class TestNestedWfHarnessWiring:
+    """Round 5, finding 2: manifest.nested_wf_harness_status must reach
+    run_phase_a and be persisted on the result -- the gate is worthless
+    if main() doesn't actually pass it through."""
+
+    def test_manifest_default_status_reaches_result_json(self, tmp_path):
+        fixture = _build_cli_fixture(tmp_path)
+        rc = par.main(_cli_argv(fixture))
+        assert rc == 0
+        [out] = list(Path(fixture["output_dir"]).glob("phase_a_result_*.json"))
+        data = json.loads(out.read_text())
+        assert data["nested_wf_harness_status"] == par.NESTED_WF_HARNESS_NOT_BUILT
+        assert data["verdict"] == "EXPLORATORY_ONLY"
+
+    def test_manifest_applied_status_reaches_result_json(self, tmp_path):
+        fixture = _build_cli_fixture(
+            tmp_path,
+            nested_wf_harness_status=par.NESTED_WF_HARNESS_APPLIED,
+        )
+        rc = par.main(_cli_argv(fixture))
+        assert rc == 0
+        [out] = list(Path(fixture["output_dir"]).glob("phase_a_result_*.json"))
+        data = json.loads(out.read_text())
+        assert data["nested_wf_harness_status"] == par.NESTED_WF_HARNESS_APPLIED
 
 
 class TestPairedICDelta:

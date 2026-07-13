@@ -18,6 +18,17 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+#: ``nested_wf_harness_status`` sentinel values. Per design doc §5.1's
+#: prerequisite table, "Nested WF + purging harness" is listed as
+#: "Not built -- Blocks discovery": Phase A itself is not supposed to be
+#: able to issue a promotable verdict until that harness exists and has
+#: been applied to freeze the evaluation calendar BEFORE any outer-fold
+#: evaluation (§4.1). Manifests default to NOT_BUILT; only an explicit,
+#: deliberate change to APPLIED unlocks a promotable (non-EXPLORATORY_ONLY)
+#: verdict (Codex review 2026-07-13 round 5, finding 2).
+NESTED_WF_HARNESS_NOT_BUILT = "not_built"
+NESTED_WF_HARNESS_APPLIED = "applied_frozen_calendar"
+
 
 @dataclass
 class ExperimentManifest:
@@ -51,6 +62,17 @@ class ExperimentManifest:
     # on. A future level that needs true partial-coverage combination
     # requires its own manifest revision, not a silent behavior change here.
     phase_a_requires_complete_expert_coverage: bool = True
+
+    # §4.1/§5.1: Phase A's own prerequisite table lists "Nested WF + purging
+    # harness" as "Not built -- Blocks discovery". phase_a_runner does not
+    # implement a nested outer/inner-fold split or a frozen, pre-registered
+    # evaluation calendar -- it evaluates over whatever is currently
+    # admitted. Defaults to NESTED_WF_HARNESS_NOT_BUILT, which forces every
+    # run_phase_a verdict to EXPLORATORY_ONLY regardless of the underlying
+    # statistics, until this is deliberately changed to
+    # NESTED_WF_HARNESS_APPLIED by whoever builds and applies that harness
+    # (Codex review 2026-07-13 round 5, finding 2).
+    nested_wf_harness_status: str = "not_built"
 
     # §3.3: covariance/window rule (L2)
     covariance_window_rule: dict[str, Any] = field(default_factory=dict)
@@ -141,6 +163,7 @@ def build_default_manifest(
         missing_score_rule="exclude_and_renormalize",
         score_orientation_convention="higher_is_bullish",
         phase_a_requires_complete_expert_coverage=True,
+        nested_wf_harness_status=NESTED_WF_HARNESS_NOT_BUILT,
         covariance_window_rule={
             "window_days": 60,
             "shrinkage": "toward_equal_weights",

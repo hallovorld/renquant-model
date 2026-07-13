@@ -56,6 +56,8 @@ from experiments.ensemble_phase0.admissibility_ledger import (
     load_and_verify_ledger,
 )
 from experiments.ensemble_phase0.experiment_manifest import (
+    NESTED_WF_HARNESS_APPLIED,
+    NESTED_WF_HARNESS_NOT_BUILT,
     ExperimentManifest,
     load_and_verify_manifest,
     resolve_champion_name,
@@ -147,6 +149,7 @@ class PhaseAResult:
     n_paired_ic_dates: int = 0
     minimum_effect_size_delta_ic: float = 0.0
     min_non_overlapping_observations: int = MIN_NON_OVERLAPPING_OBSERVATIONS
+    nested_wf_harness_status: str = ""
     delta_ic: float = float("nan")
     delta_ic_test: float = float("nan")
     delta_return: float = float("nan")
@@ -698,6 +701,7 @@ def run_phase_a(
     block_length_days: int = 60,
     minimum_effect_size_delta_ic: float = 0.0,
     min_non_overlapping_observations: int = MIN_NON_OVERLAPPING_OBSERVATIONS,
+    nested_wf_harness_status: str = NESTED_WF_HARNESS_NOT_BUILT,
     manifest_fingerprint: str = "",
     ledger_fingerprint: str = "",
     returns_file_digest: str = "",
@@ -734,6 +738,17 @@ def run_phase_a(
     result (and folded into ``run_id``) so a favorable output can be
     independently reproduced and re-verified against the exact inputs
     that produced it.
+
+    ``nested_wf_harness_status`` gates whether a promotable verdict
+    (``L1_BEATS_CHAMPION``/``CHAMPION_RETAINED``/``INCONCLUSIVE``) may ever
+    be issued at all. Design doc §5.1 lists "Nested WF + purging harness"
+    as a Phase A PREREQUISITE ("Not built -- Blocks discovery"): without a
+    frozen, pre-registered evaluation calendar decided before looking at
+    data (§4.1), a caller can re-run this tool against whatever is
+    currently admitted and obtain a different result. Until this is
+    explicitly ``NESTED_WF_HARNESS_APPLIED`` (never by default), every
+    verdict is capped at ``EXPLORATORY_ONLY`` regardless of the underlying
+    statistics (Codex review 2026-07-13 round 5, finding 2).
     """
     if len(experts) < 2:
         raise ValueError("Phase A requires at least 2 experts")
@@ -842,12 +857,18 @@ def run_phase_a(
         if math.isfinite(c_ic) and math.isfinite(l_ic)
     ]
     n_paired_ic_dates = len(paired_ic_dates)
-    delta_ic_test = (
-        float(np.mean([l for _, l in paired_ic_dates]))
-        - float(np.mean([c for c, _ in paired_ic_dates]))
-        if paired_ic_dates
-        else float("nan")
-    )
+    # Below the same minimum-observations floor used for the return
+    # series, a handful of paired IC dates is too unstable to trust --
+    # treat as insufficient (NaN) rather than a numerically-finite-but-
+    # meaningless point estimate ("make insufficient IC observations
+    # non-promotable").
+    if n_paired_ic_dates >= min_non_overlapping_observations:
+        delta_ic_test = (
+            float(np.mean([l for _, l in paired_ic_dates]))
+            - float(np.mean([c for c, _ in paired_ic_dates]))
+        )
+    else:
+        delta_ic_test = float("nan")
 
     if test_method != TEST_METHOD_NON_OVERLAPPING:
         verdict = "EXPLORATORY_ONLY"
@@ -896,6 +917,25 @@ def run_phase_a(
             f"non-overlapping observations. Proceed to L2 comparison."
         )
 
+    # No verdict above EXPLORATORY_ONLY may be issued until the manifest
+    # explicitly attests the nested-WF/purging harness prerequisite (design
+    # doc §5.1) has been built and applied to freeze the evaluation
+    # calendar before this run -- this holds even if the statistics above
+    # would otherwise support L1_BEATS_CHAMPION/CHAMPION_RETAINED (Codex
+    # review 2026-07-13 round 5, finding 2).
+    if nested_wf_harness_status != NESTED_WF_HARNESS_APPLIED and verdict != "EXPLORATORY_ONLY":
+        underlying_verdict, underlying_detail = verdict, detail
+        verdict = "EXPLORATORY_ONLY"
+        detail = (
+            f"nested_wf_harness_status={nested_wf_harness_status!r} (requires "
+            f"{NESTED_WF_HARNESS_APPLIED!r}) -- design doc §5.1 lists the nested "
+            f"WF + purging harness as a Phase A prerequisite, not yet built. "
+            f"This run's evaluation calendar was not frozen/pre-registered "
+            f"before being computed, so no promotable verdict can be issued "
+            f"regardless of the underlying statistics. Underlying (non-binding) "
+            f"result: {underlying_verdict} -- {underlying_detail}"
+        )
+
     expert_score_digests = expert_score_digests or {}
 
     run_id = hashlib.sha256(
@@ -933,6 +973,7 @@ def run_phase_a(
         block_length_days=block_length_days,
         minimum_effect_size_delta_ic=minimum_effect_size_delta_ic,
         min_non_overlapping_observations=min_non_overlapping_observations,
+        nested_wf_harness_status=nested_wf_harness_status,
         manifest_fingerprint=manifest_fingerprint,
         ledger_fingerprint=ledger_fingerprint,
         returns_file_digest=returns_file_digest,
@@ -1118,24 +1159,28 @@ def main(argv: list[str] | None = None) -> int:
     ledger = load_and_verify_ledger(Path(args.ledger_file))
 
     # Item 1 (round 5): bind manifest to ledger — reject if the manifest
-    # was registered against a different ledger.
-    if manifest.admissibility_ledger_fingerprint:
-        if manifest.admissibility_ledger_fingerprint != ledger.ledger_fingerprint:
-            print(
-                f"ERROR: manifest's admissibility_ledger_fingerprint "
-                f"({manifest.admissibility_ledger_fingerprint}) does not "
-                f"match the supplied ledger's fingerprint "
-                f"({ledger.ledger_fingerprint}) -- the manifest was "
-                f"registered against a different ledger",
-                file=sys.stderr,
-            )
-            return 1
-    else:
+    # was registered against a different ledger. An EMPTY fingerprint is
+    # also rejected (not merely warned about): allowing an unbound
+    # manifest through on a warning would let a caller trivially skip
+    # this check just by leaving the field blank, which defeats the
+    # binding requirement Codex asked for (fail closed, not fail loud).
+    if not manifest.admissibility_ledger_fingerprint:
         print(
-            "WARNING: manifest has no admissibility_ledger_fingerprint; "
-            "cannot verify it was registered against this ledger",
+            "ERROR: manifest.admissibility_ledger_fingerprint is empty -- "
+            "the manifest does not declare which ledger it is bound to",
             file=sys.stderr,
         )
+        return 1
+    if manifest.admissibility_ledger_fingerprint != ledger.ledger_fingerprint:
+        print(
+            f"ERROR: manifest's admissibility_ledger_fingerprint "
+            f"({manifest.admissibility_ledger_fingerprint}) does not "
+            f"match the supplied ledger's fingerprint "
+            f"({ledger.ledger_fingerprint}) -- the manifest was "
+            f"registered against a different ledger",
+            file=sys.stderr,
+        )
+        return 1
 
     # Validate expert set matches a pre-registered expert_sets entry.
     supplied_experts = sorted(args.expert)
@@ -1248,6 +1293,7 @@ def main(argv: list[str] | None = None) -> int:
         block_length_days=block_length_days,
         minimum_effect_size_delta_ic=minimum_effect_size_delta_ic,
         min_non_overlapping_observations=min_non_overlapping_observations,
+        nested_wf_harness_status=manifest.nested_wf_harness_status,
         manifest_fingerprint=manifest.manifest_fingerprint,
         ledger_fingerprint=ledger.ledger_fingerprint,
         returns_file_digest=returns_file_digest,
