@@ -950,8 +950,8 @@ class TestDigestValidation:
         )
         assert record.admitted is False
 
-    def test_label_ref_without_locator_rejects(self) -> None:
-        """label_artifact_ref must be sha256:<64hex>@<locator>, not bare digest."""
+    def test_label_ref_without_locator_admitted(self) -> None:
+        """Bare digest without @locator is valid — locator is optional audit trail."""
         meta = _good_meta()
         meta["label_artifact_ref"] = "sha256:" + "ef567890ab123456" * 4  # no @locator
         expert = ExpertSpec(name="xgb", score_dir=Path("."))
@@ -959,9 +959,7 @@ class TestDigestValidation:
             expert, "2026-01-15", meta, UNIVERSE,
             decision_timestamp=DT_TS_JAN15,
         )
-        assert record.admitted is False
-        assert any("label_artifact_ref" in r and "syntax" in r
-                    for r in record.rejection_reasons)
+        assert record.admitted is True
 
     def test_label_ref_with_locator_admitted(self) -> None:
         meta = _good_meta()
@@ -999,7 +997,7 @@ class TestDigestValidation:
 
     def test_label_ref_regex(self) -> None:
         assert LABEL_REF_RE.match(VALID_LABEL_REF)
-        assert not LABEL_REF_RE.match("sha256:" + "aa" * 32)  # no @locator
+        assert LABEL_REF_RE.match("sha256:" + "aa" * 32)  # bare digest, locator optional
         assert not LABEL_REF_RE.match("sha256:short@path")  # too short
         assert LABEL_REF_RE.match("sha256:" + "aa" * 32 + "@s3://bucket/key")
 
