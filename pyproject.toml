@@ -23,6 +23,11 @@ dependencies = [
   "numpy>=1.26",
   "pandas>=2.0",
   "scipy>=1.11",
+  # Real NYSE session calendar (holidays + early closes) for the ensemble
+  # Phase 0 admissibility ledger's decision-schedule resolution
+  # (experiments/ensemble_phase0/admissibility_ledger.py) -- the SAME
+  # exchange-calendar primitive renquant-execution/renquant-orchestrator use.
+  "pandas_market_calendars>=4",
 ]
 
 # Per-family optional extras keep installs slim:
