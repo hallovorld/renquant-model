@@ -94,6 +94,58 @@ class SessionCalendar:
         return f"sha256:{hashlib.sha256(content).hexdigest()}"
 
 
+def build_exchange_session_calendar(
+    start_date: str,
+    end_date: str,
+    *,
+    calendar_name: str = "NYSE",
+    session_timezone: str = "America/New_York",
+    full_session_close: time = time(16, 0),
+) -> SessionCalendar:
+    """Build a :class:`SessionCalendar` from a REAL exchange calendar.
+
+    Uses ``pandas_market_calendars`` (the same exchange-calendar primitive
+    ``renquant-execution``/``renquant-orchestrator`` already depend on) so
+    ``valid_dates``/``early_close_times`` reflect actual exchange holidays
+    and early closes, not a hand-maintained/self-attested date list. A
+    session whose real ``market_close`` differs from
+    ``full_session_close`` (e.g. the day after Thanksgiving, NYSE closes
+    at 13:00 ET) is recorded as an early close override.
+
+    Raises ``ValueError`` if the calendar returns no sessions at all for
+    the requested range (fail-closed rather than silently producing an
+    empty, always-rejecting calendar).
+    """
+    import pandas_market_calendars as mcal
+
+    cal = mcal.get_calendar(calendar_name)
+    sched = cal.schedule(start_date=start_date, end_date=end_date)
+    if sched.empty:
+        raise ValueError(
+            f"{calendar_name} calendar returned no sessions between "
+            f"{start_date} and {end_date}"
+        )
+
+    tz = ZoneInfo(session_timezone)
+    valid_dates: set[str] = set()
+    early_close_times: dict[str, time] = {}
+    for session_date, row in sched.iterrows():
+        date_str = session_date.date().isoformat() if hasattr(session_date, "date") else str(session_date)[:10]
+        valid_dates.add(date_str)
+        close_utc = row["market_close"]
+        if close_utc.tzinfo is None:
+            close_utc = close_utc.tz_localize("UTC")
+        local_close = close_utc.astimezone(tz)
+        local_close_time = time(local_close.hour, local_close.minute, local_close.second)
+        if local_close_time != full_session_close:
+            early_close_times[date_str] = local_close_time
+
+    return SessionCalendar(
+        valid_dates=frozenset(valid_dates),
+        early_close_times=early_close_times,
+    )
+
+
 @dataclass(frozen=True)
 class ExpertAdmissibilityRecord:
     """Single-date admissibility record for one expert."""
@@ -955,12 +1007,29 @@ def main() -> None:
     print(f"Building admissibility ledger for {len(experts)} experts")
     print(f"Universe: {len(universe_tickers)} tickers")
     print(f"Prediction dates: {len(prediction_dates)} ({prediction_dates[0]} .. {prediction_dates[-1]})")
-    print(
-        f"WARNING: using fixed US_EQUITY_CLOSE schedule (16:00 ET) without a "
-        f"session calendar. Exchange holidays and early-close sessions are NOT "
-        f"excluded. Pass --session-calendar for production use.",
-        file=sys.stderr,
+
+    # Build a REAL NYSE session calendar spanning the discovered prediction
+    # dates -- this is the production default (not an opt-in flag): exchange
+    # holidays and early-close sessions must always be excluded/handled, per
+    # Codex review (a fixed US_EQUITY_CLOSE clock must not be the CLI default).
+    # Pad the calendar query a week on each side of the discovered dates:
+    # if the discovered range's exact boundary happens to fall on a
+    # holiday (e.g. running the ledger for a single date that turns out to
+    # be a market holiday), querying that exact zero-width range would
+    # itself come back with no sessions at all and raise before we ever
+    # get a chance to produce a proper per-date rejection record.
+    calendar_query_start = date.fromisoformat(prediction_dates[0]) - timedelta(days=7)
+    calendar_query_end = date.fromisoformat(prediction_dates[-1]) + timedelta(days=7)
+    session_calendar = build_exchange_session_calendar(
+        calendar_query_start.isoformat(), calendar_query_end.isoformat(),
     )
+    non_session_dates = [d for d in prediction_dates if not session_calendar.contains(d)]
+    if non_session_dates:
+        print(
+            f"NOTE: {len(non_session_dates)} discovered date(s) are not real "
+            f"NYSE trading sessions and will be rejected: {non_session_dates}",
+            file=sys.stderr,
+        )
 
     def _file_score_loader(expert: ExpertSpec, dt: str) -> dict[str, Any]:
         """Load score metadata from the expert's score directory."""
@@ -988,6 +1057,7 @@ def main() -> None:
         experts, prediction_dates, universe_tickers,
         score_loader=_file_score_loader,
         decision_schedule=US_EQUITY_CLOSE,
+        session_calendar=session_calendar,
         label_horizon_days=args.label_horizon_days,
     )
 
@@ -1026,6 +1096,7 @@ def main() -> None:
         experts, prediction_dates, universe_tickers,
         score_loader=_file_score_loader,
         decision_schedule=US_EQUITY_CLOSE,
+        session_calendar=session_calendar,
         label_horizon_days=args.label_horizon_days,
         complementarity_assessment=comp_assessment,
     )

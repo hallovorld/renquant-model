@@ -27,6 +27,7 @@ from admissibility_ledger import (
     _parse_timestamp,
     _schedule_digest,
     build_complementarity_report,
+    build_exchange_session_calendar,
     build_ledger,
     extract_metadata_from_score,
     load_score_file,
@@ -722,6 +723,89 @@ class TestSessionCalendar:
             complementarity_assessment="PLAUSIBLE",
         )
         assert ledger.session_calendar_digest.startswith("sha256:")
+
+
+class TestRealExchangeCalendar:
+    """build_exchange_session_calendar derives valid_dates/early_close_times
+    from REAL pandas_market_calendars NYSE data, not a hand-maintained list.
+    Codex review: 'America/New_York plus a fixed 16:00 clock is not a
+    trading-session calendar... wrong for exchange holidays and early-close
+    sessions' -- this must reflect the actual exchange calendar."""
+
+    def test_thanksgiving_is_not_a_session(self) -> None:
+        """2025-11-27 (Thanksgiving) is an NYSE holiday -- no session."""
+        cal = build_exchange_session_calendar("2025-11-20", "2025-12-05")
+        assert cal.contains("2025-11-27") is False
+
+    def test_day_after_thanksgiving_is_a_real_early_close(self) -> None:
+        """2025-11-28: real NYSE early close is 13:00 ET, not 16:00 ET."""
+        cal = build_exchange_session_calendar("2025-11-20", "2025-12-05")
+        assert cal.contains("2025-11-28") is True
+        assert cal.early_close_times.get("2025-11-28") == time(13, 0)
+
+    def test_regular_session_has_no_early_close_override(self) -> None:
+        """A normal trading day is not recorded as an early close."""
+        cal = build_exchange_session_calendar("2025-11-20", "2025-12-05")
+        assert cal.contains("2025-12-01") is True
+        assert "2025-12-01" not in cal.early_close_times
+
+    def test_real_calendar_early_close_rejects_post_close_score(self) -> None:
+        """End-to-end: a score at 13:30 ET on the real 2025-11-28 early
+        close (13:00 ET) is rejected as late, using the REAL resolved
+        decision timestamp (18:00 UTC), not the naive 16:00 ET / 21:00 UTC
+        clock."""
+        cal = build_exchange_session_calendar("2025-11-20", "2025-12-05")
+        experts = [ExpertSpec(name="xgb", score_dir=Path("."))]
+        dates = ["2025-11-28"]
+
+        def loader(exp: ExpertSpec, dt: str) -> dict[str, Any]:
+            meta = _good_meta(dt)
+            meta["score_timestamp"] = "2025-11-28T18:30:00+00:00"  # 13:30 ET
+            meta["feature_data_cutoff"] = "2025-11-28T18:00:00+00:00"
+            meta["data_watermark"] = "2025-11-28T18:00:00+00:00"
+            meta["label_observation_end"] = "2026-01-27"
+            return meta
+
+        ledger = build_ledger(
+            experts, dates, UNIVERSE, score_loader=loader,
+            decision_schedule=US_EQUITY_CLOSE,
+            session_calendar=cal,
+            complementarity_assessment="PLAUSIBLE",
+        )
+        rec = ledger.records[0]
+        assert rec["admitted"] is False
+        assert any("late score" in r or "post-decision" in r for r in rec["rejection_reasons"])
+
+    def test_real_calendar_early_close_admits_pre_close_score(self) -> None:
+        """A score before the real 13:00 ET early close is admitted."""
+        cal = build_exchange_session_calendar("2025-11-20", "2025-12-05")
+        experts = [ExpertSpec(name="xgb", score_dir=Path("."))]
+        dates = ["2025-11-28"]
+
+        def loader(exp: ExpertSpec, dt: str) -> dict[str, Any]:
+            meta = _good_meta(dt)
+            meta["training_cutoff"] = "2025-10-31"
+            meta["score_timestamp"] = "2025-11-28T17:30:00+00:00"  # 12:30 ET
+            meta["feature_data_cutoff"] = "2025-11-28T17:00:00+00:00"
+            meta["data_watermark"] = "2025-11-28T17:00:00+00:00"
+            meta["label_observation_end"] = "2026-01-27"
+            return meta
+
+        ledger = build_ledger(
+            experts, dates, UNIVERSE, score_loader=loader,
+            decision_schedule=US_EQUITY_CLOSE,
+            session_calendar=cal,
+            complementarity_assessment="PLAUSIBLE",
+        )
+        rec = ledger.records[0]
+        assert rec["admitted"] is True, rec["rejection_reasons"]
+
+    def test_empty_range_raises(self) -> None:
+        """A single-day range that is itself a holiday (no sessions at
+        all) fails closed rather than silently returning an
+        always-rejecting empty calendar."""
+        with pytest.raises(ValueError, match="no sessions"):
+            build_exchange_session_calendar("2025-12-25", "2025-12-25")
 
 
 class TestCausalChainDecisionTimestamp:

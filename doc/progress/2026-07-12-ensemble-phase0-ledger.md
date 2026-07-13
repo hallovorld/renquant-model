@@ -101,3 +101,58 @@ L1-L3 comparison. Without them, any experiment result is not credible.
 - These are experiment-side tools, not production code changes.
 - Next: run the ledger against actual XGB + PatchTST score histories to produce
   the first admissibility audit.
+
+## Revision note (2026-07-13, round 8 — real exchange calendar closes the item-2 gap)
+
+A concurrent session's `3448fab8` addressed 4 fresh Codex findings (schedule
+persistence + fingerprint binding, required `decision_timestamp`, label
+horizon, digest+locator label references) solidly -- verified independently,
+114/114 pass. But its item-2 fix (`SessionCalendar`) was hand-populated
+(`valid_dates`/`early_close_times` supplied entirely by the caller, no
+connection to a real exchange calendar), and the production CLI still
+defaulted to the fixed `US_EQUITY_CLOSE` clock with `session_calendar=None`
+-- the stderr warning told users to pass `--session-calendar`, but that flag
+did not exist anywhere in the argparse setup. This directly contradicted the
+original finding: "A fixed US_EQUITY_CLOSE must not be the production CLI
+default."
+
+This round closes that gap on top of `3448fab8` (keeping its schedule
+persistence, required-kwarg, and label-horizon/locator work intact):
+
+1. Added `pandas_market_calendars>=4` as a real dependency (`pyproject.toml`)
+   -- the same exchange-calendar primitive `renquant-execution`'s
+   `preopen_cancel_gate.py` and `renquant-orchestrator` already use.
+2. New `build_exchange_session_calendar(start, end, *, calendar_name="NYSE", ...)`
+   constructs a `SessionCalendar` from the REAL NYSE schedule: `valid_dates`
+   from actual trading sessions, `early_close_times` derived by comparing each
+   session's real `market_close` (converted to the declared session timezone)
+   against the nominal full-session close -- no hand-typed date lists.
+3. The CLI's `main()` now ALWAYS constructs a real calendar (padded ±7 days
+   around the discovered prediction-date range, so a range whose exact
+   boundary falls on a holiday doesn't itself come back empty and crash) and
+   passes it into both `build_ledger()` calls. This is the default, not an
+   opt-in flag -- removed the phantom `--session-calendar` reference.
+4. Verified with real historical NYSE data: 2025-11-27 (Thanksgiving) has no
+   session; 2025-11-28 (day after) has a real 13:00 ET early close, not
+   16:00 ET -- a score at 13:30 ET is correctly rejected as post-decision,
+   one at 12:30 ET is correctly admitted. A single-day query that itself
+   falls on a holiday raises fail-closed rather than silently returning an
+   always-rejecting empty calendar.
+
+6 new tests (`TestRealExchangeCalendar`): Thanksgiving non-session, real
+early-close time detection, regular-session has no override, end-to-end
+early-close rejection/admission using real calendar data, empty-range
+fail-closed.
+
+### Verification
+
+- `pytest tests/test_admissibility_ledger.py -v`: 120/120 pass (114 + 6 new)
+  `[VERIFIED]`
+- Full suite (excluding `tests/patchtst`/`tests/gbdt`/`tests/crypto`, which
+  fail to collect even on an unmodified checkout due to an unrelated
+  `_SixMetaPathImporter` environment issue): 148 passed, 1 skipped, 1
+  pre-existing unrelated failure (`ModuleNotFoundError: sklearn`)
+  `[VERIFIED]`
+- CLI smoke-tested end-to-end: a single Thanksgiving-dated score file is
+  correctly rejected ("not a real NYSE trading session") without crashing;
+  a valid session date runs the full pipeline `[VERIFIED]`
