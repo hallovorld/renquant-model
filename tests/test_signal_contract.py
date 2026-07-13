@@ -81,7 +81,13 @@ def _write_artifact(tmp_path: Path, manifest: dict | None = None) -> Path:
 
 
 def _make_contract(**overrides) -> SignalArtifactContract:
-    """Construct a SignalArtifactContract with valid defaults."""
+    """Construct a SignalArtifactContract with valid defaults.
+
+    ``session_date`` defaults to ``_NOW``'s own UTC calendar date (not a
+    hardcoded date) so it stays consistent with ``decision_timestamp=_NOW``
+    under the v1 session-date-binding invariant, regardless of which real
+    calendar day the test suite happens to run on.
+    """
     defaults = dict(
         artifact_path="/some/path.json",
         content_digest=_VALID_DIGEST,
@@ -92,7 +98,7 @@ def _make_contract(**overrides) -> SignalArtifactContract:
         calibrator_content_digest=_VALID_DIGEST,
         data_watermark=_NOW,
         decision_timestamp=_NOW,
-        session_date=date(2026, 7, 12),
+        session_date=_NOW.astimezone(timezone.utc).date(),
         signal_snapshot_digest=_VALID_DIGEST,
         created_utc=_NOW,
     )
@@ -771,3 +777,114 @@ class TestNonFiniteJsonValues:
         p = _write_artifact(tmp_path, manifest)
         contract, _ = load_and_verify_signal_artifact(str(p))
         assert contract.schema_version == 1
+
+
+# ====================================================================
+# Independent verification follow-up: 3 gaps found in a concurrent
+# session's fix for these same 3 Codex findings (5dc9bb6)
+# ====================================================================
+
+
+class TestSessionDateUsesUtcNotNaiveDate:
+    """5dc9bb6 compared session_date against decision_timestamp.date()
+    directly -- .date() on a timezone-aware datetime returns the date in
+    WHATEVER offset it carries, not necessarily UTC. A producer using a
+    non-UTC offset near a UTC-day boundary would be compared against the
+    wrong day under the crypto RFC's UTC-calendar-day session convention.
+    """
+
+    def test_non_utc_offset_near_day_boundary_compared_against_utc_day(
+        self, tmp_path
+    ):
+        # 2026-07-12T23:30:00-05:00 is 2026-07-13T04:30:00+00:00 in UTC --
+        # local date is 07-12, UTC date is 07-13. session_date must match
+        # the UTC date, not the local one.
+        manifest = _make_manifest(
+            data_watermark="2026-07-12T23:30:00-05:00",
+            decision_timestamp="2026-07-12T23:30:00-05:00",
+            session_date="2026-07-12",  # local date -- wrong under UTC rule
+        )
+        p = _write_artifact(tmp_path, manifest)
+        with pytest.raises(ValueError, match="session_date"):
+            load_and_verify_signal_artifact(str(p))
+
+    def test_non_utc_offset_with_correct_utc_session_date_accepted(
+        self, tmp_path
+    ):
+        manifest = _make_manifest(
+            data_watermark="2026-07-12T23:30:00-05:00",
+            decision_timestamp="2026-07-12T23:30:00-05:00",
+            session_date="2026-07-13",  # correct UTC date
+        )
+        p = _write_artifact(tmp_path, manifest)
+        contract, _ = load_and_verify_signal_artifact(str(p))
+        assert contract.session_date == date(2026, 7, 13)
+
+    def test_post_init_uses_utc_not_naive_date_too(self):
+        from datetime import timedelta
+
+        local_dt = datetime(
+            2026, 7, 12, 23, 30, 0, tzinfo=timezone(timedelta(hours=-5))
+        )
+        with pytest.raises(ValueError, match="session_date"):
+            _make_contract(
+                data_watermark=local_dt,
+                decision_timestamp=local_dt,
+                session_date=date(2026, 7, 12),  # local date, not UTC (07-13)
+            )
+
+
+class TestSignalValueTypeValidation:
+    """5dc9bb6's finiteness check only fired for `isinstance(value, float)`
+    -- a string, None, or bool value never matches that check and would
+    pass straight through untouched, since bool is an int subclass (not a
+    float subclass) and doesn't trigger it either."""
+
+    def test_rejects_string_signal_value(self, tmp_path):
+        manifest = _make_manifest(signals={"AAPL": "not-a-number"})
+        p = _write_artifact(tmp_path, manifest)
+        with pytest.raises(ValueError, match="signals"):
+            load_and_verify_signal_artifact(str(p))
+
+    def test_rejects_none_signal_value(self, tmp_path):
+        manifest = _make_manifest(signals={"AAPL": None})
+        p = _write_artifact(tmp_path, manifest)
+        with pytest.raises(ValueError, match="signals"):
+            load_and_verify_signal_artifact(str(p))
+
+    def test_rejects_bool_signal_value(self, tmp_path):
+        manifest = _make_manifest(signals={"AAPL": True})
+        p = _write_artifact(tmp_path, manifest)
+        with pytest.raises(ValueError, match="signals"):
+            load_and_verify_signal_artifact(str(p))
+
+    def test_rejects_empty_string_signal_key(self, tmp_path):
+        manifest = _make_manifest(signals={"": 0.5})
+        p = _write_artifact(tmp_path, manifest)
+        with pytest.raises(ValueError, match="signals"):
+            load_and_verify_signal_artifact(str(p))
+
+    def test_accepts_int_signal_value(self, tmp_path):
+        """An integer score (e.g. a discretized signal) is a valid finite
+        real number -- only non-numeric/non-finite/bool values are rejected.
+        """
+        manifest = _make_manifest(signals={"AAPL": 1})
+        p = _write_artifact(tmp_path, manifest)
+        contract, _ = load_and_verify_signal_artifact(str(p))
+        assert contract.schema_version == 1
+
+
+class TestSchemaVersionRejectedAtDirectConstruction:
+    """5dc9bb6 added the SUPPORTED_SCHEMA_VERSIONS check to
+    load_and_verify_signal_artifact but not to
+    SignalArtifactContract.__post_init__ -- a direct construction
+    bypassing the loader could still smuggle an unsupported version
+    through via the old `>= 1` check alone."""
+
+    def test_unsupported_version_rejected_at_direct_construction(self):
+        with pytest.raises(ValueError, match="schema_version"):
+            _make_contract(schema_version=2)
+
+    def test_bool_rejected_as_schema_version_at_direct_construction(self):
+        with pytest.raises(ValueError, match="schema_version"):
+            _make_contract(schema_version=True)

@@ -190,10 +190,20 @@ class SignalArtifactContract:
             if not isinstance(value, str) or not value:
                 raise ValueError(f"{field_name} must be a non-empty string")
 
-        # Schema version
-        if not isinstance(self.schema_version, int) or self.schema_version < 1:
+        # Schema version -- must be one this module actually implements
+        # (SUPPORTED_SCHEMA_VERSIONS), not merely a positive integer. This
+        # check exists in load_and_verify_signal_artifact too, but a direct
+        # SignalArtifactContract(...) construction (bypassing the loader)
+        # must not be able to skip it. bool is excluded explicitly: it's an
+        # int subclass in Python, so `True in {1}` is True.
+        if (
+            not isinstance(self.schema_version, int)
+            or isinstance(self.schema_version, bool)
+            or self.schema_version not in SUPPORTED_SCHEMA_VERSIONS
+        ):
             raise ValueError(
-                f"schema_version must be >= 1, got {self.schema_version}"
+                f"schema_version must be one of {sorted(SUPPORTED_SCHEMA_VERSIONS)}, "
+                f"got {self.schema_version!r}"
             )
 
         # Digest format: 64-char lowercase hex
@@ -221,6 +231,33 @@ class SignalArtifactContract:
             raise ValueError(
                 f"session_date must be a date, "
                 f"got {type(self.session_date).__name__}"
+            )
+
+        # v1 causal timing invariant: data_watermark must not be after
+        # decision_timestamp (a decision cannot precede the data it was
+        # based on). Also present in load_and_verify_signal_artifact, but a
+        # direct SignalArtifactContract(...) construction must not be able
+        # to bypass it.
+        if self.data_watermark > self.decision_timestamp:
+            raise ValueError(
+                f"data_watermark ({self.data_watermark.isoformat()}) must be "
+                f"<= decision_timestamp ({self.decision_timestamp.isoformat()}) "
+                "-- a decision cannot precede the data it was based on"
+            )
+
+        # v1 session-date binding: session_date must equal
+        # decision_timestamp's UTC calendar date (matching the crypto
+        # RFC's UTC-calendar-day session convention,
+        # renquant_orchestrator.crypto_session.SessionWindow), not an
+        # independently self-reported field. astimezone(UTC) first --
+        # .date() alone would use whatever offset decision_timestamp
+        # happens to carry, not necessarily UTC.
+        expected_session_date = self.decision_timestamp.astimezone(timezone.utc).date()
+        if self.session_date != expected_session_date:
+            raise ValueError(
+                f"session_date ({self.session_date.isoformat()}) does not match "
+                f"decision_timestamp's UTC calendar date "
+                f"({expected_session_date.isoformat()})"
             )
 
         # Path traversal
@@ -383,11 +420,20 @@ def load_and_verify_signal_artifact(
             f"Causal timing violation: data_watermark ({data_watermark.isoformat()}) "
             f"must not be after decision_timestamp ({decision_timestamp.isoformat()})"
         )
-    if session_date != decision_timestamp.date():
+    # Compare against decision_timestamp's UTC calendar date, not its
+    # naive .date() -- .date() on a timezone-aware datetime returns the
+    # date in WHATEVER offset the datetime happens to carry (e.g. a
+    # producer using local time), not necessarily UTC. The crypto session
+    # convention (matching renquant_orchestrator.crypto_session.SessionWindow)
+    # is UTC-calendar-day based, so an artifact timestamped near a
+    # non-UTC-midnight boundary (e.g. 23:30 US Eastern) would otherwise be
+    # compared against the wrong day.
+    expected_session_date = decision_timestamp.astimezone(timezone.utc).date()
+    if session_date != expected_session_date:
         raise ValueError(
             f"Session date mismatch: session_date ({session_date.isoformat()}) "
-            f"does not match decision_timestamp date "
-            f"({decision_timestamp.date().isoformat()})"
+            f"does not match decision_timestamp's UTC calendar date "
+            f"({expected_session_date.isoformat()})"
         )
 
     signals = manifest["signals"]
@@ -396,12 +442,23 @@ def load_and_verify_signal_artifact(
             f"signals must be a non-empty JSON object, got {type(signals).__name__}"
         )
 
-    # ── signal value finiteness ──
+    # ── signal key/value schema ──
+    # A bare NaN/Infinity finiteness check on `float` values alone misses
+    # every OTHER invalid type -- a string, None, or bool value doesn't
+    # match `isinstance(value, float)` and would otherwise pass through
+    # untouched (bool is checked explicitly since it's an int subclass).
     for ticker, value in signals.items():
-        if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
+        if not isinstance(ticker, str) or not ticker:
             raise ValueError(
-                f"Non-finite signal value for {ticker!r}: {value!r} — "
-                f"all signal values must be finite numbers"
+                f"signals key must be a non-empty string, got {ticker!r}"
+            )
+        if (
+            not isinstance(value, (int, float))
+            or isinstance(value, bool)
+            or not math.isfinite(value)
+        ):
+            raise ValueError(
+                f"signals[{ticker!r}] must be a finite real number, got {value!r}"
             )
 
     # Self-consistency: the declared signal_snapshot_digest must actually be

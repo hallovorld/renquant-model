@@ -228,3 +228,51 @@ top of `e7716ff` — nothing from that commit was reverted or reimplemented.
 Full repo suite (`python -m pytest -q`, same venv, which has `torch` so
 `tests/patchtst`/`tests/gbdt` collect and run too): **441 passed, 2
 skipped**, no regressions.
+
+## Revision note (round 5, 2026-07-13) — 3 bugs found in a concurrent fix for the same Codex findings
+
+A concurrent session pushed 5dc9bb6 addressing Codex's 3 round-4 findings
+(unknown schema version, causal timing invariant, non-finite JSON) —
+independently verified against the real code (not just the commit
+message) and found 3 genuine remaining gaps:
+
+1. **Timezone bug**: `session_date != decision_timestamp.date()` compares
+   against `decision_timestamp`'s date in WHATEVER offset it happens to
+   carry, not necessarily UTC. Proved empirically: a `decision_timestamp`
+   of `2026-07-12T23:30:00-05:00` (US Eastern) is
+   `2026-07-13T04:30:00+00:00` in UTC — local date `07-12`, UTC date
+   `07-13` — and the buggy comparison accepted `session_date="2026-07-12"`
+   despite the crypto RFC's UTC-calendar-day session convention
+   (`renquant_orchestrator.crypto_session.SessionWindow`) meaning it
+   should have been rejected. Fixed to
+   `decision_timestamp.astimezone(timezone.utc).date()`.
+2. **Incomplete signal-value validation**: the finiteness check only fired
+   for `isinstance(value, float)` — a string, `None`, or `bool` value
+   never matches that check (bool is an `int` subclass, not `float`) and
+   passed straight through untouched despite Codex's ask to "validate
+   signal values/keys against the declared signal schema." Replaced with a
+   comprehensive check: keys must be non-empty strings, values must be
+   finite, non-bool `(int, float)`.
+3. **`__post_init__` not updated**: the `SUPPORTED_SCHEMA_VERSIONS` check
+   (and the causal-timing/session-date invariants) were only added to
+   `load_and_verify_signal_artifact` — a direct
+   `SignalArtifactContract(schema_version=2, ...)` construction bypassing
+   the loader could still smuggle an unsupported version through the old
+   `>= 1` check alone. Added the same 3 checks (schema version, timing
+   invariant, session-date binding) to `__post_init__`, with the correct
+   UTC-aware comparison from the start this time.
+
+`_make_contract`'s test fixture had the same class of bug as an earlier
+round: it hardcoded `session_date=date(2026, 7, 12)` alongside
+`decision_timestamp=_NOW` (the real wall-clock time when tests run) — a
+mismatch whenever the suite runs on any day other than exactly that one.
+Fixed to derive `session_date=_NOW.astimezone(timezone.utc).date()`
+dynamically.
+
+10 new tests: UTC-vs-local-offset session_date rejection/acceptance (at
+both load and direct-construction), string/None/bool signal-value
+rejection, empty-string signal-key rejection, int-signal-value acceptance
+(a valid finite type, distinct from bool), and unsupported/bool
+schema_version rejection at direct construction.
+
+`tests/test_signal_contract.py`: **100 passed** (was 90; +10 net).
