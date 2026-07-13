@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
@@ -53,10 +54,13 @@ from pathlib import Path
 from typing import Any, Dict, Sequence, Tuple
 
 __all__ = [
+    "SUPPORTED_SCHEMA_VERSIONS",
     "SignalArtifactContract",
     "compute_signal_snapshot_digest",
     "load_and_verify_signal_artifact",
 ]
+
+SUPPORTED_SCHEMA_VERSIONS: frozenset[int] = frozenset({1})
 
 _HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
 _MAX_ARTIFACT_BYTES = 50 * 1024 * 1024  # 50 MB
@@ -75,6 +79,19 @@ _REQUIRED_MANIFEST_KEYS = frozenset(
         "signals",
     }
 )
+
+
+def _reject_non_finite(constant: str) -> None:
+    """Raise on non-standard JSON constants (NaN, Infinity, -Infinity).
+
+    Passed as ``parse_constant`` to ``json.loads`` so that Python's
+    permissive parser does not silently accept values that are illegal
+    in RFC 8259 JSON.
+    """
+    raise ValueError(
+        f"Non-finite JSON value rejected: {constant!r} — "
+        f"signal artifacts must contain only finite numbers"
+    )
 
 
 def _validate_hex64(value: str, field_name: str) -> None:
@@ -300,7 +317,9 @@ def load_and_verify_signal_artifact(
 
     # ── parse JSON envelope ──
     try:
-        manifest: Dict[str, Any] = json.loads(raw)
+        manifest: Dict[str, Any] = json.loads(
+            raw, parse_constant=_reject_non_finite
+        )
     except json.JSONDecodeError as exc:
         raise ValueError(f"Signal artifact is not valid JSON: {exc}") from exc
 
@@ -321,6 +340,11 @@ def load_and_verify_signal_artifact(
     if not isinstance(schema_version, int) or schema_version < 1:
         raise ValueError(
             f"schema_version must be an integer >= 1, got {schema_version!r}"
+        )
+    if schema_version not in SUPPORTED_SCHEMA_VERSIONS:
+        raise ValueError(
+            f"Unsupported schema_version {schema_version}; "
+            f"supported: {sorted(SUPPORTED_SCHEMA_VERSIONS)}"
         )
 
     producer_run_id = manifest["producer_run_id"]
@@ -353,11 +377,32 @@ def load_and_verify_signal_artifact(
             f"session_date: invalid ISO-8601 date: {raw_session_date!r}"
         ) from exc
 
+    # ── causal timing invariant ──
+    if data_watermark > decision_timestamp:
+        raise ValueError(
+            f"Causal timing violation: data_watermark ({data_watermark.isoformat()}) "
+            f"must not be after decision_timestamp ({decision_timestamp.isoformat()})"
+        )
+    if session_date != decision_timestamp.date():
+        raise ValueError(
+            f"Session date mismatch: session_date ({session_date.isoformat()}) "
+            f"does not match decision_timestamp date "
+            f"({decision_timestamp.date().isoformat()})"
+        )
+
     signals = manifest["signals"]
     if not isinstance(signals, dict) or not signals:
         raise ValueError(
             f"signals must be a non-empty JSON object, got {type(signals).__name__}"
         )
+
+    # ── signal value finiteness ──
+    for ticker, value in signals.items():
+        if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
+            raise ValueError(
+                f"Non-finite signal value for {ticker!r}: {value!r} — "
+                f"all signal values must be finite numbers"
+            )
 
     # Self-consistency: the declared signal_snapshot_digest must actually be
     # the digest of the manifest's own other fields, not merely a

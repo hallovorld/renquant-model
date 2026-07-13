@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from renquant_model_common.signal_contract import (
+    SUPPORTED_SCHEMA_VERSIONS,
     SignalArtifactContract,
     compute_signal_snapshot_digest,
     load_and_verify_signal_artifact,
@@ -161,10 +162,10 @@ class TestProvenanceExtraction:
         assert contract.producer_run_id == "run-from-producer"
 
     def test_schema_version_from_manifest(self, tmp_path):
-        manifest = _make_manifest(schema_version=2)
+        manifest = _make_manifest(schema_version=1)
         p = _write_artifact(tmp_path, manifest)
         contract, _ = load_and_verify_signal_artifact(str(p))
-        assert contract.schema_version == 2
+        assert contract.schema_version == 1
 
     def test_universe_hash_from_manifest(self, tmp_path):
         manifest = _make_manifest(universe_hash="universe-xyz")
@@ -534,6 +535,18 @@ class TestSchemaVersionIncompatibility:
         with pytest.raises(ValueError, match="schema_version"):
             _make_contract(schema_version=0)
 
+    def test_unknown_future_schema_version_rejected(self, tmp_path):
+        """A future schema_version (e.g. 99) is a valid integer >= 1 but
+        not in SUPPORTED_SCHEMA_VERSIONS, so it must be rejected."""
+        manifest = _make_manifest(schema_version=99)
+        p = _write_artifact(tmp_path, manifest)
+        with pytest.raises(ValueError, match="Unsupported schema_version"):
+            load_and_verify_signal_artifact(str(p))
+
+    def test_supported_versions_is_explicit_set(self):
+        assert isinstance(SUPPORTED_SCHEMA_VERSIONS, frozenset)
+        assert 1 in SUPPORTED_SCHEMA_VERSIONS
+
 
 class TestMissingRequiredFields:
     @pytest.mark.parametrize(
@@ -657,3 +670,104 @@ class TestPostInitValidation:
         c = _make_contract()
         with pytest.raises(AttributeError):
             c.content_digest = "b" * 64  # type: ignore[misc]
+
+
+# ====================================================================
+# Causal timing invariant (review item 2)
+# ====================================================================
+
+
+class TestCausalTimingInvariant:
+    """data_watermark <= decision_timestamp and session_date ==
+    decision_timestamp.date()."""
+
+    def test_data_watermark_after_decision_rejected(self, tmp_path):
+        """data_watermark > decision_timestamp violates causality."""
+        manifest = _make_manifest(
+            data_watermark="2026-07-12T05:00:00+00:00",
+            decision_timestamp="2026-07-12T01:00:00+00:00",
+        )
+        p = _write_artifact(tmp_path, manifest)
+        with pytest.raises(ValueError, match="[Cc]ausal timing"):
+            load_and_verify_signal_artifact(str(p))
+
+    def test_session_date_mismatch_rejected(self, tmp_path):
+        """session_date != decision_timestamp.date() is rejected."""
+        manifest = _make_manifest(
+            session_date="2026-07-11",
+            decision_timestamp="2026-07-12T01:00:00+00:00",
+        )
+        p = _write_artifact(tmp_path, manifest)
+        with pytest.raises(ValueError, match="[Ss]ession date"):
+            load_and_verify_signal_artifact(str(p))
+
+    def test_valid_causal_chain_passes(self, tmp_path):
+        """data_watermark <= decision_timestamp, session_date matches."""
+        manifest = _make_manifest(
+            data_watermark="2026-07-12T00:30:00+00:00",
+            decision_timestamp="2026-07-12T01:00:00+00:00",
+            session_date="2026-07-12",
+        )
+        p = _write_artifact(tmp_path, manifest)
+        contract, _ = load_and_verify_signal_artifact(str(p))
+        assert contract.data_watermark <= contract.decision_timestamp
+        assert contract.session_date == contract.decision_timestamp.date()
+
+    def test_watermark_equals_decision_passes(self, tmp_path):
+        """Exact equality (watermark == decision_timestamp) is valid."""
+        ts = "2026-07-12T01:00:00+00:00"
+        manifest = _make_manifest(
+            data_watermark=ts,
+            decision_timestamp=ts,
+            session_date="2026-07-12",
+        )
+        p = _write_artifact(tmp_path, manifest)
+        contract, _ = load_and_verify_signal_artifact(str(p))
+        assert contract.data_watermark == contract.decision_timestamp
+
+
+# ====================================================================
+# Non-finite JSON values (review item 3)
+# ====================================================================
+
+
+class TestNonFiniteJsonValues:
+    """Reject NaN, Infinity, and -Infinity in signal artifacts."""
+
+    def test_nan_in_signals_rejected(self, tmp_path):
+        """A signal value of NaN is non-standard JSON and must be rejected."""
+        manifest = _make_manifest()
+        p = tmp_path / "signals.json"
+        text = json.dumps(manifest)
+        # Replace a numeric value with NaN (non-standard JSON)
+        text = text.replace("-0.13", "NaN")
+        p.write_text(text, encoding="utf-8")
+        with pytest.raises(ValueError, match="[Nn]on-finite"):
+            load_and_verify_signal_artifact(str(p))
+
+    def test_infinity_in_signals_rejected(self, tmp_path):
+        manifest = _make_manifest()
+        p = tmp_path / "signals.json"
+        text = json.dumps(manifest)
+        text = text.replace("-0.13", "Infinity")
+        p.write_text(text, encoding="utf-8")
+        with pytest.raises(ValueError, match="[Nn]on-finite"):
+            load_and_verify_signal_artifact(str(p))
+
+    def test_negative_infinity_in_signals_rejected(self, tmp_path):
+        manifest = _make_manifest()
+        p = tmp_path / "signals.json"
+        text = json.dumps(manifest)
+        text = text.replace("-0.13", "-Infinity")
+        p.write_text(text, encoding="utf-8")
+        with pytest.raises(ValueError, match="[Nn]on-finite"):
+            load_and_verify_signal_artifact(str(p))
+
+    def test_finite_signals_pass(self, tmp_path):
+        """Normal finite signal values are accepted."""
+        manifest = _make_manifest(
+            signals={"AAPL": 0.42, "MSFT": -0.13, "GOOG": 0.0}
+        )
+        p = _write_artifact(tmp_path, manifest)
+        contract, _ = load_and_verify_signal_artifact(str(p))
+        assert contract.schema_version == 1
