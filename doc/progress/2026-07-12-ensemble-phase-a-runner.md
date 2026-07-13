@@ -13,7 +13,7 @@ mapping, with a Newey-West HAC paired test for statistical significance.
 ## Files
 
 - `experiments/ensemble_phase0/phase_a_runner.py` — runner implementation
-- `tests/test_phase_a_runner.py` — 28 tests covering all components
+- `tests/test_phase_a_runner.py` — 80 tests covering all components
 
 ## Components
 
@@ -37,4 +37,6 @@ mapping, with a Newey-West HAC paired test for statistical significance.
 
 - Top-N selection is a research proxy for the full production mapping
 - Does not implement the nested WF harness (future work for L3/L4)
-- Cost model is not wired (slippage/fees not deducted from returns)
+- Base cost (turnover × `base_cost_bps`) is deducted from daily returns;
+  adverse-selection cost robustness is deliberately out of scope for Phase A
+  (would require a full execution-side cost model)
