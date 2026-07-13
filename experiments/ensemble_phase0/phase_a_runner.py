@@ -283,20 +283,30 @@ def verify_returns_file_digest(
     returns_path: Path, ledger: AdmissibilityLedger,
 ) -> tuple[str, str]:
     """Verify the forward-returns file is the SAME artifact the ledger's
-    admitted records declare as their label source -- not an arbitrary or
-    substituted/mutated file (Codex review 2026-07-13, finding 1: the
-    ledger validates score artifacts but ``load_forward_returns`` accepted
-    any path with no binding to the admitted label locator/digest).
+    admitted records declare as their label source.
 
-    Every admitted record's ``label_artifact_ref`` (``sha256:<64hex>@<locator>``)
-    must be IDENTICAL -- a coherent Phase A run has exactly one canonical
-    label/returns artifact, referenced consistently. Checking the digest
-    alone is not sufficient (Codex review 2026-07-13, round 4): a
-    byte-identical file at an unrelated locator would pass a digest-only
-    check but is not proof this is the file the ledger's provenance chain
-    actually points at, so the locator's basename must also match the
-    returns file actually supplied. Returns ``(digest, locator)`` on
-    success.
+    **Artifact identity contract (option 1):** identity is the SHA-256
+    content digest alone. The locator portion of ``label_artifact_ref``
+    (the ``@<path>`` suffix in ``sha256:<64hex>@<path>``) is an
+    informational audit trail — it records where the artifact was when
+    the ledger was built, but is NOT part of identity comparison. Two
+    files with the same SHA-256 digest ARE the same artifact regardless
+    of where they reside on disk.
+
+    This contract was chosen over locator-based identity (option 2)
+    because: (a) ``Path.parts`` suffix matching is not a canonical
+    locator binding — any ancestor directory is unconstrained, so a
+    copied byte-identical file can pass; (b) SHA-256 collision is
+    computationally infeasible for an adversary at this scale; (c) the
+    digest is already computed and validated for score artifacts via
+    ``admitted_score_digests()``.
+
+    All admitted records must agree on the same content digest. The
+    locator, if present, is persisted for audit recovery but not
+    asserted against the supplied file path.
+
+    Returns ``(digest, locator)`` where locator is the informational
+    audit-trail string (empty if the ref has no ``@`` component).
     """
     raw_bytes = returns_path.read_bytes()
     actual_digest = f"sha256:{hashlib.sha256(raw_bytes).hexdigest()}"
@@ -312,40 +322,33 @@ def verify_returns_file_digest(
             "cannot verify the forward-returns file against any declared "
             "label artifact"
         )
-    if len(admitted_refs) > 1:
+
+    # Extract digests from all admitted refs — identity is the digest,
+    # so refs that differ only in the locator portion are still the same
+    # artifact.
+    admitted_digests = set()
+    audit_locator = ""
+    for ref in admitted_refs:
+        if "@" in ref:
+            d, loc = ref.split("@", 1)
+            audit_locator = loc
+        else:
+            d = ref
+        admitted_digests.add(d)
+
+    if len(admitted_digests) > 1:
         raise ValueError(
-            "ledger's admitted records disagree on label_artifact_ref "
-            f"({sorted(admitted_refs)}) -- ambiguous which is the canonical "
-            "forward-returns source"
+            "ledger's admitted records disagree on label artifact digest "
+            f"({sorted(admitted_digests)}) -- ambiguous which content is "
+            "the canonical forward-returns source"
         )
-    expected_ref = next(iter(admitted_refs))
-    if "@" not in expected_ref:
-        raise ValueError(
-            f"admitted label_artifact_ref {expected_ref!r} has no locator "
-            "component (expected sha256:<digest>@<locator>)"
-        )
-    expected_digest, expected_locator = expected_ref.split("@", 1)
+    expected_digest = next(iter(admitted_digests))
     if actual_digest != expected_digest:
         raise ValueError(
             f"forward-returns file digest {actual_digest} does not match "
-            f"the ledger's admitted label_artifact_ref digest "
+            f"the ledger's admitted label artifact digest "
             f"{expected_digest} -- refusing to evaluate against a "
             "substituted or mutated returns file"
-        )
-    # Codex round 7: basename-only comparison accepts a same-named file
-    # from an unrelated directory. Use canonical suffix match: the
-    # resolved returns_path must end with the locator's path components.
-    expected_parts = Path(expected_locator).parts
-    resolved_parts = returns_path.resolve().parts
-    if len(expected_parts) > len(resolved_parts) or \
-       resolved_parts[-len(expected_parts):] != expected_parts:
-        raise ValueError(
-            f"returns file path {str(returns_path.resolve())!r} does not "
-            f"match the ledger's declared label artifact locator "
-            f"{expected_locator!r} -- the resolved path must end with the "
-            f"locator's components (not just share the same basename); "
-            f"a byte-identical file at an unrelated locator is not proof "
-            f"of provenance"
         )
 
     # Round 6, item 4: validate label_observation_end consistency across
@@ -401,7 +404,7 @@ def verify_returns_file_digest(
                     f"label_horizon_days={ledger.label_horizon_days})"
                 )
 
-    return actual_digest, expected_locator
+    return actual_digest, audit_locator
 
 
 # ── Combination methods ──────────────────────────────────────────────────────

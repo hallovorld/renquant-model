@@ -604,42 +604,60 @@ class TestVerifyReturnsFileDigest:
         with pytest.raises(ValueError, match="disagree"):
             verify_returns_file_digest(p, ledger)
 
-    def test_mismatched_locator_is_rejected_despite_matching_digest(self, tmp_path):
-        """A byte-identical file at an unrelated locator must be rejected
-        -- digest agreement alone is not proof of provenance (Codex review
-        2026-07-13 round 4)."""
+    def test_same_digest_different_locators_are_not_disagreement(self, tmp_path):
+        """Two admitted records pointing at the same digest but different
+        locators are the SAME artifact under the digest-identity contract
+        — they must NOT trigger the disagreement error."""
+        p = tmp_path / "returns.csv"
+        p.write_text("date,ticker,fwd_return\n2025-06-01,AAPL,0.01\n")
+        digest = f"sha256:{hashlib.sha256(p.read_bytes()).hexdigest()}"
+        ledger = _ledger_with_records([
+            {"admitted": True, "label_artifact_ref": f"{digest}@labels/a.csv"},
+            {"admitted": True, "label_artifact_ref": f"{digest}@labels/b.csv"},
+        ])
+        actual_digest, _ = verify_returns_file_digest(p, ledger)
+        assert actual_digest == digest
+
+    def test_different_locator_accepted_when_digest_matches(self, tmp_path):
+        """Artifact identity = SHA-256 digest (contract option 1, codex r9).
+        A file at a different path with the same digest IS the same artifact
+        — the locator is an informational audit trail, not identity."""
         p = tmp_path / "returns.csv"
         p.write_text("date,ticker,fwd_return\n2025-06-01,AAPL,0.01\n")
         digest = f"sha256:{hashlib.sha256(p.read_bytes()).hexdigest()}"
         ledger = _ledger_with_records([
             {"admitted": True, "label_artifact_ref": f"{digest}@labels/unrelated_file.csv"},
         ])
-        with pytest.raises(ValueError, match="does not match the ledger's declared label artifact locator"):
-            verify_returns_file_digest(p, ledger)
+        actual_digest, audit_locator = verify_returns_file_digest(p, ledger)
+        assert actual_digest == digest
+        assert audit_locator == "labels/unrelated_file.csv"
 
-    def test_same_basename_different_directory_is_rejected(self, tmp_path):
-        """Codex round 7: same filename in a different directory must NOT
-        pass — basename-only matching was the reviewed bug."""
-        wrong_dir = tmp_path / "other"
-        wrong_dir.mkdir()
-        p = wrong_dir / "returns.csv"
+    def test_different_directory_accepted_when_digest_matches(self, tmp_path):
+        """Same digest at a different directory is accepted — identity is
+        the content digest, not the filesystem location."""
+        other_dir = tmp_path / "other"
+        other_dir.mkdir()
+        p = other_dir / "returns.csv"
         p.write_text("date,ticker,fwd_return\n2025-06-01,AAPL,0.01\n")
         digest = f"sha256:{hashlib.sha256(p.read_bytes()).hexdigest()}"
         ledger = _ledger_with_records([
             {"admitted": True, "label_artifact_ref": f"{digest}@labels/returns.csv"},
         ])
-        with pytest.raises(ValueError, match="does not match the ledger's declared label artifact locator"):
-            verify_returns_file_digest(p, ledger)
+        actual_digest, audit_locator = verify_returns_file_digest(p, ledger)
+        assert actual_digest == digest
 
-    def test_missing_locator_component_is_rejected(self, tmp_path):
+    def test_digest_only_ref_without_locator_is_accepted(self, tmp_path):
+        """A label_artifact_ref with no @locator suffix is valid — the
+        locator is optional audit-trail metadata, not required."""
         p = tmp_path / "returns.csv"
         p.write_text("date,ticker,fwd_return\n2025-06-01,AAPL,0.01\n")
         digest = f"sha256:{hashlib.sha256(p.read_bytes()).hexdigest()}"
         ledger = _ledger_with_records([
-            {"admitted": True, "label_artifact_ref": digest},  # no "@locator"
+            {"admitted": True, "label_artifact_ref": digest},
         ])
-        with pytest.raises(ValueError, match="no locator component"):
-            verify_returns_file_digest(p, ledger)
+        actual_digest, audit_locator = verify_returns_file_digest(p, ledger)
+        assert actual_digest == digest
+        assert audit_locator == ""
 
     def test_label_observation_end_shorter_than_horizon_is_rejected(self, tmp_path):
         """Codex review 2026-07-13T17:00:21Z round 6, finding 2: the

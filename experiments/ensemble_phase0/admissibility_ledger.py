@@ -285,7 +285,14 @@ class AdmissibilityLedger:
 SUPPORTED_SCORE_FORMATS = {".json"}
 FINGERPRINT_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
-LABEL_REF_RE = re.compile(r"^sha256:[0-9a-f]{64}@\S+$")
+
+# Artifact identity contract: identity = SHA-256 content digest.
+# The @<locator> suffix is an informational audit trail recording where
+# the artifact resided when the ledger was built; it is NOT part of
+# identity comparison. Two files with the same digest ARE the same
+# artifact regardless of filesystem location.
+LABEL_REF_RE = re.compile(r"^sha256:[0-9a-f]{64}(?:@\S+)?$")
+
 MIN_COMMON_NAMES = 10
 
 
