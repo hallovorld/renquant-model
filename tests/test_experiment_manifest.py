@@ -78,6 +78,37 @@ class TestWriteAndLoad:
         with pytest.raises(ValueError, match="fingerprint mismatch"):
             load_and_verify_manifest(output_path)
 
+    def test_rejects_empty_fingerprint(self, tmp_path: Path) -> None:
+        """Codex review 2026-07-13T17:00:21Z round 6, finding 4:
+        load_and_verify_manifest must reject an absent/empty
+        manifest_fingerprint outright, not merely a mismatched one -- the
+        prior check (``if stored_fp and computed_fp != stored_fp``) let a
+        manifest with no integrity fingerprint of its own through as if it
+        were frozen, even if its ``admissibility_ledger_fingerprint``
+        correctly named a real ledger."""
+        manifest = build_default_manifest()
+        output_path = write_manifest(manifest, tmp_path)
+
+        data = json.loads(output_path.read_text())
+        data["manifest_fingerprint"] = ""
+        output_path.write_text(json.dumps(data))
+
+        with pytest.raises(ValueError, match="absent or empty"):
+            load_and_verify_manifest(output_path)
+
+    def test_rejects_missing_fingerprint_key(self, tmp_path: Path) -> None:
+        """Same as above, but the key is absent entirely rather than an
+        empty string -- both must be rejected identically."""
+        manifest = build_default_manifest()
+        output_path = write_manifest(manifest, tmp_path)
+
+        data = json.loads(output_path.read_text())
+        del data["manifest_fingerprint"]
+        output_path.write_text(json.dumps(data))
+
+        with pytest.raises(ValueError, match="absent or empty"):
+            load_and_verify_manifest(output_path)
+
 
 class TestResolveChampionName:
     def test_resolves_primary_live_expert(self) -> None:

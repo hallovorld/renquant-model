@@ -236,9 +236,27 @@ def write_manifest(manifest: ExperimentManifest, output_dir: Path) -> Path:
 
 
 def load_and_verify_manifest(path: Path) -> ExperimentManifest:
-    """Load a manifest and verify its fingerprint hasn't been tampered with."""
+    """Load a manifest and verify its fingerprint hasn't been tampered with.
+
+    An absent/empty ``manifest_fingerprint`` is rejected outright, not
+    merely a mismatched one. The prior version only checked
+    ``if stored_fp and computed_fp != stored_fp``, so a manifest with a
+    correctly-bound ``admissibility_ledger_fingerprint`` but no integrity
+    fingerprint of its own was consumed as if frozen -- the ledger binding
+    proves which ledger the manifest claims to pair with, but proves
+    nothing about whether the manifest's OWN content has been tampered
+    with, since there was nothing to check it against (Codex review
+    2026-07-13T17:00:21Z round 6, finding 4).
+    """
     data = json.loads(path.read_text())
     stored_fp = data.get("manifest_fingerprint", "")
+    if not stored_fp:
+        raise ValueError(
+            "manifest_fingerprint is absent or empty -- a manifest with no "
+            "integrity fingerprint cannot be verified and is refused, not "
+            "merely warned about (a missing fingerprint is not the same as "
+            "a matching one)"
+        )
 
     manifest = ExperimentManifest(**{
         k: v for k, v in data.items()
@@ -246,7 +264,7 @@ def load_and_verify_manifest(path: Path) -> ExperimentManifest:
     })
 
     computed_fp = manifest.compute_fingerprint()
-    if stored_fp and computed_fp != stored_fp:
+    if computed_fp != stored_fp:
         raise ValueError(
             f"manifest fingerprint mismatch: stored={stored_fp}, "
             f"computed={computed_fp} — manifest may have been modified"

@@ -625,6 +625,51 @@ class TestVerifyReturnsFileDigest:
         with pytest.raises(ValueError, match="no locator component"):
             verify_returns_file_digest(p, ledger)
 
+    def test_label_observation_end_shorter_than_horizon_is_rejected(self, tmp_path):
+        """Codex review 2026-07-13T17:00:21Z round 6, finding 2: the
+        actual_span < label_horizon_days check previously raised
+        ValueError and was then immediately caught and swallowed by the
+        SAME try/except meant only to guard unparseable dates -- a
+        parseable-but-too-short label window was silently accepted. It
+        must now propagate as a real failure."""
+        p = tmp_path / "returns.csv"
+        p.write_text("date,ticker,fwd_return\n2025-01-10,AAPL,0.01\n")
+        digest = f"sha256:{hashlib.sha256(p.read_bytes()).hexdigest()}"
+        ledger = AdmissibilityLedger(
+            label_horizon_days=60,
+            records=[
+                {
+                    "admitted": True,
+                    "label_artifact_ref": f"{digest}@labels/returns.csv",
+                    "prediction_date": "2025-01-01",
+                    # Only 9 days after prediction_date -- well short of
+                    # the declared 60-day label horizon.
+                    "label_observation_end": "2025-01-10",
+                },
+            ],
+        )
+        with pytest.raises(ValueError, match="label_observation_end .* is only"):
+            verify_returns_file_digest(p, ledger)
+
+    def test_label_observation_end_meeting_horizon_passes(self, tmp_path):
+        """Sanity check for the above: a span that DOES meet the declared
+        horizon must not raise."""
+        p = tmp_path / "returns.csv"
+        p.write_text("date,ticker,fwd_return\n2025-03-02,AAPL,0.01\n")
+        digest = f"sha256:{hashlib.sha256(p.read_bytes()).hexdigest()}"
+        ledger = AdmissibilityLedger(
+            label_horizon_days=60,
+            records=[
+                {
+                    "admitted": True,
+                    "label_artifact_ref": f"{digest}@labels/returns.csv",
+                    "prediction_date": "2025-01-01",
+                    "label_observation_end": "2025-03-02",  # 60 days later
+                },
+            ],
+        )
+        assert verify_returns_file_digest(p, ledger) == (digest, "labels/returns.csv")
+
 
 # ── Go/no-go verdict ────────────────────────────────────────────────────────
 
@@ -701,6 +746,12 @@ class TestRunPhaseA:
         assert result.verdict == "EXPLORATORY_ONLY"
 
     def test_uses_non_overlapping_blocks_when_sufficient(self, tmp_path):
+        """The primary statistical test (non-overlapping blocks) still
+        runs and its statistics are still computed/surfaced even though
+        the resulting verdict is unconditionally capped to
+        EXPLORATORY_ONLY (Codex review 2026-07-13T17:00:21Z round 6,
+        finding 1) -- capping promotability must not destroy the
+        underlying research signal."""
         experts, rets = _build_n_date_fixture(tmp_path, 10, seed=3)
         result = run_phase_a(
             experts, rets, champion_name="xgb", top_n=3, block_length_days=1,
@@ -708,27 +759,47 @@ class TestRunPhaseA:
         )
         assert result.test_method == TEST_METHOD_NON_OVERLAPPING
         assert result.n_test_dates == 10
-        assert result.verdict in ("L1_BEATS_CHAMPION", "CHAMPION_RETAINED", "INCONCLUSIVE")
+        # No value of nested_wf_harness_status can unlock a promotable
+        # verdict until a real harness+verifier exists.
+        assert result.verdict == "EXPLORATORY_ONLY"
+        assert "Underlying (non-binding) result" in result.verdict_detail
 
-    def test_nested_wf_harness_not_built_caps_an_otherwise_reachable_verdict(self, tmp_path):
-        """Codex review 2026-07-13 round 5, finding 2: the same inputs
-        that reach a real (non-EXPLORATORY_ONLY) verdict when the manifest
-        attests NESTED_WF_HARNESS_APPLIED must be capped to
-        EXPLORATORY_ONLY when that attestation is absent -- regardless of
-        how favorable the underlying statistics are."""
+    def test_nested_wf_harness_cap_is_unconditional(self, tmp_path):
+        """Codex review 2026-07-13T17:00:21Z round 6, finding 1:
+        ``nested_wf_harness_status == NESTED_WF_HARNESS_APPLIED`` is a
+        self-attested manifest string -- a caller can set it with no real
+        harness having run. No verifier for that harness exists in this
+        codebase, so the EXPLORATORY_ONLY cap must apply UNCONDITIONALLY:
+        setting the status to NESTED_WF_HARNESS_APPLIED must NOT unlock a
+        promotable verdict, same as leaving it at NOT_BUILT. The
+        underlying (non-binding) statistics must still be computed and
+        surfaced in verdict_detail either way, so the research signal
+        remains visible even though it is never promotable."""
         experts, rets = _build_n_date_fixture(tmp_path, 10, seed=3)
-        gated = run_phase_a(
+        not_built = run_phase_a(
             experts, rets, champion_name="xgb", top_n=3, block_length_days=1,
         )
         applied = run_phase_a(
             experts, rets, champion_name="xgb", top_n=3, block_length_days=1,
             nested_wf_harness_status=par.NESTED_WF_HARNESS_APPLIED,
         )
-        assert gated.nested_wf_harness_status == par.NESTED_WF_HARNESS_NOT_BUILT
-        assert gated.verdict == "EXPLORATORY_ONLY"
-        assert applied.verdict != "EXPLORATORY_ONLY"
-        assert "nested_wf_harness_status" in gated.verdict_detail
-        assert applied.verdict in ("L1_BEATS_CHAMPION", "CHAMPION_RETAINED", "INCONCLUSIVE")
+        assert not_built.nested_wf_harness_status == par.NESTED_WF_HARNESS_NOT_BUILT
+        assert applied.nested_wf_harness_status == par.NESTED_WF_HARNESS_APPLIED
+        # Both are capped, regardless of the attested status -- this is
+        # the round 6 behavior change (previously APPLIED escaped the cap).
+        assert not_built.verdict == "EXPLORATORY_ONLY"
+        assert applied.verdict == "EXPLORATORY_ONLY"
+        # The underlying, pre-cap statistics are unaffected by the
+        # attestation and must still be visible in the detail message --
+        # identical for both, since nested_wf_harness_status does not
+        # change the computation, only the cap.
+        assert "Underlying (non-binding) result" in not_built.verdict_detail
+        assert "Underlying (non-binding) result" in applied.verdict_detail
+
+        def _underlying(detail: str) -> str:
+            return detail.split("Underlying (non-binding) result:", 1)[1]
+
+        assert _underlying(not_built.verdict_detail) == _underlying(applied.verdict_detail)
 
     def test_cost_bps_is_applied_and_recorded(self, experts):
         zero_cost = run_phase_a(experts, FORWARD_RETURNS, champion_name="xgb", top_n=5, cost_bps=0.0)
@@ -1006,9 +1077,12 @@ class TestManifestLedgerBinding:
 
 
 class TestNestedWfHarnessWiring:
-    """Round 5, finding 2: manifest.nested_wf_harness_status must reach
-    run_phase_a and be persisted on the result -- the gate is worthless
-    if main() doesn't actually pass it through."""
+    """manifest.nested_wf_harness_status must reach run_phase_a and be
+    persisted on the result (round 5, finding 2) -- but, per round 6,
+    finding 1 (Codex review 2026-07-13T17:00:21Z), it must NEVER unlock a
+    promotable verdict: the field is versioned/checkable scaffolding for a
+    future real harness+verifier, not something a caller can flip to
+    escape the EXPLORATORY_ONLY cap today."""
 
     def test_manifest_default_status_reaches_result_json(self, tmp_path):
         fixture = _build_cli_fixture(tmp_path)
@@ -1019,7 +1093,13 @@ class TestNestedWfHarnessWiring:
         assert data["nested_wf_harness_status"] == par.NESTED_WF_HARNESS_NOT_BUILT
         assert data["verdict"] == "EXPLORATORY_ONLY"
 
-    def test_manifest_applied_status_reaches_result_json(self, tmp_path):
+    def test_manifest_applied_status_reaches_result_json_but_still_caps(self, tmp_path):
+        """Even when the manifest declares NESTED_WF_HARNESS_APPLIED, the
+        status is faithfully persisted on the result (so it remains an
+        auditable, checkable manifest fact) but the verdict is still
+        capped at EXPLORATORY_ONLY end-to-end through the CLI -- there is
+        no way to reach a promotable verdict from this manifest field
+        alone."""
         fixture = _build_cli_fixture(
             tmp_path,
             nested_wf_harness_status=par.NESTED_WF_HARNESS_APPLIED,
@@ -1029,6 +1109,7 @@ class TestNestedWfHarnessWiring:
         [out] = list(Path(fixture["output_dir"]).glob("phase_a_result_*.json"))
         data = json.loads(out.read_text())
         assert data["nested_wf_harness_status"] == par.NESTED_WF_HARNESS_APPLIED
+        assert data["verdict"] == "EXPLORATORY_ONLY"
 
 
 class TestPairedICDelta:
@@ -1198,3 +1279,52 @@ class TestLabelObservationEndPersisted:
         assert len(result_files) == 1
         result_data = json.loads(result_files[0].read_text())
         assert "label_observation_end" in result_data
+
+
+# ── Round 6 (2026-07-13T17:00:21Z) adversarial tests ────────────────────────
+
+
+class TestCoverageGapFailsClosed:
+    """Codex review 2026-07-13T17:00:21Z round 6, finding 3: a missing or
+    digest-mismatched ledger-admitted score artifact must hard-reject
+    (return 1), not warn-and-continue. Warn-and-continue turns an
+    immutable admitted calendar into a post-hoc subset chosen by whichever
+    files happen to be present, which can change both selection and
+    statistical significance."""
+
+    def test_missing_admitted_score_file_is_rejected(self, tmp_path, capsys):
+        fixture = _build_cli_fixture(tmp_path)
+        # Delete one ledger-admitted xgb score file: the ledger still
+        # expects it (it was admitted), but load_expert_scores can no
+        # longer load it.
+        xgb_dir = Path(fixture["xgb_dir"])
+        deleted = sorted(xgb_dir.glob("*.json"))[0]
+        deleted.unlink()
+
+        rc = par.main(_cli_argv(fixture))
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "ERROR" in err
+        assert "ledger-admitted dates could not be loaded" in err
+
+    def test_digest_mismatched_admitted_score_file_is_rejected(self, tmp_path, capsys):
+        fixture = _build_cli_fixture(tmp_path)
+        # Mutate one ledger-admitted xgb score file in place -- its content
+        # digest no longer matches the ledger's admitted record, so
+        # load_expert_scores (which only admits digest-matching files)
+        # will not load it, producing exactly the same coverage gap as a
+        # missing file.
+        xgb_dir = Path(fixture["xgb_dir"])
+        mutated = sorted(xgb_dir.glob("*.json"))[0]
+        mutated.write_bytes(mutated.read_bytes() + b" ")
+
+        rc = par.main(_cli_argv(fixture))
+        assert rc == 1
+        assert "ledger-admitted dates could not be loaded" in capsys.readouterr().err
+
+    def test_complete_coverage_still_succeeds(self, tmp_path):
+        """Sanity check: an untouched, fully-covered fixture must still
+        pass -- the hard-reject only fires on an actual coverage gap."""
+        fixture = _build_cli_fixture(tmp_path)
+        rc = par.main(_cli_argv(fixture))
+        assert rc == 0
