@@ -171,6 +171,7 @@ def build_default_manifest(
             "block_length_days": 60,
             "alpha": 0.05,
             "minimum_effect_size_delta_ic": 0.005,
+            "min_non_overlapping_observations": 8,
             "one_sided": True,
         },
         correction_procedure="hierarchical_sequential_gatekeeping",

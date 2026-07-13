@@ -806,12 +806,6 @@ def _build_cli_fixture(tmp_path: Path, **manifest_overrides: Any) -> dict[str, s
     returns_path.write_text("\n".join(returns_lines))
     returns_digest = f"sha256:{hashlib.sha256(returns_path.read_bytes()).hexdigest()}"
 
-    manifest = build_default_manifest()
-    for key, value in manifest_overrides.items():
-        setattr(manifest, key, value)
-    manifest.manifest_fingerprint = manifest.compute_fingerprint()
-    manifest_path = write_manifest(manifest, tmp_path)
-
     records = [
         {
             "expert_name": name,
@@ -826,6 +820,14 @@ def _build_cli_fixture(tmp_path: Path, **manifest_overrides: Any) -> dict[str, s
     ledger = AdmissibilityLedger(records=records)
     ledger.ledger_fingerprint = ledger.compute_fingerprint()
     ledger_path = write_ledger(ledger, tmp_path)
+
+    manifest = build_default_manifest(
+        admissibility_ledger_fingerprint=ledger.ledger_fingerprint,
+    )
+    for key, value in manifest_overrides.items():
+        setattr(manifest, key, value)
+    manifest.manifest_fingerprint = manifest.compute_fingerprint()
+    manifest_path = write_manifest(manifest, tmp_path)
 
     return {
         "xgb_dir": str(xgb_dir),
@@ -929,3 +931,76 @@ class TestMainExitCode:
         )
         with pytest.raises(ValueError, match="does not match"):
             par.main(_cli_argv(fixture))
+
+
+# ── Round 5 adversarial tests ───────────────────────────────────────────────
+
+
+class TestManifestLedgerBinding:
+    """Round 5, finding 1: manifest and ledger must be bound."""
+
+    def test_rejects_mismatched_ledger_fingerprint(self, tmp_path):
+        fixture = _build_cli_fixture(
+            tmp_path,
+            admissibility_ledger_fingerprint="sha256:wrong-fingerprint",
+        )
+        rc = par.main(_cli_argv(fixture))
+        assert rc == 1
+
+    def test_rejects_expert_set_not_in_manifest(self, tmp_path, capsys):
+        """Experts [xgb, per_ticker] don't match any registered expert_sets."""
+        fixture = _build_cli_fixture(tmp_path)
+        argv = [
+            "--expert", "xgb", "--score-dir", fixture["xgb_dir"],
+            "--expert", "per_ticker", "--score-dir", fixture["pt_dir"],
+            "--returns-file", fixture["returns_path"],
+            "--manifest-file", fixture["manifest_path"],
+            "--ledger-file", fixture["ledger_path"],
+            "--output-dir", fixture["output_dir"],
+        ]
+        rc = par.main(argv)
+        assert rc == 1
+        assert "expert_sets" in capsys.readouterr().err
+
+
+class TestPairedICDelta:
+    """Round 5, finding 4: delta_ic_test must be truly paired."""
+
+    def test_paired_ic_dates_is_recorded(self, tmp_path):
+        experts, rets = _build_n_date_fixture(tmp_path, 10, seed=42)
+        result = run_phase_a(
+            experts, rets, champion_name="xgb", top_n=3,
+            block_length_days=1,
+        )
+        assert result.n_paired_ic_dates > 0
+        assert result.n_paired_ic_dates <= result.n_paired_test_dates
+
+
+class TestMinNonOverlappingFromManifest:
+    """Round 5, finding 5: min_non_overlapping_observations sourced from manifest."""
+
+    def test_persisted_on_result(self, tmp_path):
+        experts, rets = _build_n_date_fixture(tmp_path, 10, seed=42)
+        result = run_phase_a(
+            experts, rets, champion_name="xgb", top_n=3,
+            block_length_days=1,
+            min_non_overlapping_observations=5,
+        )
+        assert result.min_non_overlapping_observations == 5
+
+    def test_high_minimum_forces_exploratory(self, tmp_path):
+        """With impossibly high minimum, verdict must be EXPLORATORY_ONLY."""
+        experts, rets = _build_n_date_fixture(tmp_path, 10, seed=42)
+        result = run_phase_a(
+            experts, rets, champion_name="xgb", top_n=3,
+            block_length_days=1,
+            min_non_overlapping_observations=999,
+        )
+        assert result.verdict == "EXPLORATORY_ONLY"
+
+    def test_cli_sources_from_manifest(self, tmp_path):
+        """The CLI should source min_non_overlapping_observations from
+        the manifest's statistical_test section."""
+        fixture = _build_cli_fixture(tmp_path)
+        rc = par.main(_cli_argv(fixture))
+        assert rc == 0

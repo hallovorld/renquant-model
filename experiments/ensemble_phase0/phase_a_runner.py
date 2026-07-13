@@ -144,7 +144,9 @@ class PhaseAResult:
     expert_score_digests: dict[str, list[str]] = field(default_factory=dict)
     n_paired_test_dates: int = 0
     n_test_dates_excluded_asymmetric_or_undersized: int = 0
+    n_paired_ic_dates: int = 0
     minimum_effect_size_delta_ic: float = 0.0
+    min_non_overlapping_observations: int = MIN_NON_OVERLAPPING_OBSERVATIONS
     delta_ic: float = float("nan")
     delta_ic_test: float = float("nan")
     delta_return: float = float("nan")
@@ -695,6 +697,7 @@ def run_phase_a(
     cost_bps: float = 0.0,
     block_length_days: int = 60,
     minimum_effect_size_delta_ic: float = 0.0,
+    min_non_overlapping_observations: int = MIN_NON_OVERLAPPING_OBSERVATIONS,
     manifest_fingerprint: str = "",
     ledger_fingerprint: str = "",
     returns_file_digest: str = "",
@@ -776,7 +779,7 @@ def run_phase_a(
     # remain full-sample descriptive statistics for the human-readable
     # report.
     non_overlap_dates = select_non_overlapping_dates(dates, block_length_days)
-    if len(non_overlap_dates) >= MIN_NON_OVERLAPPING_OBSERVATIONS:
+    if len(non_overlap_dates) >= min_non_overlapping_observations:
         test_dates = non_overlap_dates
         test_method = TEST_METHOD_NON_OVERLAPPING
     else:
@@ -813,7 +816,7 @@ def run_phase_a(
     # candidate count -- asymmetric coverage/undersized selections can
     # shrink the usable set below the floor even when the initial block
     # selection cleared it.
-    if test_method == TEST_METHOD_NON_OVERLAPPING and len(paired_dates) < MIN_NON_OVERLAPPING_OBSERVATIONS:
+    if test_method == TEST_METHOD_NON_OVERLAPPING and len(paired_dates) < min_non_overlapping_observations:
         test_method = TEST_METHOD_HAC_FALLBACK
 
     t_stat, p_val = newey_west_t_test(paired_l1_rets, paired_champ_rets)
@@ -832,11 +835,17 @@ def run_phase_a(
         else 0.0
     )
 
-    valid_champ_ics = [ic for ic in paired_champ_ics if math.isfinite(ic)]
-    valid_l1_ics = [ic for ic in paired_l1_ics if math.isfinite(ic)]
+    # delta_ic_test must be PAIRED: compute only on dates where BOTH
+    # arms have finite IC (Codex round 5, finding 4).
+    paired_ic_dates = [
+        (c_ic, l_ic) for c_ic, l_ic in zip(paired_champ_ics, paired_l1_ics)
+        if math.isfinite(c_ic) and math.isfinite(l_ic)
+    ]
+    n_paired_ic_dates = len(paired_ic_dates)
     delta_ic_test = (
-        float(np.mean(valid_l1_ics)) - float(np.mean(valid_champ_ics))
-        if valid_champ_ics and valid_l1_ics
+        float(np.mean([l for _, l in paired_ic_dates]))
+        - float(np.mean([c for c, _ in paired_ic_dates]))
+        if paired_ic_dates
         else float("nan")
     )
 
@@ -845,7 +854,7 @@ def run_phase_a(
         detail = (
             f"Only {len(paired_dates)} paired non-overlapping "
             f"({block_length_days}d-spaced) observations available (need >= "
-            f"{MIN_NON_OVERLAPPING_OBSERVATIONS} for the primary test, after "
+            f"{min_non_overlapping_observations} for the primary test, after "
             f"excluding {n_excluded_pairing} date(s) for asymmetric coverage "
             f"or an under-sized selection); falling back to HAC on the full "
             f"overlapping daily series is NOT the pre-registered primary "
@@ -920,8 +929,10 @@ def run_phase_a(
         n_test_dates=len(test_dates),
         n_paired_test_dates=len(paired_dates),
         n_test_dates_excluded_asymmetric_or_undersized=n_excluded_pairing,
+        n_paired_ic_dates=n_paired_ic_dates,
         block_length_days=block_length_days,
         minimum_effect_size_delta_ic=minimum_effect_size_delta_ic,
+        min_non_overlapping_observations=min_non_overlapping_observations,
         manifest_fingerprint=manifest_fingerprint,
         ledger_fingerprint=ledger_fingerprint,
         returns_file_digest=returns_file_digest,
@@ -982,7 +993,7 @@ def print_verdict(result: PhaseAResult) -> None:
     print(f"t-statistic:  {result.t_statistic:.4f}")
     print(f"p-value:      {result.p_value:.4f}")
     print(f"Effect size:  {result.effect_size:.4f}")
-    print(f"Delta IC (test): {result.delta_ic_test:.4f} (minimum required: {result.minimum_effect_size_delta_ic})")
+    print(f"Delta IC (test): {result.delta_ic_test:.4f} (minimum required: {result.minimum_effect_size_delta_ic}, on {result.n_paired_ic_dates} paired-IC dates)")
     print()
     print(f"VERDICT: {result.verdict}")
     print(f"  {result.verdict_detail}")
@@ -1105,13 +1116,69 @@ def main(argv: list[str] | None = None) -> int:
     alpha = manifest_alpha if args.alpha is None else args.alpha
 
     ledger = load_and_verify_ledger(Path(args.ledger_file))
+
+    # Item 1 (round 5): bind manifest to ledger — reject if the manifest
+    # was registered against a different ledger.
+    if manifest.admissibility_ledger_fingerprint:
+        if manifest.admissibility_ledger_fingerprint != ledger.ledger_fingerprint:
+            print(
+                f"ERROR: manifest's admissibility_ledger_fingerprint "
+                f"({manifest.admissibility_ledger_fingerprint}) does not "
+                f"match the supplied ledger's fingerprint "
+                f"({ledger.ledger_fingerprint}) -- the manifest was "
+                f"registered against a different ledger",
+                file=sys.stderr,
+            )
+            return 1
+    else:
+        print(
+            "WARNING: manifest has no admissibility_ledger_fingerprint; "
+            "cannot verify it was registered against this ledger",
+            file=sys.stderr,
+        )
+
+    # Validate expert set matches a pre-registered expert_sets entry.
+    supplied_experts = sorted(args.expert)
+    matched_set = False
+    for es in manifest.expert_sets:
+        if sorted(es.get("experts", [])) == supplied_experts:
+            matched_set = True
+            break
+    if not matched_set:
+        print(
+            f"ERROR: supplied experts {supplied_experts} do not match any "
+            f"pre-registered expert_sets entry in the manifest: "
+            f"{[es.get('experts') for es in manifest.expert_sets]}",
+            file=sys.stderr,
+        )
+        return 1
+
     admitted_digests = admitted_score_digests(ledger)
+
+    # Build expected (expert, date) set from ledger — any admitted record
+    # that we can't load is a coverage gap to report (round 5, finding 2).
+    expected_by_expert: dict[str, set[str]] = defaultdict(set)
+    for record in ledger.records:
+        if record.get("admitted") and record.get("expert_name") in args.expert:
+            expected_by_expert[record["expert_name"]].add(
+                record.get("prediction_date", "")
+            )
 
     experts = []
     for name, score_dir in zip(args.expert, args.score_dir):
         print(f"Loading {name} scores from {score_dir}...")
         expert = load_expert_scores(name, Path(score_dir), admitted_digests=admitted_digests)
-        print(f"  {len(expert.dates)} ledger-admitted dates loaded")
+        expected = expected_by_expert.get(name, set())
+        loaded = set(expert.dates)
+        missing = sorted(expected - loaded)
+        if missing:
+            print(
+                f"  WARNING: {len(missing)} ledger-admitted dates could not "
+                f"be loaded for {name} (digest mismatch or missing file): "
+                f"{missing[:5]}{'...' if len(missing) > 5 else ''}",
+                file=sys.stderr,
+            )
+        print(f"  {len(expert.dates)}/{len(expected)} ledger-admitted dates loaded")
         experts.append(expert)
 
     if not manifest.phase_a_requires_complete_expert_coverage:
@@ -1131,6 +1198,18 @@ def main(argv: list[str] | None = None) -> int:
     returns_file_digest, returns_file_locator = verify_returns_file_digest(returns_path, ledger)
     fwd_returns = load_forward_returns(returns_path)
     print(f"  {len(fwd_returns)} dates loaded (digest {returns_file_digest} verified against ledger)")
+
+    # Label-horizon consistency (round 5, finding 3): verify the ledger's
+    # label_horizon_days is consistent with the block_length_days used for
+    # non-overlapping evaluation spacing.
+    if ledger.label_horizon_days and block_length_days < ledger.label_horizon_days:
+        print(
+            f"WARNING: block_length_days={block_length_days} < "
+            f"ledger.label_horizon_days={ledger.label_horizon_days}; "
+            f"non-overlapping blocks may still have overlapping forward "
+            f"returns, weakening the primary statistical test",
+            file=sys.stderr,
+        )
 
     common_dates_for_provenance = set(experts[0].dates)
     for expert in experts[1:]:
@@ -1152,6 +1231,12 @@ def main(argv: list[str] | None = None) -> int:
     minimum_effect_size_delta_ic = float(
         manifest.statistical_test.get("minimum_effect_size_delta_ic", 0.0)
     )
+    min_non_overlapping_observations = int(
+        manifest.statistical_test.get(
+            "min_non_overlapping_observations",
+            MIN_NON_OVERLAPPING_OBSERVATIONS,
+        )
+    )
 
     result = run_phase_a(
         experts=experts,
@@ -1162,6 +1247,7 @@ def main(argv: list[str] | None = None) -> int:
         cost_bps=cost_bps,
         block_length_days=block_length_days,
         minimum_effect_size_delta_ic=minimum_effect_size_delta_ic,
+        min_non_overlapping_observations=min_non_overlapping_observations,
         manifest_fingerprint=manifest.manifest_fingerprint,
         ledger_fingerprint=ledger.ledger_fingerprint,
         returns_file_digest=returns_file_digest,
