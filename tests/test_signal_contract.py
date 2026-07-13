@@ -12,6 +12,7 @@ from renquant_model_common.signal_contract import (
     SUPPORTED_SCHEMA_VERSIONS,
     V1_OPTIONAL_KEYS,
     V1_REQUIRED_KEYS,
+    V1_SUPPORTED_ASSET_CLASSES,
     SignalArtifactContract,
     compute_signal_snapshot_digest,
     load_and_verify_signal_artifact,
@@ -38,6 +39,7 @@ def _make_manifest(**overrides) -> dict:
     """
     content = {
         "schema_version": 1,
+        "asset_class": "crypto",
         "producer_run_id": "run-20260712-001",
         "universe_hash": "univ-abc123",
         "model_content_digest": _VALID_DIGEST,
@@ -56,6 +58,7 @@ def _make_manifest(**overrides) -> dict:
         try:
             content["signal_snapshot_digest"] = compute_signal_snapshot_digest(
                 schema_version=content["schema_version"],
+                asset_class=content["asset_class"],
                 producer_run_id=content["producer_run_id"],
                 universe_hash=content["universe_hash"],
                 model_content_digest=content["model_content_digest"],
@@ -96,6 +99,7 @@ def _make_contract(**overrides) -> SignalArtifactContract:
         artifact_path="/some/path.json",
         content_digest=_VALID_DIGEST,
         schema_version=1,
+        asset_class="crypto",
         producer_run_id="run-001",
         universe_hash="u1",
         model_content_digest=_VALID_DIGEST,
@@ -564,6 +568,7 @@ class TestMissingRequiredFields:
         "field",
         [
             "schema_version",
+            "asset_class",
             "producer_run_id",
             "universe_hash",
             "model_content_digest",
@@ -942,9 +947,19 @@ class TestUnknownEnvelopeKeys:
         with pytest.raises(ValueError, match="unknown envelope keys"):
             load_and_verify_signal_artifact(str(p))
 
+    def test_future_field_rejected(self, tmp_path):
+        """A forward-looking field not in the v1 schema must be rejected,
+        ensuring the v1 envelope is schema-closed."""
+        manifest = _make_manifest()
+        manifest["future_field"] = "value"
+        p = _write_artifact(tmp_path, manifest)
+        with pytest.raises(ValueError, match="unknown envelope keys"):
+            load_and_verify_signal_artifact(str(p))
+
     def test_all_required_keys_defined(self):
-        """V1_REQUIRED_KEYS includes session_calendar."""
+        """V1_REQUIRED_KEYS includes session_calendar and asset_class."""
         assert "session_calendar" in V1_REQUIRED_KEYS
+        assert "asset_class" in V1_REQUIRED_KEYS
 
     def test_optional_keys_is_frozen(self):
         assert isinstance(V1_OPTIONAL_KEYS, frozenset)
@@ -982,3 +997,64 @@ class TestSessionCalendar:
     def test_non_utc_direct_construction_rejected(self):
         with pytest.raises(ValueError, match="session_calendar"):
             _make_contract(session_calendar="America/New_York")
+
+
+# ====================================================================
+# Asset class
+# ====================================================================
+
+
+class TestAssetClass:
+    """asset_class field validation."""
+
+    def test_asset_class_present_in_contract(self, tmp_path):
+        p = _write_artifact(tmp_path)
+        contract, _ = load_and_verify_signal_artifact(str(p))
+        assert contract.asset_class == "crypto"
+
+    def test_crypto_is_supported_v1(self):
+        assert "crypto" in V1_SUPPORTED_ASSET_CLASSES
+
+    def test_unknown_asset_class_rejected_via_loader(self, tmp_path):
+        manifest = _make_manifest(asset_class="equity")
+        p = _write_artifact(tmp_path, manifest)
+        with pytest.raises(ValueError, match="asset_class"):
+            load_and_verify_signal_artifact(str(p))
+
+    def test_unknown_asset_class_rejected_at_direct_construction(self):
+        with pytest.raises(ValueError, match="asset_class"):
+            _make_contract(asset_class="equity")
+
+    def test_empty_asset_class_rejected(self, tmp_path):
+        manifest = _make_manifest(asset_class="")
+        p = _write_artifact(tmp_path, manifest)
+        with pytest.raises(ValueError, match="asset_class"):
+            load_and_verify_signal_artifact(str(p))
+
+    def test_empty_asset_class_rejected_at_direct_construction(self):
+        with pytest.raises(ValueError, match="asset_class"):
+            _make_contract(asset_class="")
+
+    def test_asset_class_in_required_keys(self):
+        assert "asset_class" in V1_REQUIRED_KEYS
+
+    def test_asset_class_in_digest_preimage(self):
+        """Changing only asset_class must produce a different digest."""
+        common = dict(
+            schema_version=1,
+            producer_run_id="run-001",
+            universe_hash="u1",
+            model_content_digest=_VALID_DIGEST,
+            calibrator_content_digest=_VALID_DIGEST,
+            data_watermark=_NOW,
+            decision_timestamp=_NOW,
+            session_date=_NOW.astimezone(timezone.utc).date(),
+            session_calendar="UTC",
+            signals={"BTC/USD": 0.5},
+        )
+        d1 = compute_signal_snapshot_digest(asset_class="crypto", **common)
+        # Use a hypothetical second class to prove the digest changes --
+        # compute_signal_snapshot_digest itself doesn't validate the value,
+        # only load/contract construction do.
+        d2 = compute_signal_snapshot_digest(asset_class="equity", **common)
+        assert d1 != d2

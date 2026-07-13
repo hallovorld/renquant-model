@@ -32,13 +32,16 @@ own expected identity independently and compare it against the loaded
 contract, rather than treating the envelope's self-reported provenance as
 authoritative on its own.
 
-Session calendar convention (v1):
+Asset class and session calendar convention (v1):
+
+``asset_class`` identifies the market segment the signals target.  v1
+supports only ``"crypto"``; future versions may add ``"equity"`` etc.
 
 ``session_calendar`` identifies which calendar defines a "session day."
-Crypto (v1) uses ``"UTC"`` — the session day equals
-``decision_timestamp.astimezone(UTC).date()``.  Equity markets would use
-e.g. ``"America/New_York"`` (session day = the exchange's trading day),
-but non-UTC calendars are not implemented in v1.
+Crypto (``asset_class="crypto"``, v1) uses ``"UTC"`` — the session day
+equals ``decision_timestamp.astimezone(UTC).date()``.  Equity markets
+would use e.g. ``"America/New_York"`` (session day = the exchange's
+trading day), but non-UTC calendars are not implemented in v1.
 
 Typical usage::
 
@@ -65,12 +68,14 @@ __all__ = [
     "SUPPORTED_SCHEMA_VERSIONS",
     "V1_OPTIONAL_KEYS",
     "V1_REQUIRED_KEYS",
+    "V1_SUPPORTED_ASSET_CLASSES",
     "SignalArtifactContract",
     "compute_signal_snapshot_digest",
     "load_and_verify_signal_artifact",
 ]
 
 SUPPORTED_SCHEMA_VERSIONS: frozenset[int] = frozenset({1})
+V1_SUPPORTED_ASSET_CLASSES: frozenset[str] = frozenset({"crypto"})
 
 _HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
 _MAX_ARTIFACT_BYTES = 50 * 1024 * 1024  # 50 MB
@@ -78,6 +83,7 @@ _MAX_ARTIFACT_BYTES = 50 * 1024 * 1024  # 50 MB
 V1_REQUIRED_KEYS: frozenset[str] = frozenset(
     {
         "schema_version",
+        "asset_class",
         "producer_run_id",
         "universe_hash",
         "model_content_digest",
@@ -168,6 +174,7 @@ def _validate_v1_signals(signals: dict) -> None:
 def compute_signal_snapshot_digest(
     *,
     schema_version: int,
+    asset_class: str,
     producer_run_id: str,
     universe_hash: str,
     model_content_digest: str,
@@ -188,6 +195,7 @@ def compute_signal_snapshot_digest(
     """
     canonical = json.dumps(
         {
+            "asset_class": asset_class,
             "schema_version": schema_version,
             "producer_run_id": producer_run_id,
             "universe_hash": universe_hash,
@@ -217,6 +225,7 @@ class SignalArtifactContract:
     artifact_path: str
     content_digest: str  # SHA-256 of the entire file bytes
     schema_version: int
+    asset_class: str  # "crypto" for v1; future versions may add "equity" etc.
     producer_run_id: str
     universe_hash: str
     model_content_digest: str
@@ -254,6 +263,19 @@ class SignalArtifactContract:
             raise ValueError(
                 f"schema_version must be one of {sorted(SUPPORTED_SCHEMA_VERSIONS)}, "
                 f"got {self.schema_version!r}"
+            )
+
+        # asset_class -- must be a non-empty string and, for v1, one of the
+        # supported asset classes.
+        if not isinstance(self.asset_class, str) or not self.asset_class:
+            raise ValueError("asset_class must be a non-empty string")
+        if (
+            self.schema_version == 1
+            and self.asset_class not in V1_SUPPORTED_ASSET_CLASSES
+        ):
+            raise ValueError(
+                f"asset_class must be one of {sorted(V1_SUPPORTED_ASSET_CLASSES)} "
+                f"for schema_version 1, got {self.asset_class!r}"
             )
 
         # Digest format: 64-char lowercase hex
@@ -457,6 +479,15 @@ def load_and_verify_signal_artifact(
             f"supported: {sorted(SUPPORTED_SCHEMA_VERSIONS)}"
         )
 
+    asset_class = manifest["asset_class"]
+    if not isinstance(asset_class, str) or not asset_class:
+        raise ValueError("asset_class must be a non-empty string")
+    if schema_version == 1 and asset_class not in V1_SUPPORTED_ASSET_CLASSES:
+        raise ValueError(
+            f"asset_class must be one of {sorted(V1_SUPPORTED_ASSET_CLASSES)} "
+            f"for schema_version 1, got {asset_class!r}"
+        )
+
     producer_run_id = manifest["producer_run_id"]
     if not isinstance(producer_run_id, str) or not producer_run_id:
         raise ValueError("producer_run_id must be a non-empty string")
@@ -529,6 +560,7 @@ def load_and_verify_signal_artifact(
     # through with a stale-but-valid-format digest undetected.
     expected_snapshot_digest = compute_signal_snapshot_digest(
         schema_version=schema_version,
+        asset_class=asset_class,
         producer_run_id=producer_run_id,
         universe_hash=universe_hash,
         model_content_digest=manifest["model_content_digest"],
@@ -551,6 +583,7 @@ def load_and_verify_signal_artifact(
         artifact_path=artifact_path,
         content_digest=content_digest,
         schema_version=schema_version,
+        asset_class=asset_class,
         producer_run_id=producer_run_id,
         universe_hash=universe_hash,
         model_content_digest=manifest["model_content_digest"],
