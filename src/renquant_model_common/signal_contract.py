@@ -139,8 +139,49 @@ def _parse_tz_aware_datetime(value: str, field_name: str) -> datetime:
     return dt
 
 
-def _validate_v1_signals(signals: dict) -> None:
-    """Validate v1 signal payload schema.
+def _validate_crypto_pair_key(key: str) -> str:
+    """Validate and canonicalize a crypto trading pair key.
+
+    Must be ``BASE/QUOTE`` format: exactly one ``/``, both parts non-empty,
+    uppercase alpha-only (A-Z).  Returns the canonical (uppercased) form.
+
+    Raises ``ValueError`` for invalid pairs (whitespace, missing slash,
+    numeric components, empty base/quote, multiple slashes).
+    """
+    if not isinstance(key, str):
+        raise ValueError(
+            f"crypto pair key must be a string, got {type(key).__name__}"
+        )
+    if any(c.isspace() for c in key):
+        raise ValueError(
+            f"crypto pair key must not contain whitespace, got {key!r}"
+        )
+    parts = key.split("/")
+    if len(parts) != 2:
+        raise ValueError(
+            f"crypto pair key must be BASE/QUOTE with exactly one '/', "
+            f"got {key!r}"
+        )
+    base, quote = parts
+    if not base:
+        raise ValueError(f"crypto pair key has empty base: {key!r}")
+    if not quote:
+        raise ValueError(f"crypto pair key has empty quote: {key!r}")
+    canonical_base = base.upper()
+    canonical_quote = quote.upper()
+    if not canonical_base.isalpha():
+        raise ValueError(
+            f"crypto pair base must be alpha-only (A-Z), got {key!r}"
+        )
+    if not canonical_quote.isalpha():
+        raise ValueError(
+            f"crypto pair quote must be alpha-only (A-Z), got {key!r}"
+        )
+    return f"{canonical_base}/{canonical_quote}"
+
+
+def _validate_v1_signals(signals: dict, *, asset_class: str) -> dict:
+    """Validate v1 signal payload schema and return normalized signals.
 
     Enforces:
     - ``signals`` must be a non-empty dict.
@@ -150,11 +191,19 @@ def _validate_v1_signals(signals: dict) -> None:
       so ``bool`` is explicitly excluded).
     - Rejects: nested dicts/lists, strings, ``None``, bools, empty keys,
       whitespace-only keys.
+    - When ``asset_class == "crypto"``, each key is additionally validated
+      as a canonical ``BASE/QUOTE`` pair (alpha-only, uppercased) via
+      ``_validate_crypto_pair_key``.  Keys are normalized to uppercase
+      canonical form.
+
+    Returns the (possibly key-normalized) signals dict for use in
+    downstream digest computation.
     """
     if not isinstance(signals, dict) or not signals:
         raise ValueError(
             f"signals must be a non-empty JSON object, got {type(signals).__name__}"
         )
+    normalized: dict = {}
     for ticker, value in signals.items():
         if not isinstance(ticker, str) or not ticker or not ticker.strip():
             raise ValueError(
@@ -169,6 +218,17 @@ def _validate_v1_signals(signals: dict) -> None:
             raise ValueError(
                 f"signals[{ticker!r}] must be a finite real number, got {value!r}"
             )
+        if asset_class == "crypto":
+            canonical_key = _validate_crypto_pair_key(ticker)
+        else:
+            canonical_key = ticker
+        if canonical_key in normalized:
+            raise ValueError(
+                f"duplicate signal key after normalization: {canonical_key!r} "
+                f"(from {ticker!r})"
+            )
+        normalized[canonical_key] = value
+    return normalized
 
 
 def compute_signal_snapshot_digest(
@@ -551,7 +611,7 @@ def load_and_verify_signal_artifact(
             )
 
     signals = manifest["signals"]
-    _validate_v1_signals(signals)
+    signals = _validate_v1_signals(signals, asset_class=asset_class)
 
     # Self-consistency: the declared signal_snapshot_digest must actually be
     # the digest of the manifest's own other fields, not merely a

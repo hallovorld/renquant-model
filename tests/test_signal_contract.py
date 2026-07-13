@@ -14,6 +14,7 @@ from renquant_model_common.signal_contract import (
     V1_REQUIRED_KEYS,
     V1_SUPPORTED_ASSET_CLASSES,
     SignalArtifactContract,
+    _validate_crypto_pair_key,
     compute_signal_snapshot_digest,
     load_and_verify_signal_artifact,
 )
@@ -48,7 +49,7 @@ def _make_manifest(**overrides) -> dict:
         "decision_timestamp": "2026-07-12T01:00:00+00:00",
         "session_date": "2026-07-12",
         "session_calendar": "UTC",
-        "signals": {"AAPL": 0.42, "MSFT": -0.13},
+        "signals": {"BTC/USD": 0.42, "ETH/USD": -0.13},
     }
     explicit_digest = overrides.pop("signal_snapshot_digest", None)
     content.update(overrides)
@@ -56,6 +57,18 @@ def _make_manifest(**overrides) -> dict:
         content["signal_snapshot_digest"] = explicit_digest
     else:
         try:
+            # Normalize crypto pair keys to match what the loader does
+            # before digest computation, so the test manifest is
+            # self-consistent under the loader's digest-recompute check.
+            digest_signals = content["signals"]
+            if (
+                content.get("asset_class") == "crypto"
+                and isinstance(digest_signals, dict)
+            ):
+                digest_signals = {
+                    _validate_crypto_pair_key(k): v
+                    for k, v in digest_signals.items()
+                }
             content["signal_snapshot_digest"] = compute_signal_snapshot_digest(
                 schema_version=content["schema_version"],
                 asset_class=content["asset_class"],
@@ -67,7 +80,7 @@ def _make_manifest(**overrides) -> dict:
                 decision_timestamp=datetime.fromisoformat(content["decision_timestamp"]),
                 session_date=date.fromisoformat(content["session_date"]),
                 session_calendar=content["session_calendar"],
-                signals=content["signals"],
+                signals=digest_signals,
             )
         except (TypeError, ValueError):
             # A negative-path test intentionally corrupted a content field
@@ -435,7 +448,7 @@ class TestMismatchedSnapshotMetadata:
     def test_tampered_signals_with_stale_digest_is_rejected(self, tmp_path):
         manifest = _make_manifest()
         stale_digest = manifest["signal_snapshot_digest"]
-        manifest["signals"] = {"AAPL": 999.0}
+        manifest["signals"] = {"BTC/USD": 999.0}
         manifest["signal_snapshot_digest"] = stale_digest
         p = _write_artifact(tmp_path, manifest)
 
@@ -783,7 +796,7 @@ class TestNonFiniteJsonValues:
     def test_finite_signals_pass(self, tmp_path):
         """Normal finite signal values are accepted."""
         manifest = _make_manifest(
-            signals={"AAPL": 0.42, "MSFT": -0.13, "GOOG": 0.0}
+            signals={"BTC/USD": 0.42, "ETH/USD": -0.13, "DOGE/USD": 0.0}
         )
         p = _write_artifact(tmp_path, manifest)
         contract, _ = load_and_verify_signal_artifact(str(p))
@@ -852,19 +865,19 @@ class TestSignalValueTypeValidation:
     float subclass) and doesn't trigger it either."""
 
     def test_rejects_string_signal_value(self, tmp_path):
-        manifest = _make_manifest(signals={"AAPL": "not-a-number"})
+        manifest = _make_manifest(signals={"BTC/USD": "not-a-number"})
         p = _write_artifact(tmp_path, manifest)
         with pytest.raises(ValueError, match="signals"):
             load_and_verify_signal_artifact(str(p))
 
     def test_rejects_none_signal_value(self, tmp_path):
-        manifest = _make_manifest(signals={"AAPL": None})
+        manifest = _make_manifest(signals={"BTC/USD": None})
         p = _write_artifact(tmp_path, manifest)
         with pytest.raises(ValueError, match="signals"):
             load_and_verify_signal_artifact(str(p))
 
     def test_rejects_bool_signal_value(self, tmp_path):
-        manifest = _make_manifest(signals={"AAPL": True})
+        manifest = _make_manifest(signals={"BTC/USD": True})
         p = _write_artifact(tmp_path, manifest)
         with pytest.raises(ValueError, match="signals"):
             load_and_verify_signal_artifact(str(p))
@@ -879,7 +892,7 @@ class TestSignalValueTypeValidation:
         """An integer score (e.g. a discretized signal) is a valid finite
         real number -- only non-numeric/non-finite/bool values are rejected.
         """
-        manifest = _make_manifest(signals={"AAPL": 1})
+        manifest = _make_manifest(signals={"BTC/USD": 1})
         p = _write_artifact(tmp_path, manifest)
         contract, _ = load_and_verify_signal_artifact(str(p))
         assert contract.schema_version == 1
@@ -1058,3 +1071,125 @@ class TestAssetClass:
         # only load/contract construction do.
         d2 = compute_signal_snapshot_digest(asset_class="equity", **common)
         assert d1 != d2
+
+
+# ====================================================================
+# Crypto pair key validation
+# ====================================================================
+
+
+class TestCryptoPairKeyValidation:
+    """When asset_class is "crypto", signal keys must be canonical
+    BASE/QUOTE pairs (alpha-only, uppercase, exactly one slash)."""
+
+    # -- rejection cases --
+
+    def test_rejects_no_slash_equity_ticker(self, tmp_path):
+        """A plain equity ticker like 'AAPL' has no slash -- rejected."""
+        manifest = _make_manifest(signals={"AAPL": 0.5})
+        p = _write_artifact(tmp_path, manifest)
+        with pytest.raises(ValueError, match="crypto pair key"):
+            load_and_verify_signal_artifact(str(p))
+
+    def test_rejects_concatenated_pair_no_slash(self, tmp_path):
+        """'BTCUSD' without a slash is not a valid pair."""
+        manifest = _make_manifest(signals={"BTCUSD": 0.5})
+        p = _write_artifact(tmp_path, manifest)
+        with pytest.raises(ValueError, match="crypto pair key"):
+            load_and_verify_signal_artifact(str(p))
+
+    def test_rejects_whitespace_in_quote(self, tmp_path):
+        """'BTC/ USD' has whitespace inside the pair -- rejected."""
+        manifest = _make_manifest(signals={"BTC/ USD": 0.5})
+        p = _write_artifact(tmp_path, manifest)
+        with pytest.raises(ValueError, match="whitespace"):
+            load_and_verify_signal_artifact(str(p))
+
+    def test_rejects_leading_whitespace(self, tmp_path):
+        """' BTC/USD' has leading whitespace -- rejected."""
+        manifest = _make_manifest(signals={" BTC/USD": 0.5})
+        p = _write_artifact(tmp_path, manifest)
+        with pytest.raises(ValueError, match="whitespace"):
+            load_and_verify_signal_artifact(str(p))
+
+    def test_rejects_multiple_slashes(self, tmp_path):
+        """'BTC/USD/ETH' has multiple slashes -- rejected."""
+        manifest = _make_manifest(signals={"BTC/USD/ETH": 0.5})
+        p = _write_artifact(tmp_path, manifest)
+        with pytest.raises(ValueError, match="crypto pair key"):
+            load_and_verify_signal_artifact(str(p))
+
+    def test_rejects_numeric_base(self, tmp_path):
+        """'123/USD' has a numeric base component -- rejected."""
+        manifest = _make_manifest(signals={"123/USD": 0.5})
+        p = _write_artifact(tmp_path, manifest)
+        with pytest.raises(ValueError, match="alpha-only"):
+            load_and_verify_signal_artifact(str(p))
+
+    def test_rejects_empty_base(self, tmp_path):
+        """'/USD' has an empty base -- rejected."""
+        manifest = _make_manifest(signals={"/USD": 0.5})
+        p = _write_artifact(tmp_path, manifest)
+        with pytest.raises(ValueError, match="empty base"):
+            load_and_verify_signal_artifact(str(p))
+
+    def test_rejects_empty_quote(self, tmp_path):
+        """'BTC/' has an empty quote -- rejected."""
+        manifest = _make_manifest(signals={"BTC/": 0.5})
+        p = _write_artifact(tmp_path, manifest)
+        with pytest.raises(ValueError, match="empty quote"):
+            load_and_verify_signal_artifact(str(p))
+
+    # -- valid cases --
+
+    def test_accepts_btc_usd(self, tmp_path):
+        manifest = _make_manifest(signals={"BTC/USD": 0.5})
+        p = _write_artifact(tmp_path, manifest)
+        contract, _ = load_and_verify_signal_artifact(str(p))
+        assert contract.schema_version == 1
+
+    def test_accepts_eth_usd(self, tmp_path):
+        manifest = _make_manifest(signals={"ETH/USD": -0.3})
+        p = _write_artifact(tmp_path, manifest)
+        contract, _ = load_and_verify_signal_artifact(str(p))
+        assert contract.schema_version == 1
+
+    def test_accepts_doge_usd(self, tmp_path):
+        manifest = _make_manifest(signals={"DOGE/USD": 0.1})
+        p = _write_artifact(tmp_path, manifest)
+        contract, _ = load_and_verify_signal_artifact(str(p))
+        assert contract.schema_version == 1
+
+    # -- normalization --
+
+    def test_lowercase_pair_normalized_to_uppercase(self, tmp_path):
+        """'btc/usd' is normalized to 'BTC/USD' for digest computation."""
+        # Build two manifests: one with lowercase, one with uppercase.
+        # They should produce the same signal_snapshot_digest because the
+        # loader normalizes before computing the digest.
+        m_upper = _make_manifest(signals={"BTC/USD": 0.5})
+        p = _write_artifact(tmp_path, m_upper)
+        c_upper, _ = load_and_verify_signal_artifact(str(p))
+
+        m_lower = _make_manifest(signals={"btc/usd": 0.5})
+        p.write_text(json.dumps(m_lower), encoding="utf-8")
+        c_lower, _ = load_and_verify_signal_artifact(str(p))
+
+        assert c_upper.signal_snapshot_digest == c_lower.signal_snapshot_digest
+
+    def test_mixed_case_normalized(self, tmp_path):
+        """'Btc/Usd' is normalized to 'BTC/USD'."""
+        manifest = _make_manifest(signals={"Btc/Usd": 0.5})
+        p = _write_artifact(tmp_path, manifest)
+        contract, _ = load_and_verify_signal_artifact(str(p))
+        assert contract.schema_version == 1
+
+    # -- duplicate after normalization --
+
+    def test_rejects_duplicate_keys_after_normalization(self, tmp_path):
+        """'btc/usd' and 'BTC/USD' in the same manifest collide after
+        normalization -- rejected."""
+        manifest = _make_manifest(signals={"btc/usd": 0.1, "BTC/USD": 0.2})
+        p = _write_artifact(tmp_path, manifest)
+        with pytest.raises(ValueError, match="duplicate signal key"):
+            load_and_verify_signal_artifact(str(p))
