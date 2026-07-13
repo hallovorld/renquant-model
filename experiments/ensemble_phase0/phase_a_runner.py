@@ -150,6 +150,10 @@ class PhaseAResult:
     test_method: str = ""
     n_test_dates: int = 0
     block_length_days: int = 0
+    embargo_sessions: int = 0
+    block_spacing_unit: str = "session_index"
+    estimand_policy: str = "block_rebalance_paired"
+    champion_production_policy: str = "daily"
     manifest_fingerprint: str = ""
     ledger_fingerprint: str = ""
     returns_file_digest: str = ""
@@ -549,27 +553,35 @@ def compute_turnover(
     return changed / (2 * n) if n > 0 else 0.0
 
 
-def select_non_overlapping_dates(dates: list[str], block_length_days: int) -> list[str]:
-    """Greedily select a subsequence of ``dates`` spaced >= block_length_days
-    calendar days apart.
+def select_non_overlapping_dates(
+    dates: list[str], min_spacing: int, *, embargo: int = 0,
+) -> list[str]:
+    """Greedily select a subsequence of ``dates`` spaced >= ``min_spacing +
+    embargo`` positions apart in the input list.
 
-    Per the pre-registered manifest's primary statistical-test design
-    (model PR #48 §4.2/§4.4): consecutive daily observations of a
-    ``label_horizon_days``-forward return share most of their observation
-    window with their neighbors, inducing much stronger serial dependence
-    than an ordinary HAC correction with ``max_lag ~ sqrt(n)`` accounts
-    for. Subsampling to block-spaced, non-overlapping observations removes
-    the induced overlap at the source rather than trying to model it away.
+    Spacing is measured in **input-list index positions**, not calendar
+    days. When the input is a list of trading-session dates (the equity
+    convention), index distance IS session distance, so
+    ``min_spacing=60`` correctly means "60 sessions" regardless of
+    weekends/holidays that inflate calendar-day distance. Codex review
+    round 10 (2026-07-13T23:35:43Z): the prior implementation compared
+    ISO calendar-day differences, which for equities meant 60 calendar
+    days ≈ 42 sessions — less than the 60-session label horizon, so
+    "non-overlapping" blocks still had overlapping forward-return windows.
+
+    ``embargo`` adds extra positions beyond ``min_spacing`` to skip,
+    ensuring a buffer between the end of one block's label horizon and the
+    start of the next evaluation point (§4.1 embargo requirement).
     """
     if not dates:
         return []
+    total_gap = min_spacing + embargo
     selected = [dates[0]]
-    last = date.fromisoformat(dates[0])
-    for d in dates[1:]:
-        cur = date.fromisoformat(d)
-        if (cur - last).days >= block_length_days:
+    last_idx = 0
+    for i, d in enumerate(dates[1:], start=1):
+        if i - last_idx >= total_gap:
             selected.append(d)
-            last = cur
+            last_idx = i
     return selected
 
 
@@ -778,6 +790,8 @@ def run_phase_a(
     alpha: float = 0.05,
     cost_bps: float = 0.0,
     block_length_days: int = 60,
+    embargo_sessions: int = 0,
+    champion_production_policy: str = "daily",
     minimum_effect_size_delta_ic: float = 0.0,
     min_non_overlapping_observations: int = MIN_NON_OVERLAPPING_OBSERVATIONS,
     nested_wf_harness_status: str = NESTED_WF_HARNESS_NOT_BUILT,
@@ -867,7 +881,9 @@ def run_phase_a(
     # all reported metrics (delta_ic, delta_return, delta_sharpe, and the
     # primary test's delta_net_return_test) come from the same
     # block-rebalance evaluation, so the estimand is unambiguous.
-    non_overlap_dates = select_non_overlapping_dates(dates, block_length_days)
+    non_overlap_dates = select_non_overlapping_dates(
+        dates, block_length_days, embargo=embargo_sessions,
+    )
     if len(non_overlap_dates) >= min_non_overlapping_observations:
         eval_dates = non_overlap_dates
         test_method = TEST_METHOD_NON_OVERLAPPING
@@ -1045,6 +1061,17 @@ def run_phase_a(
             f"{underlying_verdict} -- {underlying_detail}"
         )
 
+    if champion_production_policy != "block_rebalance":
+        detail += (
+            f" NOTE: this result compares L1 and champion under a "
+            f"block-rebalance evaluation policy; the production champion "
+            f"uses {champion_production_policy!r} rebalancing. The result "
+            f"applies to the block-rebalance estimand and must not be "
+            f"directly interpreted as improvement over the production "
+            f"{champion_production_policy}-rebalance champion without a "
+            f"separate {champion_production_policy}-policy validation."
+        )
+
     expert_score_digests = expert_score_digests or {}
 
     run_id = hashlib.sha256(
@@ -1080,6 +1107,10 @@ def run_phase_a(
         n_test_dates_excluded_asymmetric_or_undersized=n_excluded_pairing,
         n_paired_ic_dates=n_paired_ic_dates,
         block_length_days=block_length_days,
+        embargo_sessions=embargo_sessions,
+        block_spacing_unit="session_index",
+        estimand_policy="block_rebalance_paired",
+        champion_production_policy=champion_production_policy,
         minimum_effect_size_delta_ic=minimum_effect_size_delta_ic,
         min_non_overlapping_observations=min_non_overlapping_observations,
         nested_wf_harness_status=nested_wf_harness_status,
@@ -1397,6 +1428,10 @@ def main(argv: list[str] | None = None) -> int:
             MIN_NON_OVERLAPPING_OBSERVATIONS,
         )
     )
+    embargo_sessions = int(
+        manifest.statistical_test.get("embargo_sessions", 0)
+    )
+    champion_production_policy = manifest.champion_production_policy or "daily"
 
     if manifest.rebalance_cadence != "block_rebalance":
         print(
@@ -1431,13 +1466,16 @@ def main(argv: list[str] | None = None) -> int:
     # horizon to ensure non-overlapping blocks produce truly non-overlapping
     # forward returns (round 6, item 1: a block shorter than the label
     # horizon is an invalid primary test, not a "weaker" one).
-    if ledger.label_horizon_days and block_length_days < ledger.label_horizon_days:
+    total_block_spacing = block_length_days + embargo_sessions
+    if ledger.label_horizon_days and total_block_spacing < ledger.label_horizon_days:
         print(
-            f"ERROR: block_length_days={block_length_days} < "
+            f"ERROR: block_length_days + embargo_sessions = "
+            f"{block_length_days} + {embargo_sessions} = {total_block_spacing} < "
             f"ledger.label_horizon_days={ledger.label_horizon_days}; "
             f"non-overlapping blocks would still have overlapping forward "
             f"returns, invalidating the primary statistical test. Increase "
-            f"block_length_days in the manifest to >= label_horizon_days.",
+            f"block_length_days + embargo_sessions in the manifest to >= "
+            f"label_horizon_days.",
             file=sys.stderr,
         )
         return 1
@@ -1463,6 +1501,8 @@ def main(argv: list[str] | None = None) -> int:
         alpha=alpha,
         cost_bps=cost_bps,
         block_length_days=block_length_days,
+        embargo_sessions=embargo_sessions,
+        champion_production_policy=champion_production_policy,
         minimum_effect_size_delta_ic=minimum_effect_size_delta_ic,
         min_non_overlapping_observations=min_non_overlapping_observations,
         nested_wf_harness_status=manifest.nested_wf_harness_status,

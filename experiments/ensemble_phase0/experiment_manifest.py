@@ -80,6 +80,7 @@ class ExperimentManifest:
     # §4.4: portfolio mapping (fixed across levels)
     portfolio_mapping: dict[str, Any] = field(default_factory=dict)
     rebalance_cadence: str = ""
+    champion_production_policy: str = "daily"
     cost_assumptions: dict[str, Any] = field(default_factory=dict)
     risk_constraints: dict[str, Any] = field(default_factory=dict)
 
@@ -177,6 +178,7 @@ def build_default_manifest(
             "fixed_across_levels": True,
         },
         rebalance_cadence="block_rebalance",
+        champion_production_policy="daily",
         cost_assumptions={
             "base_cost_bps": 5,
             "adverse_cost_2x_bps": 10,
@@ -196,6 +198,8 @@ def build_default_manifest(
             "minimum_effect_size_delta_ic": 0.005,
             "min_non_overlapping_observations": 8,
             "one_sided": True,
+            "embargo_sessions": 0,
+            "block_spacing_unit": "session_index",
         },
         correction_procedure="hierarchical_sequential_gatekeeping",
         hypothesis_family=[

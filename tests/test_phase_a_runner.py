@@ -307,18 +307,64 @@ class TestTurnover:
 
 class TestSelectNonOverlappingDates:
     def test_all_dates_far_enough_apart_are_kept(self):
-        dates = ["2025-01-01", "2025-03-15", "2025-06-01"]
-        assert select_non_overlapping_dates(dates, 60) == dates
+        dates = [f"2025-01-{i:02d}" for i in range(1, 4)]  # 3 dates
+        # spacing=1 means at least 1 index apart — every date qualifies
+        assert select_non_overlapping_dates(dates, 1) == dates
 
     def test_close_dates_are_dropped(self):
-        dates = ["2025-01-01", "2025-01-15", "2025-03-05", "2025-03-10"]
-        assert select_non_overlapping_dates(dates, 60) == ["2025-01-01", "2025-03-05"]
+        dates = [f"2025-01-{i:02d}" for i in range(1, 11)]  # 10 dates
+        # spacing=3 selects indices 0, 3, 6, 9
+        result = select_non_overlapping_dates(dates, 3)
+        assert result == ["2025-01-01", "2025-01-04", "2025-01-07", "2025-01-10"]
 
     def test_empty(self):
         assert select_non_overlapping_dates([], 60) == []
 
     def test_single_date(self):
         assert select_non_overlapping_dates(["2025-01-01"], 60) == ["2025-01-01"]
+
+    def test_index_spacing_not_calendar_day(self):
+        """Codex review round 10: spacing is measured in input-list index
+        positions, not calendar days. A list of 5 trading sessions that
+        spans 7 calendar days (Mon-Fri with a weekend gap) must space by
+        session count, not calendar distance."""
+        # Mon-Fri + skip weekend + Mon-Fri = 10 sessions, 14 calendar days
+        sessions = [
+            "2025-01-06", "2025-01-07", "2025-01-08", "2025-01-09", "2025-01-10",
+            "2025-01-13", "2025-01-14", "2025-01-15", "2025-01-16", "2025-01-17",
+        ]
+        # min_spacing=5: indices 0, 5, ... → sessions[0]="01-06", sessions[5]="01-13"
+        result = select_non_overlapping_dates(sessions, 5)
+        assert result == ["2025-01-06", "2025-01-13"]
+        # Under the OLD calendar-day implementation with 5 calendar days,
+        # "01-06" → "01-11" (Sat, not in list) → "01-13" (7 cal days ≥ 5)
+        # would also select 2, but with spacing=7 it would have selected
+        # only 1 — the old code conflated calendar and session counts.
+
+    def test_embargo_adds_extra_spacing(self):
+        dates = [f"2025-01-{i:02d}" for i in range(1, 21)]  # 20 dates
+        # spacing=3, embargo=2 → total gap = 5
+        result = select_non_overlapping_dates(dates, 3, embargo=2)
+        assert result == ["2025-01-01", "2025-01-06", "2025-01-11", "2025-01-16"]
+
+    def test_weekend_holiday_regression(self):
+        """Regression: a trading session calendar with holidays must still
+        produce correctly-spaced blocks by session index, even though the
+        calendar-day gaps between sessions vary."""
+        # 2 weeks of trading with a holiday on Wed Jan 8
+        sessions = [
+            "2025-01-06", "2025-01-07",  # Mon, Tue
+            # Wed 01-08 is a holiday — skipped
+            "2025-01-09", "2025-01-10",  # Thu, Fri
+            "2025-01-13", "2025-01-14", "2025-01-15", "2025-01-16", "2025-01-17",
+        ]  # 9 sessions total
+        # min_spacing=4: want 4 sessions apart
+        result = select_non_overlapping_dates(sessions, 4)
+        # indices: 0→"01-06", 4→"01-13", 8→"01-17"
+        assert result == ["2025-01-06", "2025-01-13", "2025-01-17"]
+        # Calendar-day diff 01-06→01-13 = 7 days, 01-13→01-17 = 4 days.
+        # Both are >= 4 sessions apart, which is what matters for a
+        # 4-session label horizon.
 
 
 # ── Complete return-coverage requirement ────────────────────────────────────
@@ -1492,3 +1538,84 @@ class TestOneSidedValidation:
         fixture = _build_cli_fixture(tmp_path)
         rc = par.main(_cli_argv(fixture))
         assert rc == 0
+
+
+# ── Round 10 (session-index spacing + estimand versioning) ─────────────────
+
+
+class TestEstimandPolicyVersioning:
+    """Codex review round 10: the result must explicitly version the
+    evaluation estimand and document the production champion's policy,
+    since the block-rebalance evaluation policy may differ from production."""
+
+    def test_estimand_fields_are_persisted(self, tmp_path):
+        experts, rets = _build_n_date_fixture(tmp_path, 10, seed=42)
+        result = run_phase_a(
+            experts, rets, champion_name="xgb", top_n=3,
+            block_length_days=1,
+            champion_production_policy="daily",
+        )
+        assert result.estimand_policy == "block_rebalance_paired"
+        assert result.champion_production_policy == "daily"
+        assert result.block_spacing_unit == "session_index"
+
+    def test_daily_production_policy_appends_caveat(self, tmp_path):
+        """When champion_production_policy != 'block_rebalance', the verdict
+        detail must carry a caveat about the estimand mismatch."""
+        experts, rets = _build_n_date_fixture(tmp_path, 10, seed=42)
+        result = run_phase_a(
+            experts, rets, champion_name="xgb", top_n=3,
+            block_length_days=1,
+            champion_production_policy="daily",
+        )
+        assert "block-rebalance evaluation policy" in result.verdict_detail
+        assert "daily" in result.verdict_detail
+
+    def test_block_rebalance_production_policy_no_caveat(self, tmp_path):
+        """When champion_production_policy == 'block_rebalance', no mismatch
+        caveat is needed."""
+        experts, rets = _build_n_date_fixture(tmp_path, 10, seed=42)
+        result = run_phase_a(
+            experts, rets, champion_name="xgb", top_n=3,
+            block_length_days=1,
+            champion_production_policy="block_rebalance",
+        )
+        assert "block-rebalance evaluation policy" not in result.verdict_detail
+
+    def test_cli_persists_estimand_fields(self, tmp_path):
+        fixture = _build_cli_fixture(tmp_path)
+        rc = par.main(_cli_argv(fixture))
+        assert rc == 0
+        [out] = list(Path(fixture["output_dir"]).glob("phase_a_result_*.json"))
+        data = json.loads(out.read_text())
+        assert data["estimand_policy"] == "block_rebalance_paired"
+        assert data["champion_production_policy"] == "daily"
+        assert data["block_spacing_unit"] == "session_index"
+        assert data["embargo_sessions"] == 0
+
+
+class TestEmbargoSessions:
+    """Codex review round 10: embargo_sessions adds extra spacing."""
+
+    def test_embargo_persisted_on_result(self, tmp_path):
+        experts, rets = _build_n_date_fixture(tmp_path, 10, seed=42)
+        result = run_phase_a(
+            experts, rets, champion_name="xgb", top_n=3,
+            block_length_days=1, embargo_sessions=2,
+        )
+        assert result.embargo_sessions == 2
+
+    def test_embargo_reduces_block_count(self, tmp_path):
+        """More embargo = fewer non-overlapping blocks."""
+        experts, rets = _build_n_date_fixture(tmp_path, 60, seed=42)
+        result_no_embargo = run_phase_a(
+            experts, rets, champion_name="xgb", top_n=3,
+            block_length_days=1, embargo_sessions=0,
+            min_non_overlapping_observations=2,
+        )
+        result_with_embargo = run_phase_a(
+            experts, rets, champion_name="xgb", top_n=3,
+            block_length_days=1, embargo_sessions=5,
+            min_non_overlapping_observations=2,
+        )
+        assert result_with_embargo.n_paired_test_dates < result_no_embargo.n_paired_test_dates
