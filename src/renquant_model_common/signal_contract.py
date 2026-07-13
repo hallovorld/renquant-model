@@ -32,6 +32,14 @@ own expected identity independently and compare it against the loaded
 contract, rather than treating the envelope's self-reported provenance as
 authoritative on its own.
 
+Session calendar convention (v1):
+
+``session_calendar`` identifies which calendar defines a "session day."
+Crypto (v1) uses ``"UTC"`` — the session day equals
+``decision_timestamp.astimezone(UTC).date()``.  Equity markets would use
+e.g. ``"America/New_York"`` (session day = the exchange's trading day),
+but non-UTC calendars are not implemented in v1.
+
 Typical usage::
 
     contract, payload = load_and_verify_signal_artifact(
@@ -55,6 +63,8 @@ from typing import Any, Dict, Sequence, Tuple
 
 __all__ = [
     "SUPPORTED_SCHEMA_VERSIONS",
+    "V1_OPTIONAL_KEYS",
+    "V1_REQUIRED_KEYS",
     "SignalArtifactContract",
     "compute_signal_snapshot_digest",
     "load_and_verify_signal_artifact",
@@ -65,7 +75,7 @@ SUPPORTED_SCHEMA_VERSIONS: frozenset[int] = frozenset({1})
 _HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
 _MAX_ARTIFACT_BYTES = 50 * 1024 * 1024  # 50 MB
 
-_REQUIRED_MANIFEST_KEYS = frozenset(
+V1_REQUIRED_KEYS: frozenset[str] = frozenset(
     {
         "schema_version",
         "producer_run_id",
@@ -75,10 +85,15 @@ _REQUIRED_MANIFEST_KEYS = frozenset(
         "data_watermark",
         "decision_timestamp",
         "session_date",
+        "session_calendar",
         "signal_snapshot_digest",
         "signals",
     }
 )
+
+V1_OPTIONAL_KEYS: frozenset[str] = frozenset()
+
+_V1_ALLOWED_KEYS = V1_REQUIRED_KEYS | V1_OPTIONAL_KEYS
 
 
 def _reject_non_finite(constant: str) -> None:
@@ -118,6 +133,38 @@ def _parse_tz_aware_datetime(value: str, field_name: str) -> datetime:
     return dt
 
 
+def _validate_v1_signals(signals: dict) -> None:
+    """Validate v1 signal payload schema.
+
+    Enforces:
+    - ``signals`` must be a non-empty dict.
+    - Each key must be a non-empty string with no whitespace-only keys.
+    - Each value must be a scalar finite numeric (``int`` or ``float``),
+      **not** ``bool`` (``isinstance(True, int)`` is ``True`` in Python,
+      so ``bool`` is explicitly excluded).
+    - Rejects: nested dicts/lists, strings, ``None``, bools, empty keys,
+      whitespace-only keys.
+    """
+    if not isinstance(signals, dict) or not signals:
+        raise ValueError(
+            f"signals must be a non-empty JSON object, got {type(signals).__name__}"
+        )
+    for ticker, value in signals.items():
+        if not isinstance(ticker, str) or not ticker or not ticker.strip():
+            raise ValueError(
+                f"signals key must be a non-empty, non-whitespace string, "
+                f"got {ticker!r}"
+            )
+        if (
+            not isinstance(value, (int, float))
+            or isinstance(value, bool)
+            or not math.isfinite(value)
+        ):
+            raise ValueError(
+                f"signals[{ticker!r}] must be a finite real number, got {value!r}"
+            )
+
+
 def compute_signal_snapshot_digest(
     *,
     schema_version: int,
@@ -128,6 +175,7 @@ def compute_signal_snapshot_digest(
     data_watermark: datetime,
     decision_timestamp: datetime,
     session_date: date,
+    session_calendar: str,
     signals: Any,
 ) -> str:
     """Compute the canonical digest over every provenance field + the signals payload.
@@ -148,6 +196,7 @@ def compute_signal_snapshot_digest(
             "data_watermark": data_watermark.astimezone(timezone.utc).isoformat(),
             "decision_timestamp": decision_timestamp.astimezone(timezone.utc).isoformat(),
             "session_date": session_date.isoformat(),
+            "session_calendar": session_calendar,
             "signals": signals,
         },
         sort_keys=True,
@@ -175,6 +224,7 @@ class SignalArtifactContract:
     data_watermark: datetime  # timezone-aware
     decision_timestamp: datetime  # timezone-aware
     session_date: date
+    session_calendar: str  # "UTC" for v1 (crypto); equity would use e.g. "America/New_York"
     signal_snapshot_digest: str
     created_utc: datetime  # when the contract was loaded; timezone-aware
 
@@ -245,20 +295,36 @@ class SignalArtifactContract:
                 "-- a decision cannot precede the data it was based on"
             )
 
-        # v1 session-date binding: session_date must equal
+        # session_calendar: identifies which calendar defines a "session day."
+        # Crypto (v1) uses "UTC" -- session_date equals
+        # decision_timestamp.astimezone(UTC).date().  Equity would use
+        # e.g. "America/New_York" (exchange trading day); those calendars
+        # are not implemented in v1.
+        if not isinstance(self.session_calendar, str) or not self.session_calendar:
+            raise ValueError("session_calendar must be a non-empty string")
+        if self.schema_version == 1 and self.session_calendar != "UTC":
+            raise ValueError(
+                f"session_calendar must be 'UTC' for schema_version 1, "
+                f"got {self.session_calendar!r}"
+            )
+
+        # v1 session-date binding (UTC calendar): session_date must equal
         # decision_timestamp's UTC calendar date (matching the crypto
         # RFC's UTC-calendar-day session convention,
         # renquant_orchestrator.crypto_session.SessionWindow), not an
         # independently self-reported field. astimezone(UTC) first --
         # .date() alone would use whatever offset decision_timestamp
         # happens to carry, not necessarily UTC.
-        expected_session_date = self.decision_timestamp.astimezone(timezone.utc).date()
-        if self.session_date != expected_session_date:
-            raise ValueError(
-                f"session_date ({self.session_date.isoformat()}) does not match "
-                f"decision_timestamp's UTC calendar date "
-                f"({expected_session_date.isoformat()})"
-            )
+        if self.session_calendar == "UTC":
+            expected_session_date = self.decision_timestamp.astimezone(
+                timezone.utc
+            ).date()
+            if self.session_date != expected_session_date:
+                raise ValueError(
+                    f"session_date ({self.session_date.isoformat()}) does not match "
+                    f"decision_timestamp's UTC calendar date "
+                    f"({expected_session_date.isoformat()})"
+                )
 
         # Path traversal
         if ".." in Path(self.artifact_path).parts:
@@ -366,10 +432,17 @@ def load_and_verify_signal_artifact(
         )
 
     # ── required keys ──
-    missing = _REQUIRED_MANIFEST_KEYS - manifest.keys()
+    missing = V1_REQUIRED_KEYS - manifest.keys()
     if missing:
         raise ValueError(
             f"Signal artifact missing required fields: {sorted(missing)}"
+        )
+
+    # ── reject unknown envelope keys ──
+    unknown = manifest.keys() - _V1_ALLOWED_KEYS
+    if unknown:
+        raise ValueError(
+            f"Signal artifact contains unknown envelope keys: {sorted(unknown)}"
         )
 
     # ── extract and validate individual fields ──
@@ -414,6 +487,15 @@ def load_and_verify_signal_artifact(
             f"session_date: invalid ISO-8601 date: {raw_session_date!r}"
         ) from exc
 
+    session_calendar = manifest["session_calendar"]
+    if not isinstance(session_calendar, str) or not session_calendar:
+        raise ValueError("session_calendar must be a non-empty string")
+    if schema_version == 1 and session_calendar != "UTC":
+        raise ValueError(
+            f"session_calendar must be 'UTC' for schema_version 1, "
+            f"got {session_calendar!r}"
+        )
+
     # ── causal timing invariant ──
     if data_watermark > decision_timestamp:
         raise ValueError(
@@ -428,38 +510,17 @@ def load_and_verify_signal_artifact(
     # is UTC-calendar-day based, so an artifact timestamped near a
     # non-UTC-midnight boundary (e.g. 23:30 US Eastern) would otherwise be
     # compared against the wrong day.
-    expected_session_date = decision_timestamp.astimezone(timezone.utc).date()
-    if session_date != expected_session_date:
-        raise ValueError(
-            f"Session date mismatch: session_date ({session_date.isoformat()}) "
-            f"does not match decision_timestamp's UTC calendar date "
-            f"({expected_session_date.isoformat()})"
-        )
+    if session_calendar == "UTC":
+        expected_session_date = decision_timestamp.astimezone(timezone.utc).date()
+        if session_date != expected_session_date:
+            raise ValueError(
+                f"Session date mismatch: session_date ({session_date.isoformat()}) "
+                f"does not match decision_timestamp's UTC calendar date "
+                f"({expected_session_date.isoformat()})"
+            )
 
     signals = manifest["signals"]
-    if not isinstance(signals, dict) or not signals:
-        raise ValueError(
-            f"signals must be a non-empty JSON object, got {type(signals).__name__}"
-        )
-
-    # ── signal key/value schema ──
-    # A bare NaN/Infinity finiteness check on `float` values alone misses
-    # every OTHER invalid type -- a string, None, or bool value doesn't
-    # match `isinstance(value, float)` and would otherwise pass through
-    # untouched (bool is checked explicitly since it's an int subclass).
-    for ticker, value in signals.items():
-        if not isinstance(ticker, str) or not ticker:
-            raise ValueError(
-                f"signals key must be a non-empty string, got {ticker!r}"
-            )
-        if (
-            not isinstance(value, (int, float))
-            or isinstance(value, bool)
-            or not math.isfinite(value)
-        ):
-            raise ValueError(
-                f"signals[{ticker!r}] must be a finite real number, got {value!r}"
-            )
+    _validate_v1_signals(signals)
 
     # Self-consistency: the declared signal_snapshot_digest must actually be
     # the digest of the manifest's own other fields, not merely a
@@ -475,6 +536,7 @@ def load_and_verify_signal_artifact(
         data_watermark=data_watermark,
         decision_timestamp=decision_timestamp,
         session_date=session_date,
+        session_calendar=session_calendar,
         signals=signals,
     )
     declared_snapshot_digest = manifest["signal_snapshot_digest"]
@@ -496,6 +558,7 @@ def load_and_verify_signal_artifact(
         data_watermark=data_watermark,
         decision_timestamp=decision_timestamp,
         session_date=session_date,
+        session_calendar=session_calendar,
         signal_snapshot_digest=manifest["signal_snapshot_digest"],
         created_utc=datetime.now(timezone.utc),
     )

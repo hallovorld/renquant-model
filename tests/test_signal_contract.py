@@ -10,6 +10,8 @@ import pytest
 
 from renquant_model_common.signal_contract import (
     SUPPORTED_SCHEMA_VERSIONS,
+    V1_OPTIONAL_KEYS,
+    V1_REQUIRED_KEYS,
     SignalArtifactContract,
     compute_signal_snapshot_digest,
     load_and_verify_signal_artifact,
@@ -43,6 +45,7 @@ def _make_manifest(**overrides) -> dict:
         "data_watermark": "2026-07-12T00:00:00+00:00",
         "decision_timestamp": "2026-07-12T01:00:00+00:00",
         "session_date": "2026-07-12",
+        "session_calendar": "UTC",
         "signals": {"AAPL": 0.42, "MSFT": -0.13},
     }
     explicit_digest = overrides.pop("signal_snapshot_digest", None)
@@ -60,6 +63,7 @@ def _make_manifest(**overrides) -> dict:
                 data_watermark=datetime.fromisoformat(content["data_watermark"]),
                 decision_timestamp=datetime.fromisoformat(content["decision_timestamp"]),
                 session_date=date.fromisoformat(content["session_date"]),
+                session_calendar=content["session_calendar"],
                 signals=content["signals"],
             )
         except (TypeError, ValueError):
@@ -99,6 +103,7 @@ def _make_contract(**overrides) -> SignalArtifactContract:
         data_watermark=_NOW,
         decision_timestamp=_NOW,
         session_date=_NOW.astimezone(timezone.utc).date(),
+        session_calendar="UTC",
         signal_snapshot_digest=_VALID_DIGEST,
         created_utc=_NOW,
     )
@@ -566,6 +571,7 @@ class TestMissingRequiredFields:
             "data_watermark",
             "decision_timestamp",
             "session_date",
+            "session_calendar",
             "signal_snapshot_digest",
             "signals",
         ],
@@ -888,3 +894,91 @@ class TestSchemaVersionRejectedAtDirectConstruction:
     def test_bool_rejected_as_schema_version_at_direct_construction(self):
         with pytest.raises(ValueError, match="schema_version"):
             _make_contract(schema_version=True)
+
+
+# ====================================================================
+# v1 signal key/value negative cases (Codex review items)
+# ====================================================================
+
+
+class TestSignalKeyWhitespaceValidation:
+    """Whitespace-only signal keys must be rejected."""
+
+    def test_rejects_whitespace_only_signal_key(self, tmp_path):
+        manifest = _make_manifest(signals={"  ": 1.0})
+        p = _write_artifact(tmp_path, manifest)
+        with pytest.raises(ValueError, match="signals"):
+            load_and_verify_signal_artifact(str(p))
+
+
+class TestSignalValueTypeNegativeCases:
+    """Additional negative tests for signal value types."""
+
+    def test_rejects_nested_dict_signal_value(self, tmp_path):
+        manifest = _make_manifest(signals={"BTC/USD": {"score": 1}})
+        p = _write_artifact(tmp_path, manifest)
+        with pytest.raises(ValueError, match="signals"):
+            load_and_verify_signal_artifact(str(p))
+
+    def test_rejects_list_signal_value(self, tmp_path):
+        manifest = _make_manifest(signals={"BTC/USD": [1, 2]})
+        p = _write_artifact(tmp_path, manifest)
+        with pytest.raises(ValueError, match="signals"):
+            load_and_verify_signal_artifact(str(p))
+
+
+# ====================================================================
+# Unknown envelope keys
+# ====================================================================
+
+
+class TestUnknownEnvelopeKeys:
+    """Unknown top-level envelope keys must be rejected."""
+
+    def test_unknown_envelope_key_rejected(self, tmp_path):
+        manifest = _make_manifest()
+        manifest["extra_unknown_field"] = "surprise"
+        p = _write_artifact(tmp_path, manifest)
+        with pytest.raises(ValueError, match="unknown envelope keys"):
+            load_and_verify_signal_artifact(str(p))
+
+    def test_all_required_keys_defined(self):
+        """V1_REQUIRED_KEYS includes session_calendar."""
+        assert "session_calendar" in V1_REQUIRED_KEYS
+
+    def test_optional_keys_is_frozen(self):
+        assert isinstance(V1_OPTIONAL_KEYS, frozenset)
+
+
+# ====================================================================
+# Session calendar
+# ====================================================================
+
+
+class TestSessionCalendar:
+    """session_calendar field validation."""
+
+    def test_session_calendar_present_in_contract(self, tmp_path):
+        p = _write_artifact(tmp_path)
+        contract, _ = load_and_verify_signal_artifact(str(p))
+        assert contract.session_calendar == "UTC"
+
+    def test_non_utc_session_calendar_rejected_for_v1(self, tmp_path):
+        manifest = _make_manifest(session_calendar="America/New_York")
+        p = _write_artifact(tmp_path, manifest)
+        with pytest.raises(ValueError, match="session_calendar"):
+            load_and_verify_signal_artifact(str(p))
+
+    def test_empty_session_calendar_rejected(self, tmp_path):
+        manifest = _make_manifest(session_calendar="")
+        p = _write_artifact(tmp_path, manifest)
+        with pytest.raises(ValueError, match="session_calendar"):
+            load_and_verify_signal_artifact(str(p))
+
+    def test_session_calendar_direct_construction(self):
+        c = _make_contract()
+        assert c.session_calendar == "UTC"
+
+    def test_non_utc_direct_construction_rejected(self):
+        with pytest.raises(ValueError, match="session_calendar"):
+            _make_contract(session_calendar="America/New_York")
