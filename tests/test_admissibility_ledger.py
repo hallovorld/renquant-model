@@ -18,6 +18,7 @@ from admissibility_ledger import (
     LABEL_REF_RE,
     US_EQUITY_CLOSE,
     AdmissibilityLedger,
+    CalendarEvidence,
     DecisionSchedule,
     ExpertAdmissibilityRecord,
     ExpertSpec,
@@ -26,12 +27,16 @@ from admissibility_ledger import (
     _decision_ts_from_schedule,
     _parse_timestamp,
     _schedule_digest,
+    build_calendar_evidence,
     build_complementarity_report,
     build_exchange_session_calendar,
     build_ledger,
     extract_metadata_from_score,
     load_score_file,
+    main,
     validate_expert_date,
+    verify_calendar_evidence,
+    write_calendar_evidence,
     write_ledger,
 )
 
@@ -1793,3 +1798,242 @@ class TestPerDateDecisionTimestamp:
         )
         assert ledger.records[0]["admitted"] is False
         assert any("late score" in r for r in ledger.records[0]["rejection_reasons"])
+
+
+class TestCLIEndToEnd:
+    """End-to-end CLI tests exercising main() with auto-built exchange calendar."""
+
+    _SCORES_A = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+    _SCORES_B = [0.4, 0.0, 0.8, 0.1, 0.6, 0.3, 0.9, 0.2, 0.5, 0.7]
+
+    def _write_score_file(self, score_dir: Path, dt: str, expert_b: bool = False) -> None:
+        vals = self._SCORES_B if expert_b else self._SCORES_A
+        scores = {t: vals[i] for i, t in enumerate(UNIVERSE)}
+        data = {
+            "model_content_sha256": VALID_FP,
+            "training_cutoff": "2025-12-31",
+            "as_of_date": f"{dt}T15:30:00+00:00",
+            "score_timestamp": f"{dt}T16:00:00Z",
+            "data_watermark": f"{dt}T15:30:00+00:00",
+            "has_realized_labels": True,
+            "label_artifact_ref": VALID_LABEL_REF,
+            "label_observation_end": "2026-03-16",
+            "scores": scores,
+        }
+        (score_dir / f"{dt}.json").write_text(json.dumps(data))
+
+    def _setup_cli(self, tmp_path: Path, dates: list[str]) -> list[str]:
+        score_dir_a = tmp_path / "scores" / "xgb"
+        score_dir_a.mkdir(parents=True)
+        score_dir_b = tmp_path / "scores" / "patchtst"
+        score_dir_b.mkdir(parents=True)
+        for dt in dates:
+            self._write_score_file(score_dir_a, dt, expert_b=False)
+            self._write_score_file(score_dir_b, dt, expert_b=True)
+
+        universe_file = tmp_path / "universe.csv"
+        universe_file.write_text("\n".join(UNIVERSE) + "\n")
+        output_dir = tmp_path / "output"
+
+        return [
+            "--expert", "xgb", "--score-dir", str(score_dir_a),
+            "--expert", "patchtst", "--score-dir", str(score_dir_b),
+            "--universe-file", str(universe_file),
+            "--output-dir", str(output_dir),
+        ]
+
+    def test_all_admitted_with_real_session_dates(self, tmp_path: Path) -> None:
+        """CLI with real NYSE session dates (Jan 2026 weekdays) exits 0."""
+        dates = ["2026-01-13", "2026-01-14", "2026-01-15"]
+        argv = self._setup_cli(tmp_path, dates)
+        import sys as _sys
+        old_argv = _sys.argv
+        try:
+            _sys.argv = ["admissibility_ledger"] + argv
+            main()
+        finally:
+            _sys.argv = old_argv
+
+        output_path = tmp_path / "output" / "admissibility_ledger.json"
+        assert output_path.exists()
+        ledger_data = json.loads(output_path.read_text())
+        assert ledger_data["summary"]["all_experts_fully_admitted"] is True
+        assert ledger_data["session_calendar"]["digest"].startswith("sha256:")
+
+    def test_holiday_rejected_exits_nonzero(self, tmp_path: Path) -> None:
+        """Score on a non-session date (Saturday) causes exit 1."""
+        dates = ["2026-01-17"]  # Saturday
+        argv = self._setup_cli(tmp_path, dates)
+        import sys as _sys
+        old_argv = _sys.argv
+        try:
+            _sys.argv = ["admissibility_ledger"] + argv
+            with pytest.raises(SystemExit) as exc:
+                main()
+            assert exc.value.code == 1
+        finally:
+            _sys.argv = old_argv
+
+    def test_calendar_digest_in_emitted_ledger(self, tmp_path: Path) -> None:
+        """Emitted ledger JSON contains the exchange calendar digest."""
+        dates = ["2026-01-15"]
+        argv = self._setup_cli(tmp_path, dates)
+        import sys as _sys
+        old_argv = _sys.argv
+        try:
+            _sys.argv = ["admissibility_ledger"] + argv
+            main()
+        finally:
+            _sys.argv = old_argv
+
+        output_path = tmp_path / "output" / "admissibility_ledger.json"
+        ledger_data = json.loads(output_path.read_text())
+        cal = ledger_data["session_calendar"]
+        assert cal["digest"].startswith("sha256:")
+        assert cal["calendar_name"] == "NYSE"
+        assert cal["provider"] == "pandas_market_calendars"
+        assert cal["provider_version"] != ""
+        assert len(cal["query_range"]) == 2
+        assert cal["evidence_locator"] == "calendar_evidence.json"
+        assert cal["evidence_digest"].startswith("sha256:")
+
+    def test_calendar_evidence_artifact_persisted(self, tmp_path: Path) -> None:
+        """Calendar evidence JSON is written next to the ledger."""
+        dates = ["2026-01-15"]
+        argv = self._setup_cli(tmp_path, dates)
+        import sys as _sys
+        old_argv = _sys.argv
+        try:
+            _sys.argv = ["admissibility_ledger"] + argv
+            main()
+        finally:
+            _sys.argv = old_argv
+
+        evidence_path = tmp_path / "output" / "calendar_evidence.json"
+        assert evidence_path.exists()
+        evidence = json.loads(evidence_path.read_text())
+        assert evidence["calendar_name"] == "NYSE"
+        assert evidence["provider"] == "pandas_market_calendars"
+        assert isinstance(evidence["valid_sessions"], list)
+        assert len(evidence["valid_sessions"]) > 0
+        assert "2026-01-15" in evidence["valid_sessions"]
+
+    def test_calendar_evidence_round_trip_verification(self, tmp_path: Path) -> None:
+        """Persisted calendar evidence digest matches ledger and round-trips."""
+        dates = ["2026-01-13", "2026-01-14", "2026-01-15"]
+        argv = self._setup_cli(tmp_path, dates)
+        import sys as _sys
+        old_argv = _sys.argv
+        try:
+            _sys.argv = ["admissibility_ledger"] + argv
+            main()
+        finally:
+            _sys.argv = old_argv
+
+        ledger_path = tmp_path / "output" / "admissibility_ledger.json"
+        evidence_path = tmp_path / "output" / "calendar_evidence.json"
+        ledger_data = json.loads(ledger_path.read_text())
+
+        expected_digest = ledger_data["session_calendar"]["evidence_digest"]
+        assert verify_calendar_evidence(evidence_path, expected_digest)
+
+    def test_changed_early_close_invalidates_evidence(self, tmp_path: Path) -> None:
+        """Mutating an early-close entry invalidates the evidence digest."""
+        dates = ["2026-01-13", "2026-01-14", "2026-01-15"]
+        argv = self._setup_cli(tmp_path, dates)
+        import sys as _sys
+        old_argv = _sys.argv
+        try:
+            _sys.argv = ["admissibility_ledger"] + argv
+            main()
+        finally:
+            _sys.argv = old_argv
+
+        ledger_path = tmp_path / "output" / "admissibility_ledger.json"
+        evidence_path = tmp_path / "output" / "calendar_evidence.json"
+        ledger_data = json.loads(ledger_path.read_text())
+        expected_digest = ledger_data["session_calendar"]["evidence_digest"]
+
+        evidence = json.loads(evidence_path.read_text())
+        evidence["early_close_times"]["2026-01-15"] = "13:00:00"
+        evidence_path.write_text(json.dumps(evidence, sort_keys=True, indent=2))
+
+        assert not verify_calendar_evidence(evidence_path, expected_digest)
+
+    def test_changed_provider_invalidates_evidence(self, tmp_path: Path) -> None:
+        """Mutating provider metadata invalidates the evidence digest."""
+        dates = ["2026-01-15"]
+        argv = self._setup_cli(tmp_path, dates)
+        import sys as _sys
+        old_argv = _sys.argv
+        try:
+            _sys.argv = ["admissibility_ledger"] + argv
+            main()
+        finally:
+            _sys.argv = old_argv
+
+        ledger_path = tmp_path / "output" / "admissibility_ledger.json"
+        evidence_path = tmp_path / "output" / "calendar_evidence.json"
+        ledger_data = json.loads(ledger_path.read_text())
+        expected_digest = ledger_data["session_calendar"]["evidence_digest"]
+
+        evidence = json.loads(evidence_path.read_text())
+        evidence["provider_version"] = "0.0.0-tampered"
+        evidence_path.write_text(json.dumps(evidence, sort_keys=True, indent=2))
+
+        assert not verify_calendar_evidence(evidence_path, expected_digest)
+
+
+class TestCalendarEvidenceUnit:
+    """Unit tests for CalendarEvidence building and digesting."""
+
+    def test_build_calendar_evidence_from_session_calendar(self) -> None:
+        cal = SessionCalendar(
+            valid_dates=frozenset(["2026-01-13", "2026-01-14"]),
+            early_close_times={"2026-01-14": time(13, 0)},
+        )
+        ev = build_calendar_evidence(cal, calendar_name="NYSE", query_range=("2026-01-06", "2026-01-21"))
+        assert ev.calendar_name == "NYSE"
+        assert ev.provider == "pandas_market_calendars"
+        assert ev.query_range == ("2026-01-06", "2026-01-21")
+        assert "2026-01-13" in ev.valid_sessions
+        assert ev.early_close_times["2026-01-14"] == "13:00:00"
+        assert ev.digest().startswith("sha256:")
+
+    def test_evidence_digest_changes_on_mutation(self) -> None:
+        cal = SessionCalendar(
+            valid_dates=frozenset(["2026-01-13"]),
+            early_close_times={},
+        )
+        ev1 = build_calendar_evidence(cal, calendar_name="NYSE", query_range=("2026-01-06", "2026-01-20"))
+        d1 = ev1.digest()
+
+        cal2 = SessionCalendar(
+            valid_dates=frozenset(["2026-01-13", "2026-01-14"]),
+            early_close_times={},
+        )
+        ev2 = build_calendar_evidence(cal2, calendar_name="NYSE", query_range=("2026-01-06", "2026-01-20"))
+        d2 = ev2.digest()
+
+        assert d1 != d2
+
+    def test_write_and_verify_evidence(self, tmp_path: Path) -> None:
+        cal = SessionCalendar(
+            valid_dates=frozenset(["2026-01-13"]),
+            early_close_times={},
+        )
+        ev = build_calendar_evidence(cal, calendar_name="NYSE", query_range=("2026-01-06", "2026-01-20"))
+        path = write_calendar_evidence(ev, tmp_path)
+        assert verify_calendar_evidence(path, ev.digest())
+
+    def test_ledger_fingerprint_includes_evidence(self) -> None:
+        """Changing calendar_evidence_digest changes the ledger fingerprint."""
+        ledger1 = AdmissibilityLedger(
+            calendar_evidence_digest="sha256:" + "a" * 64,
+            calendar_evidence_locator="calendar_evidence.json",
+        )
+        ledger2 = AdmissibilityLedger(
+            calendar_evidence_digest="sha256:" + "b" * 64,
+            calendar_evidence_locator="calendar_evidence.json",
+        )
+        assert ledger1.compute_fingerprint() != ledger2.compute_fingerprint()

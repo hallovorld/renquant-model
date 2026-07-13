@@ -182,6 +182,72 @@ class ExpertSpec:
 
 
 @dataclass
+class CalendarEvidence:
+    """Self-contained calendar evidence artifact for audit recovery."""
+
+    calendar_name: str = ""
+    provider: str = ""
+    provider_version: str = ""
+    query_range: tuple[str, str] = ("", "")
+    valid_sessions: list[str] = field(default_factory=list)
+    early_close_times: dict[str, str] = field(default_factory=dict)
+
+    def to_canonical_json(self) -> str:
+        return json.dumps({
+            "calendar_name": self.calendar_name,
+            "provider": self.provider,
+            "provider_version": self.provider_version,
+            "query_range": list(self.query_range),
+            "valid_sessions": self.valid_sessions,
+            "early_close_times": self.early_close_times,
+        }, sort_keys=True, indent=2)
+
+    def digest(self) -> str:
+        return f"sha256:{hashlib.sha256(self.to_canonical_json().encode()).hexdigest()}"
+
+
+def build_calendar_evidence(
+    calendar: SessionCalendar,
+    *,
+    calendar_name: str = "NYSE",
+    query_range: tuple[str, str] = ("", ""),
+) -> CalendarEvidence:
+    """Build a :class:`CalendarEvidence` from a :class:`SessionCalendar`."""
+    try:
+        import pandas_market_calendars as mcal
+        provider_version = getattr(mcal, "__version__", "unknown")
+    except ImportError:
+        provider_version = "unknown"
+
+    return CalendarEvidence(
+        calendar_name=calendar_name,
+        provider="pandas_market_calendars",
+        provider_version=provider_version,
+        query_range=query_range,
+        valid_sessions=sorted(calendar.valid_dates),
+        early_close_times={
+            k: v.isoformat()
+            for k, v in sorted(calendar.early_close_times.items())
+        },
+    )
+
+
+def write_calendar_evidence(evidence: CalendarEvidence, output_dir: Path) -> Path:
+    """Persist the calendar evidence artifact next to the ledger."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    out_path = output_dir / "calendar_evidence.json"
+    out_path.write_text(evidence.to_canonical_json() + "\n")
+    return out_path
+
+
+def verify_calendar_evidence(evidence_path: Path, expected_digest: str) -> bool:
+    """Verify a persisted calendar evidence artifact against its digest."""
+    raw = evidence_path.read_text().rstrip("\n")
+    actual = f"sha256:{hashlib.sha256(raw.encode()).hexdigest()}"
+    return actual == expected_digest
+
+
+@dataclass
 class AdmissibilityLedger:
     """Complete admissibility ledger for an ensemble experiment."""
 
@@ -193,6 +259,12 @@ class AdmissibilityLedger:
     decision_schedule_time: str = ""
     decision_schedule_digest: str = ""
     session_calendar_digest: str = ""
+    calendar_name: str = ""
+    calendar_provider: str = ""
+    calendar_provider_version: str = ""
+    calendar_query_range: tuple[str, str] = ("", "")
+    calendar_evidence_locator: str = ""
+    calendar_evidence_digest: str = ""
     label_horizon_days: int = 0
     records: list[dict[str, Any]] = field(default_factory=list)
     summary: dict[str, Any] = field(default_factory=dict)
@@ -202,6 +274,8 @@ class AdmissibilityLedger:
         content = json.dumps({
             "decision_schedule_digest": self.decision_schedule_digest,
             "session_calendar_digest": self.session_calendar_digest,
+            "calendar_evidence_locator": self.calendar_evidence_locator,
+            "calendar_evidence_digest": self.calendar_evidence_digest,
             "label_horizon_days": self.label_horizon_days,
             "records": self.records,
         }, sort_keys=True).encode()
@@ -731,6 +805,8 @@ def build_ledger(
     *,
     decision_schedule: DecisionSchedule,
     session_calendar: SessionCalendar | None = None,
+    calendar_evidence: CalendarEvidence | None = None,
+    calendar_evidence_locator_str: str = "",
     decision_timestamp_fn: Any = None,
     require_realized_labels: bool = True,
     label_horizon_days: int = 60,
@@ -775,6 +851,20 @@ def build_ledger(
     sched_digest = _schedule_digest(decision_schedule)
     cal_digest = session_calendar.digest() if session_calendar is not None else ""
 
+    cal_evidence_locator = ""
+    cal_evidence_digest = ""
+    cal_name = ""
+    cal_provider = ""
+    cal_provider_version = ""
+    cal_query_range: tuple[str, str] = ("", "")
+    if calendar_evidence is not None:
+        cal_evidence_locator = calendar_evidence_locator_str
+        cal_evidence_digest = calendar_evidence.digest()
+        cal_name = calendar_evidence.calendar_name
+        cal_provider = calendar_evidence.provider
+        cal_provider_version = calendar_evidence.provider_version
+        cal_query_range = calendar_evidence.query_range
+
     ledger = AdmissibilityLedger(
         created_at=datetime.now(tz=timezone.utc).isoformat(),
         experts=[e.name for e in experts],
@@ -788,6 +878,12 @@ def build_ledger(
         decision_schedule_time=decision_schedule.decision_time.isoformat(),
         decision_schedule_digest=sched_digest,
         session_calendar_digest=cal_digest,
+        calendar_name=cal_name,
+        calendar_provider=cal_provider,
+        calendar_provider_version=cal_provider_version,
+        calendar_query_range=cal_query_range,
+        calendar_evidence_locator=cal_evidence_locator,
+        calendar_evidence_digest=cal_evidence_digest,
         label_horizon_days=label_horizon_days,
     )
 
@@ -884,7 +980,10 @@ def build_ledger(
             for s in per_expert_stats.values()
         )
     )
-    complementarity_ok = complementarity_assessment == "PLAUSIBLE"
+    complementarity_ok = (
+        complementarity_assessment is not None
+        and complementarity_assessment.startswith("PLAUSIBLE")
+    )
 
     ledger.summary = {
         "total_records": total_records,
@@ -912,7 +1011,15 @@ def write_ledger(ledger: AdmissibilityLedger, output_dir: Path) -> Path:
             "decision_time": ledger.decision_schedule_time,
             "digest": ledger.decision_schedule_digest,
         },
-        "session_calendar_digest": ledger.session_calendar_digest,
+        "session_calendar": {
+            "digest": ledger.session_calendar_digest,
+            "calendar_name": ledger.calendar_name,
+            "provider": ledger.calendar_provider,
+            "provider_version": ledger.calendar_provider_version,
+            "query_range": list(ledger.calendar_query_range),
+            "evidence_locator": ledger.calendar_evidence_locator,
+            "evidence_digest": ledger.calendar_evidence_digest,
+        },
         "label_horizon_days": ledger.label_horizon_days,
         "summary": ledger.summary,
         "ledger_fingerprint": ledger.ledger_fingerprint,
@@ -1012,16 +1119,11 @@ def main() -> None:
     # dates -- this is the production default (not an opt-in flag): exchange
     # holidays and early-close sessions must always be excluded/handled, per
     # Codex review (a fixed US_EQUITY_CLOSE clock must not be the CLI default).
-    # Pad the calendar query a week on each side of the discovered dates:
-    # if the discovered range's exact boundary happens to fall on a
-    # holiday (e.g. running the ledger for a single date that turns out to
-    # be a market holiday), querying that exact zero-width range would
-    # itself come back with no sessions at all and raise before we ever
-    # get a chance to produce a proper per-date rejection record.
     calendar_query_start = date.fromisoformat(prediction_dates[0]) - timedelta(days=7)
     calendar_query_end = date.fromisoformat(prediction_dates[-1]) + timedelta(days=7)
+    cal_query_range = (calendar_query_start.isoformat(), calendar_query_end.isoformat())
     session_calendar = build_exchange_session_calendar(
-        calendar_query_start.isoformat(), calendar_query_end.isoformat(),
+        cal_query_range[0], cal_query_range[1],
     )
     non_session_dates = [d for d in prediction_dates if not session_calendar.contains(d)]
     if non_session_dates:
@@ -1030,6 +1132,20 @@ def main() -> None:
             f"NYSE trading sessions and will be rejected: {non_session_dates}",
             file=sys.stderr,
         )
+
+    # Build and persist calendar evidence artifact for audit recovery.
+    output_dir = Path(args.output_dir)
+    cal_evidence = build_calendar_evidence(
+        session_calendar,
+        calendar_name="NYSE",
+        query_range=cal_query_range,
+    )
+    cal_evidence_path = write_calendar_evidence(cal_evidence, output_dir)
+    cal_evidence_locator = cal_evidence_path.name
+    print(f"Calendar evidence written to {cal_evidence_path}")
+    print(f"  Calendar: {cal_evidence.calendar_name} via {cal_evidence.provider} {cal_evidence.provider_version}")
+    print(f"  Query range: {cal_query_range[0]} .. {cal_query_range[1]}")
+    print(f"  Evidence digest: {cal_evidence.digest()}")
 
     def _file_score_loader(expert: ExpertSpec, dt: str) -> dict[str, Any]:
         """Load score metadata from the expert's score directory."""
@@ -1058,6 +1174,8 @@ def main() -> None:
         score_loader=_file_score_loader,
         decision_schedule=US_EQUITY_CLOSE,
         session_calendar=session_calendar,
+        calendar_evidence=cal_evidence,
+        calendar_evidence_locator_str=cal_evidence_locator,
         label_horizon_days=args.label_horizon_days,
     )
 
@@ -1097,10 +1215,12 @@ def main() -> None:
         score_loader=_file_score_loader,
         decision_schedule=US_EQUITY_CLOSE,
         session_calendar=session_calendar,
+        calendar_evidence=cal_evidence,
+        calendar_evidence_locator_str=cal_evidence_locator,
         label_horizon_days=args.label_horizon_days,
         complementarity_assessment=comp_assessment,
     )
-    output_path = write_ledger(ledger, Path(args.output_dir))
+    output_path = write_ledger(ledger, output_dir)
     print(f"Ledger written to {output_path}")
     print(f"Fingerprint: {ledger.ledger_fingerprint}")
 
