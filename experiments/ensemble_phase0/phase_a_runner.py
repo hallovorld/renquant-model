@@ -129,12 +129,17 @@ class PhaseAResult:
     n_experts: int = 0
     expert_names: list[str] = field(default_factory=list)
     n_dates: int = 0
+    dates: list[str] = field(default_factory=list)
     top_n: int = 10
     cost_bps: float = 0.0
     score_normalization_method: str = ""
     test_method: str = ""
     n_test_dates: int = 0
     block_length_days: int = 0
+    manifest_fingerprint: str = ""
+    ledger_fingerprint: str = ""
+    returns_file_digest: str = ""
+    expert_score_digests: dict[str, list[str]] = field(default_factory=dict)
     delta_ic: float = float("nan")
     delta_return: float = float("nan")
     delta_sharpe: float = float("nan")
@@ -247,6 +252,48 @@ def _find_col(header: list[str], candidates: list[str]) -> int:
         if c.lower() in lower:
             return lower.index(c.lower())
     raise ValueError(f"No column found matching {candidates} in {header}")
+
+
+def verify_returns_file_digest(returns_path: Path, ledger: AdmissibilityLedger) -> str:
+    """Verify the forward-returns file is the SAME artifact the ledger's
+    admitted records declare as their label source -- not an arbitrary or
+    substituted/mutated file (Codex review 2026-07-13, finding 1: the
+    ledger validates score artifacts but ``load_forward_returns`` accepted
+    any path with no binding to the admitted label locator/digest).
+
+    Every admitted record's ``label_artifact_ref`` (``sha256:<64hex>@<locator>``)
+    must agree on the same digest -- a coherent Phase A run has exactly one
+    canonical label/returns artifact. Returns that digest on success.
+    """
+    raw_bytes = returns_path.read_bytes()
+    actual_digest = f"sha256:{hashlib.sha256(raw_bytes).hexdigest()}"
+
+    admitted_label_digests = {
+        record["label_artifact_ref"].split("@", 1)[0]
+        for record in ledger.records
+        if record.get("admitted") and record.get("label_artifact_ref")
+    }
+    if not admitted_label_digests:
+        raise ValueError(
+            "ledger has no admitted records with a label_artifact_ref -- "
+            "cannot verify the forward-returns file against any declared "
+            "label artifact"
+        )
+    if len(admitted_label_digests) > 1:
+        raise ValueError(
+            "ledger's admitted records disagree on label artifact digest "
+            f"({sorted(admitted_label_digests)}) -- ambiguous which is the "
+            "canonical forward-returns source"
+        )
+    expected_digest = next(iter(admitted_label_digests))
+    if actual_digest != expected_digest:
+        raise ValueError(
+            f"forward-returns file digest {actual_digest} does not match "
+            f"the ledger's admitted label_artifact_ref digest "
+            f"{expected_digest} -- refusing to evaluate against a "
+            "substituted or mutated returns file"
+        )
+    return actual_digest
 
 
 # ── Combination methods ──────────────────────────────────────────────────────
@@ -549,6 +596,10 @@ def run_phase_a(
     alpha: float = 0.05,
     cost_bps: float = 0.0,
     block_length_days: int = 60,
+    manifest_fingerprint: str = "",
+    ledger_fingerprint: str = "",
+    returns_file_digest: str = "",
+    expert_score_digests: dict[str, list[str]] | None = None,
 ) -> PhaseAResult:
     """Run Phase A discovery: L1 vs frozen champion.
 
@@ -561,6 +612,14 @@ def run_phase_a(
     pre-registered experiment manifest's ``cost_assumptions``/
     ``statistical_test`` sections; the defaults here exist only for
     standalone/unit-test convenience.
+
+    ``manifest_fingerprint``/``ledger_fingerprint``/``returns_file_digest``/
+    ``expert_score_digests`` are provenance-only -- they do not affect the
+    computation, but are persisted on the result (and folded into
+    ``run_id``) so a favorable output can be independently reproduced and
+    re-verified against the exact inputs that produced it (Codex review
+    2026-07-13, finding 3: a result with no recorded input digests cannot
+    be reproduced or audited).
     """
     if len(experts) < 2:
         raise ValueError("Phase A requires at least 2 experts")
@@ -676,12 +735,17 @@ def run_phase_a(
             f"observations. Champion retained per burden-of-proof rule."
         )
 
+    expert_score_digests = expert_score_digests or {}
+
     run_id = hashlib.sha256(
         json.dumps({
             "experts": [e.name for e in experts],
             "champion_name": champion_name,
             "dates": dates,
             "top_n": top_n,
+            "manifest_fingerprint": manifest_fingerprint,
+            "ledger_fingerprint": ledger_fingerprint,
+            "returns_file_digest": returns_file_digest,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }).encode()
     ).hexdigest()[:16]
@@ -695,12 +759,17 @@ def run_phase_a(
         n_experts=len(experts),
         expert_names=[e.name for e in experts],
         n_dates=len(dates),
+        dates=dates,
         top_n=top_n,
         cost_bps=cost_bps,
         score_normalization_method="cross_sectional_zscore",
         test_method=test_method,
         n_test_dates=len(test_dates),
         block_length_days=block_length_days,
+        manifest_fingerprint=manifest_fingerprint,
+        ledger_fingerprint=ledger_fingerprint,
+        returns_file_digest=returns_file_digest,
+        expert_score_digests=expert_score_digests,
         delta_ic=l1_result.mean_ic - champ_result.mean_ic,
         delta_return=l1_result.mean_return - champ_result.mean_return,
         delta_sharpe=l1_result.sharpe - champ_result.sharpe,
@@ -798,14 +867,24 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--top-n",
         type=int,
-        default=10,
-        help="Number of top-ranked tickers to select (default: 10)",
+        default=None,
+        help=(
+            "Number of top-ranked tickers to select. Sourced from the "
+            "verified manifest's portfolio_mapping.top_n by default; if "
+            "supplied, must equal the manifest value (Codex review "
+            "2026-07-13, finding 2: this decision-affecting parameter must "
+            "not be free to change after the manifest was registered)."
+        ),
     )
     parser.add_argument(
         "--alpha",
         type=float,
-        default=0.05,
-        help="Significance level for the paired test (default: 0.05)",
+        default=None,
+        help=(
+            "Significance level for the paired test. Sourced from the "
+            "verified manifest's statistical_test.alpha by default; if "
+            "supplied, must equal the manifest value."
+        ),
     )
     args = parser.parse_args(argv)
 
@@ -837,6 +916,30 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
 
+    manifest_top_n = manifest.portfolio_mapping.get("top_n")
+    if args.top_n is not None and args.top_n != manifest_top_n:
+        print(
+            f"ERROR: --top-n={args.top_n} does not match the pre-registered "
+            f"manifest's portfolio_mapping.top_n={manifest_top_n!r}; a "
+            "decision-affecting parameter must not diverge from the "
+            "registered manifest",
+            file=sys.stderr,
+        )
+        return 1
+    top_n = manifest_top_n if args.top_n is None else args.top_n
+
+    manifest_alpha = manifest.statistical_test.get("alpha")
+    if args.alpha is not None and args.alpha != manifest_alpha:
+        print(
+            f"ERROR: --alpha={args.alpha} does not match the pre-registered "
+            f"manifest's statistical_test.alpha={manifest_alpha!r}; a "
+            "decision-affecting parameter must not diverge from the "
+            "registered manifest",
+            file=sys.stderr,
+        )
+        return 1
+    alpha = manifest_alpha if args.alpha is None else args.alpha
+
     ledger = load_and_verify_ledger(Path(args.ledger_file))
     admitted_digests = admitted_score_digests(ledger)
 
@@ -848,8 +951,23 @@ def main(argv: list[str] | None = None) -> int:
         experts.append(expert)
 
     print(f"Loading forward returns from {args.returns_file}...")
-    fwd_returns = load_forward_returns(Path(args.returns_file))
-    print(f"  {len(fwd_returns)} dates loaded")
+    returns_path = Path(args.returns_file)
+    returns_file_digest = verify_returns_file_digest(returns_path, ledger)
+    fwd_returns = load_forward_returns(returns_path)
+    print(f"  {len(fwd_returns)} dates loaded (digest {returns_file_digest} verified against ledger)")
+
+    common_dates_for_provenance = set(experts[0].dates)
+    for expert in experts[1:]:
+        common_dates_for_provenance &= set(expert.dates)
+    common_dates_for_provenance &= set(fwd_returns.keys())
+    expert_score_digests = {
+        expert.name: sorted(
+            admitted_digests[(expert.name, dt)]
+            for dt in common_dates_for_provenance
+            if (expert.name, dt) in admitted_digests
+        )
+        for expert in experts
+    }
 
     cost_bps = float(manifest.cost_assumptions.get("base_cost_bps", 0.0))
     block_length_days = int(
@@ -860,10 +978,14 @@ def main(argv: list[str] | None = None) -> int:
         experts=experts,
         forward_returns=fwd_returns,
         champion_name=champion_name,
-        top_n=args.top_n,
-        alpha=args.alpha,
+        top_n=top_n,
+        alpha=alpha,
         cost_bps=cost_bps,
         block_length_days=block_length_days,
+        manifest_fingerprint=manifest.manifest_fingerprint,
+        ledger_fingerprint=ledger.ledger_fingerprint,
+        returns_file_digest=returns_file_digest,
+        expert_score_digests=expert_score_digests,
     )
 
     print_verdict(result)
@@ -876,7 +998,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     print(f"\nResult saved to {output_path}")
 
-    return 0 if result.verdict == "L1_BEATS_CHAMPION" else 1
+    # A completed run is a successful experiment regardless of which
+    # verdict it reached -- CHAMPION_RETAINED/INCONCLUSIVE/EXPLORATORY_ONLY
+    # are valid evidentiary outcomes, not process failures. Nonzero exit
+    # is reserved for invalid inputs, failed provenance checks, or runtime
+    # errors, all of which already raise/return 1 above this point (Codex
+    # review 2026-07-13, finding 4: a scheduler must not conflate "L1
+    # didn't win" with "this run failed").
+    return 0
 
 
 if __name__ == "__main__":

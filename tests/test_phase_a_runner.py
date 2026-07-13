@@ -11,6 +11,15 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from experiments.ensemble_phase0 import phase_a_runner as par
+from experiments.ensemble_phase0.admissibility_ledger import (
+    AdmissibilityLedger,
+    write_ledger,
+)
+from experiments.ensemble_phase0.experiment_manifest import (
+    build_default_manifest,
+    write_manifest,
+)
 from experiments.ensemble_phase0.phase_a_runner import (
     TEST_METHOD_HAC_FALLBACK,
     TEST_METHOD_NON_OVERLAPPING,
@@ -31,6 +40,7 @@ from experiments.ensemble_phase0.phase_a_runner import (
     run_phase_a,
     select_non_overlapping_dates,
     top_n_selection,
+    verify_returns_file_digest,
 )
 
 
@@ -467,6 +477,54 @@ class TestForwardReturnsLoading:
         assert returns["2025-06-01"]["AAPL"] == pytest.approx(0.05)
 
 
+# ── Returns-file provenance gate (Codex review 2026-07-13, finding 1) ──────
+
+
+def _ledger_with_records(records: list[dict]) -> AdmissibilityLedger:
+    return AdmissibilityLedger(records=records)
+
+
+class TestVerifyReturnsFileDigest:
+    def test_matching_digest_passes(self, tmp_path):
+        p = tmp_path / "returns.csv"
+        p.write_text("date,ticker,fwd_return\n2025-06-01,AAPL,0.01\n")
+        digest = f"sha256:{hashlib.sha256(p.read_bytes()).hexdigest()}"
+        ledger = _ledger_with_records([
+            {"admitted": True, "label_artifact_ref": f"{digest}@labels/returns.csv"},
+        ])
+        assert verify_returns_file_digest(p, ledger) == digest
+
+    def test_mismatched_digest_is_rejected(self, tmp_path):
+        p = tmp_path / "returns.csv"
+        p.write_text("date,ticker,fwd_return\n2025-06-01,AAPL,0.01\n")
+        wrong_digest = f"sha256:{'0' * 64}"
+        ledger = _ledger_with_records([
+            {"admitted": True, "label_artifact_ref": f"{wrong_digest}@labels/returns.csv"},
+        ])
+        with pytest.raises(ValueError, match="does not match"):
+            verify_returns_file_digest(p, ledger)
+
+    def test_no_admitted_label_ref_is_rejected(self, tmp_path):
+        p = tmp_path / "returns.csv"
+        p.write_text("date,ticker,fwd_return\n2025-06-01,AAPL,0.01\n")
+        # Record exists but is NOT admitted -- must not be trusted.
+        ledger = _ledger_with_records([
+            {"admitted": False, "label_artifact_ref": f"sha256:{'0' * 64}@labels/returns.csv"},
+        ])
+        with pytest.raises(ValueError, match="no admitted records"):
+            verify_returns_file_digest(p, ledger)
+
+    def test_disagreeing_admitted_digests_are_rejected(self, tmp_path):
+        p = tmp_path / "returns.csv"
+        p.write_text("date,ticker,fwd_return\n2025-06-01,AAPL,0.01\n")
+        ledger = _ledger_with_records([
+            {"admitted": True, "label_artifact_ref": f"sha256:{'0' * 64}@labels/a.csv"},
+            {"admitted": True, "label_artifact_ref": f"sha256:{'1' * 64}@labels/b.csv"},
+        ])
+        with pytest.raises(ValueError, match="disagree"):
+            verify_returns_file_digest(p, ledger)
+
+
 # ── Go/no-go verdict ────────────────────────────────────────────────────────
 
 
@@ -557,6 +615,24 @@ class TestRunPhaseA:
         assert high_cost.cost_bps == 500.0
         assert high_cost.l1.mean_net_return < zero_cost.l1.mean_net_return
 
+    def test_provenance_fields_are_persisted(self, experts):
+        """Codex review 2026-07-13, finding 3: a result must record the
+        exact inputs that produced it so a favorable output can be
+        independently reproduced."""
+        result = run_phase_a(
+            experts, FORWARD_RETURNS, champion_name="xgb", top_n=5,
+            manifest_fingerprint="sha256:manifest-aaa",
+            ledger_fingerprint="sha256:ledger-bbb",
+            returns_file_digest="sha256:returns-ccc",
+            expert_score_digests={"xgb": ["sha256:x1"], "patchtst": ["sha256:p1"]},
+        )
+        assert result.manifest_fingerprint == "sha256:manifest-aaa"
+        assert result.ledger_fingerprint == "sha256:ledger-bbb"
+        assert result.returns_file_digest == "sha256:returns-ccc"
+        assert result.expert_score_digests == {"xgb": ["sha256:x1"], "patchtst": ["sha256:p1"]}
+        assert result.dates == sorted(result.dates)
+        assert len(result.dates) == result.n_dates
+
 
 class TestVerdictLogic:
     def test_champion_retained_when_l1_worse(self):
@@ -565,3 +641,150 @@ class TestVerdictLogic:
         result = PhaseAResult(champion=champ, l1=l1)
         result.delta_return = l1.mean_return - champ.mean_return
         assert result.delta_return < 0
+
+
+# ── main() CLI: manifest-locked parameters + exit code (Codex review ───────
+# 2026-07-13, findings 2+4) ──────────────────────────────────────────────────
+
+
+def _build_cli_fixture(tmp_path: Path) -> dict[str, str]:
+    """Build a full manifest+ledger+scores+returns fixture on disk, and
+    return the paths needed to invoke ``main()`` against it end-to-end."""
+    universe = [f"T{i}" for i in range(12)]
+    dates = ["2025-06-01", "2025-06-02", "2025-06-03"]
+
+    xgb_dir = tmp_path / "xgb"
+    xgb_dir.mkdir()
+    pt_dir = tmp_path / "patchtst"
+    pt_dir.mkdir()
+
+    rng = np.random.default_rng(11)
+    label_end = (date.fromisoformat(dates[-1]) + timedelta(days=60)).isoformat()
+
+    returns_lines = ["date,ticker,fwd_return"]
+    score_bytes: dict[tuple[str, str], bytes] = {}
+    for d in dates:
+        base = rng.normal(0, 1, len(universe))
+        xgb_bytes = json.dumps({"scores": {t: float(base[i]) for i, t in enumerate(universe)}}).encode()
+        pt_bytes = json.dumps({
+            "scores": {t: float(base[i] + rng.normal(0, 0.2)) for i, t in enumerate(universe)}
+        }).encode()
+        (xgb_dir / f"{d}.json").write_bytes(xgb_bytes)
+        (pt_dir / f"{d}.json").write_bytes(pt_bytes)
+        score_bytes[("xgb", d)] = xgb_bytes
+        score_bytes[("patchtst", d)] = pt_bytes
+        for i, t in enumerate(universe):
+            returns_lines.append(f"{d},{t},{base[i] * 0.01}")
+
+    returns_path = tmp_path / "returns.csv"
+    returns_path.write_text("\n".join(returns_lines))
+    returns_digest = f"sha256:{hashlib.sha256(returns_path.read_bytes()).hexdigest()}"
+
+    manifest = build_default_manifest()
+    manifest_path = write_manifest(manifest, tmp_path)
+
+    records = [
+        {
+            "expert_name": name,
+            "prediction_date": d,
+            "admitted": True,
+            "score_artifact_digest": f"sha256:{hashlib.sha256(raw).hexdigest()}",
+            "label_artifact_ref": f"{returns_digest}@{returns_path.name}",
+            "label_observation_end": label_end,
+        }
+        for (name, d), raw in score_bytes.items()
+    ]
+    ledger = AdmissibilityLedger(records=records)
+    ledger.ledger_fingerprint = ledger.compute_fingerprint()
+    ledger_path = write_ledger(ledger, tmp_path)
+
+    return {
+        "xgb_dir": str(xgb_dir),
+        "pt_dir": str(pt_dir),
+        "returns_path": str(returns_path),
+        "manifest_path": str(manifest_path),
+        "ledger_path": str(ledger_path),
+        "output_dir": str(tmp_path / "output"),
+    }
+
+
+def _cli_argv(fixture: dict[str, str], **overrides: str) -> list[str]:
+    argv = [
+        "--expert", "xgb", "--score-dir", fixture["xgb_dir"],
+        "--expert", "patchtst", "--score-dir", fixture["pt_dir"],
+        "--returns-file", fixture["returns_path"],
+        "--manifest-file", fixture["manifest_path"],
+        "--ledger-file", fixture["ledger_path"],
+        "--output-dir", fixture["output_dir"],
+    ]
+    for key, value in overrides.items():
+        argv.extend([f"--{key.replace('_', '-')}", str(value)])
+    return argv
+
+
+class TestMainManifestLockedParameters:
+    def test_runs_without_explicit_top_n_or_alpha(self, tmp_path):
+        fixture = _build_cli_fixture(tmp_path)
+        rc = par.main(_cli_argv(fixture))
+        assert rc == 0
+
+    def test_rejects_top_n_mismatched_with_manifest(self, tmp_path, capsys):
+        fixture = _build_cli_fixture(tmp_path)
+        rc = par.main(_cli_argv(fixture, top_n=999))
+        assert rc == 1
+        assert "does not match" in capsys.readouterr().err
+
+    def test_rejects_alpha_mismatched_with_manifest(self, tmp_path, capsys):
+        fixture = _build_cli_fixture(tmp_path)
+        rc = par.main(_cli_argv(fixture, alpha=0.99))
+        assert rc == 1
+        assert "does not match" in capsys.readouterr().err
+
+    def test_accepts_top_n_matching_manifest(self, tmp_path):
+        fixture = _build_cli_fixture(tmp_path)
+        manifest_top_n = build_default_manifest().portfolio_mapping["top_n"]
+        rc = par.main(_cli_argv(fixture, top_n=manifest_top_n))
+        assert rc == 0
+
+
+class TestMainExitCode:
+    """Codex review 2026-07-13, finding 4: a completed run is a success
+    regardless of verdict -- only invalid inputs/provenance/runtime errors
+    should exit nonzero."""
+
+    @pytest.mark.parametrize(
+        "verdict",
+        ["L1_BEATS_CHAMPION", "CHAMPION_RETAINED", "INCONCLUSIVE", "EXPLORATORY_ONLY"],
+    )
+    def test_exit_code_is_zero_for_every_completed_verdict(self, tmp_path, monkeypatch, verdict):
+        fixture = _build_cli_fixture(tmp_path)
+        canned = PhaseAResult(
+            run_id="test-run",
+            verdict=verdict,
+            champion=StrategyResult(name="champion"),
+            l1=StrategyResult(name="l1"),
+        )
+        monkeypatch.setattr(par, "run_phase_a", lambda **kwargs: canned)
+        rc = par.main(_cli_argv(fixture))
+        assert rc == 0
+
+    def test_exit_code_is_nonzero_for_unregistered_expert(self, tmp_path):
+        fixture = _build_cli_fixture(tmp_path)
+        argv = [
+            "--expert", "not-registered", "--score-dir", fixture["xgb_dir"],
+            "--expert", "patchtst", "--score-dir", fixture["pt_dir"],
+            "--returns-file", fixture["returns_path"],
+            "--manifest-file", fixture["manifest_path"],
+            "--ledger-file", fixture["ledger_path"],
+            "--output-dir", fixture["output_dir"],
+        ]
+        rc = par.main(argv)
+        assert rc == 1
+
+    def test_exit_code_is_nonzero_for_tampered_returns_file(self, tmp_path):
+        fixture = _build_cli_fixture(tmp_path)
+        Path(fixture["returns_path"]).write_text(
+            Path(fixture["returns_path"]).read_text() + "\n2025-06-04,T0,999\n"
+        )
+        with pytest.raises(ValueError, match="does not match"):
+            par.main(_cli_argv(fixture))
