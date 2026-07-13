@@ -212,3 +212,21 @@ def load_and_verify_manifest(path: Path) -> ExperimentManifest:
         )
 
     return manifest
+
+
+def resolve_champion_name(manifest: ExperimentManifest) -> str:
+    """Resolve the frozen champion's name from the manifest's declared
+    experts, never from caller/CLI argument order.
+
+    Exactly one manifest expert must carry ``status == "primary_live"`` --
+    that is the pre-registered frozen champion (Codex review 2026-07-13
+    on model#53, finding 3: "first --expert" is CLI-order-dependent, not a
+    frozen identity).
+    """
+    candidates = [e["name"] for e in manifest.experts if e.get("status") == "primary_live"]
+    if len(candidates) != 1:
+        raise ValueError(
+            f"expected exactly one manifest expert with status=primary_live "
+            f"to serve as the frozen champion, found {len(candidates)}: {candidates}"
+        )
+    return candidates[0]

@@ -997,6 +997,65 @@ def build_ledger(
     return ledger
 
 
+def load_and_verify_ledger(path: Path) -> AdmissibilityLedger:
+    """Load a persisted ledger and verify its fingerprint hasn't been
+    tampered with since it was written by :func:`write_ledger`.
+
+    Downstream comparison tooling (e.g. ``phase_a_runner``) must never
+    consume a ledger file without this check -- an unverified ledger is no
+    better than the arbitrary self-attested JSON it exists to replace.
+    """
+    data = json.loads(path.read_text())
+    schedule = data.get("decision_schedule", {})
+    calendar = data.get("session_calendar", {})
+
+    ledger = AdmissibilityLedger(
+        created_at=data.get("created_at", ""),
+        experts=list(data.get("experts", [])),
+        universe_size=data.get("universe_size", 0),
+        date_range=tuple(data.get("date_range", ("", ""))),
+        decision_schedule_timezone=schedule.get("timezone", ""),
+        decision_schedule_time=schedule.get("decision_time", ""),
+        decision_schedule_digest=schedule.get("digest", ""),
+        session_calendar_digest=calendar.get("digest", ""),
+        calendar_name=calendar.get("calendar_name", ""),
+        calendar_provider=calendar.get("provider", ""),
+        calendar_provider_version=calendar.get("provider_version", ""),
+        calendar_query_range=tuple(calendar.get("query_range", ("", ""))),
+        calendar_evidence_locator=calendar.get("evidence_locator", ""),
+        calendar_evidence_digest=calendar.get("evidence_digest", ""),
+        label_horizon_days=data.get("label_horizon_days", 0),
+        records=list(data.get("records", [])),
+        summary=dict(data.get("summary", {})),
+    )
+
+    stored_fp = data.get("ledger_fingerprint", "")
+    computed_fp = ledger.compute_fingerprint()
+    if not stored_fp or computed_fp != stored_fp:
+        raise ValueError(
+            f"ledger fingerprint mismatch: stored={stored_fp!r}, "
+            f"computed={computed_fp!r} — ledger may have been modified"
+        )
+    ledger.ledger_fingerprint = stored_fp
+    return ledger
+
+
+def admitted_score_digests(ledger: AdmissibilityLedger) -> dict[tuple[str, str], str]:
+    """Map ``(expert_name, prediction_date) -> score_artifact_digest`` for
+    ADMITTED records only.
+
+    Used by downstream comparison tooling to reject any score file that
+    isn't backed by a verified, admitted ledger entry with a matching
+    content digest -- a score file's own embedded metadata is never
+    trusted on its own (Codex review 2026-07-13 on model#53, finding 1).
+    """
+    out: dict[tuple[str, str], str] = {}
+    for record in ledger.records:
+        if record.get("admitted") and record.get("score_artifact_digest"):
+            out[(record["expert_name"], record["prediction_date"])] = record["score_artifact_digest"]
+    return out
+
+
 def write_ledger(ledger: AdmissibilityLedger, output_dir: Path) -> Path:
     """Write the ledger to disk as a JSON file."""
     output_dir.mkdir(parents=True, exist_ok=True)

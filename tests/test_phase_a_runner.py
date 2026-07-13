@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
-import tempfile
+from datetime import date, timedelta
 from pathlib import Path
 
 import numpy as np
 import pytest
 
 from experiments.ensemble_phase0.phase_a_runner import (
+    TEST_METHOD_HAC_FALLBACK,
+    TEST_METHOD_NON_OVERLAPPING,
     ExpertScores,
     PhaseAResult,
     StrategyResult,
@@ -18,6 +21,7 @@ from experiments.ensemble_phase0.phase_a_runner import (
     compute_ic,
     compute_portfolio_return,
     compute_turnover,
+    cross_sectional_zscore,
     evaluate_strategy,
     l1_equal_weight,
     load_expert_scores,
@@ -25,6 +29,7 @@ from experiments.ensemble_phase0.phase_a_runner import (
     newey_west_t_test,
     result_to_dict,
     run_phase_a,
+    select_non_overlapping_dates,
     top_n_selection,
 )
 
@@ -33,19 +38,44 @@ from experiments.ensemble_phase0.phase_a_runner import (
 
 
 def _make_score_dir(tmp_path: Path, name: str, data: dict[str, dict[str, float]]) -> Path:
-    """Create a score directory with date-named JSON files."""
+    """Create a score directory with date-named JSON files, with full
+    ledger-admissible provenance metadata (used with :func:`_admitted_digests`
+    below to simulate 'this file was already ledger-admitted' without
+    invoking the full ledger-building pipeline in every test)."""
     d = tmp_path / name
     d.mkdir()
     for date_str, scores in data.items():
         payload = {
             "scores": scores,
             "model_content_sha256": f"sha256:{'a' * 64}",
-            "training_cutoff": "2025-01-01",
+            "training_cutoff": "2020-01-01",
             "as_of_date": date_str,
             "score_timestamp": f"{date_str}T15:30:00+00:00",
+            "has_realized_labels": True,
+            "label_artifact_ref": f"sha256:{'b' * 64}@labels/{date_str}",
+            "label_observation_end": (
+                date.fromisoformat(date_str) + timedelta(days=60)
+            ).isoformat(),
         }
         (d / f"{date_str}.json").write_text(json.dumps(payload))
     return d
+
+
+def _admitted_digests(
+    score_dirs: dict[str, Path], dates: list[str]
+) -> dict[tuple[str, str], str]:
+    """Directly compute sha256 digests for the given files, simulating
+    'this (expert, date) was already ledger-admitted' -- used by tests
+    that exercise phase_a_runner's OWN combination/champion/HAC/cost logic
+    rather than the ledger-integration path itself (see
+    TestProvenanceGate for that)."""
+    out: dict[tuple[str, str], str] = {}
+    for name, d in score_dirs.items():
+        for date_str in dates:
+            path = d / f"{date_str}.json"
+            if path.exists():
+                out[(name, date_str)] = f"sha256:{hashlib.sha256(path.read_bytes()).hexdigest()}"
+    return out
 
 
 def _make_returns_csv(tmp_path: Path, data: dict[str, dict[str, float]]) -> Path:
@@ -57,6 +87,35 @@ def _make_returns_csv(tmp_path: Path, data: dict[str, dict[str, float]]) -> Path
             lines.append(f"{date_str},{ticker},{ret}")
     p.write_text("\n".join(lines))
     return p
+
+
+def _build_n_date_fixture(
+    tmp_path: Path, n: int, *, seed: int = 0, n_tickers: int = 8,
+) -> tuple[list[ExpertScores], dict[str, dict[str, float]]]:
+    """Build an ``n``-consecutive-day, ``n_tickers``-ticker synthetic
+    xgb+patchtst score/return fixture -- used to exercise the
+    non-overlapping-block test-method switch, which needs more
+    observations than the small 5-date hand-written fixture below."""
+    tickers = [f"T{i}" for i in range(n_tickers)]
+    dates = [(date(2025, 1, 1) + timedelta(days=i)).isoformat() for i in range(n)]
+    rng = np.random.default_rng(seed)
+    xgb: dict[str, dict[str, float]] = {}
+    pt: dict[str, dict[str, float]] = {}
+    rets: dict[str, dict[str, float]] = {}
+    for d in dates:
+        base = rng.normal(0, 1, n_tickers)
+        xgb[d] = {t: float(base[j]) for j, t in enumerate(tickers)}
+        pt[d] = {t: float(base[j] + rng.normal(0, 0.5)) for j, t in enumerate(tickers)}
+        rets[d] = {t: float(base[j] * 0.02) for j, t in enumerate(tickers)}
+
+    xgb_dir = _make_score_dir(tmp_path, "xgb", xgb)
+    pt_dir = _make_score_dir(tmp_path, "patchtst", pt)
+    digests = _admitted_digests({"xgb": xgb_dir, "patchtst": pt_dir}, dates)
+    experts = [
+        load_expert_scores("xgb", xgb_dir, admitted_digests=digests),
+        load_expert_scores("patchtst", pt_dir, admitted_digests=digests),
+    ]
+    return experts, rets
 
 
 DATES = ["2025-06-01", "2025-06-02", "2025-06-03", "2025-06-04", "2025-06-05"]
@@ -101,35 +160,74 @@ FORWARD_RETURNS = {
 }
 
 
+# ── Cross-sectional z-score ──────────────────────────────────────────────────
+
+
+class TestCrossSectionalZScore:
+    def test_normalizes_to_zero_mean_unit_variance(self):
+        scores = {"A": 1.0, "B": 2.0, "C": 3.0, "D": 4.0}
+        z = cross_sectional_zscore(scores)
+        values = np.array(list(z.values()))
+        assert values.mean() == pytest.approx(0.0, abs=1e-9)
+        assert values.std(ddof=0) == pytest.approx(1.0, abs=1e-9)
+
+    def test_degenerate_constant_cross_section_maps_to_zero(self):
+        """A cross-section with zero variance carries no relative-ranking
+        information -- must map to 0.0, never divide by ~zero."""
+        scores = {"A": 0.5, "B": 0.5, "C": 0.5}
+        assert cross_sectional_zscore(scores) == {"A": 0.0, "B": 0.0, "C": 0.0}
+
+    def test_single_ticker_is_degenerate(self):
+        assert cross_sectional_zscore({"A": 0.7}) == {"A": 0.0}
+
+    def test_empty(self):
+        assert cross_sectional_zscore({}) == {}
+
+
 # ── L1 equal-weight ──────────────────────────────────────────────────────────
 
 
 class TestL1EqualWeight:
-    def test_two_experts_average(self):
+    def test_two_experts_average_normalized_not_raw(self):
+        """Raw values 0.8/0.2 and 0.4/0.6 are on incomparable scales;
+        combining z-scores (not raw values) is required (Codex review
+        2026-07-13, finding 2)."""
         e1 = ExpertScores(name="a", dates=["d1"], scores_by_date={"d1": {"X": 0.8, "Y": 0.2}})
         e2 = ExpertScores(name="b", dates=["d1"], scores_by_date={"d1": {"X": 0.4, "Y": 0.6}})
         result = l1_equal_weight([e1, e2], "d1")
-        assert result == pytest.approx({"X": 0.6, "Y": 0.4})
+        # Each expert's own cross-section z-scores to +1.0/-1.0 for X/Y
+        # (opposite orientation between experts) -- combined average is 0.
+        assert result == pytest.approx({"X": 0.0, "Y": 0.0})
 
-    def test_three_experts(self):
+    def test_three_experts_single_ticker_is_degenerate(self):
         e1 = ExpertScores(name="a", dates=["d1"], scores_by_date={"d1": {"X": 0.9}})
         e2 = ExpertScores(name="b", dates=["d1"], scores_by_date={"d1": {"X": 0.3}})
         e3 = ExpertScores(name="c", dates=["d1"], scores_by_date={"d1": {"X": 0.6}})
         result = l1_equal_weight([e1, e2, e3], "d1")
-        assert result == pytest.approx({"X": 0.6})
+        assert result == pytest.approx({"X": 0.0})
 
-    def test_excludes_partial_coverage(self):
+    def test_includes_partial_coverage_renormalized(self):
+        """Per the pre-registered missing-expert fallback policy (model
+        PR #48 §4.1bis): a ticker missing from one expert is EXCLUDED from
+        that expert's contribution and the remaining expert(s) are
+        averaged, rather than dropping the ticker/observation entirely."""
         e1 = ExpertScores(name="a", dates=["d1"], scores_by_date={"d1": {"X": 0.5, "Y": 0.3}})
         e2 = ExpertScores(name="b", dates=["d1"], scores_by_date={"d1": {"X": 0.7}})
         result = l1_equal_weight([e1, e2], "d1")
-        assert "Y" not in result
-        assert result == pytest.approx({"X": 0.6})
+        # Y is now INCLUDED (previously excluded under the old
+        # all-experts-required rule).
+        assert "Y" in result
+        # e1: mean=0.4, std=0.1 -> z(X)=1.0, z(Y)=-1.0. e2: single ticker
+        # -> degenerate -> z(X)=0.0. Combined: X=(1.0+0.0)/2=0.5, Y=-1.0.
+        assert result == pytest.approx({"X": 0.5, "Y": -1.0})
 
-    def test_missing_date(self):
+    def test_missing_expert_for_date_does_not_zero_out_combination(self):
+        """A whole expert missing this date must not drop the observation
+        entirely -- the experts that DID score this date still combine."""
         e1 = ExpertScores(name="a", dates=["d1"], scores_by_date={"d1": {"X": 0.5}})
         e2 = ExpertScores(name="b", dates=[], scores_by_date={})
         result = l1_equal_weight([e1, e2], "d1")
-        assert result == {}
+        assert result == pytest.approx({"X": 0.0})  # single-ticker degenerate
 
 
 # ── Top-N selection ──────────────────────────────────────────────────────────
@@ -191,6 +289,82 @@ class TestTurnover:
         assert compute_turnover([], ["A", "B"]) == 1.0
 
 
+# ── Non-overlapping block selection ─────────────────────────────────────────
+
+
+class TestSelectNonOverlappingDates:
+    def test_all_dates_far_enough_apart_are_kept(self):
+        dates = ["2025-01-01", "2025-03-15", "2025-06-01"]
+        assert select_non_overlapping_dates(dates, 60) == dates
+
+    def test_close_dates_are_dropped(self):
+        dates = ["2025-01-01", "2025-01-15", "2025-03-05", "2025-03-10"]
+        assert select_non_overlapping_dates(dates, 60) == ["2025-01-01", "2025-03-05"]
+
+    def test_empty(self):
+        assert select_non_overlapping_dates([], 60) == []
+
+    def test_single_date(self):
+        assert select_non_overlapping_dates(["2025-01-01"], 60) == ["2025-01-01"]
+
+
+# ── Complete return-coverage requirement ────────────────────────────────────
+
+
+class TestCompletePortfolioReturnCoverage:
+    def test_all_present_returns_average(self):
+        assert compute_portfolio_return(["A", "B"], {"A": 0.1, "B": 0.3}) == pytest.approx(0.2)
+
+    def test_missing_ticker_returns_none_not_zero(self):
+        """A selected ticker with no realized return must exclude the
+        date via ``None``, never silently substitute 0.0 (Codex review
+        2026-07-13, finding 5)."""
+        assert compute_portfolio_return(["A", "B"], {"A": 0.1}) is None
+
+    def test_empty_selection_is_zero(self):
+        assert compute_portfolio_return([], {"A": 0.1}) == 0.0
+
+
+class TestEvaluateStrategyCoverageAndCost:
+    def test_excludes_dates_with_incomplete_return_coverage(self):
+        scores_by_date = {"d1": {"A": 1.0, "B": 0.5}, "d2": {"A": 1.0, "B": 0.5}}
+        returns = {"d1": {"A": 0.1, "B": 0.2}, "d2": {"A": 0.1}}  # B missing on d2
+        result = evaluate_strategy(
+            "test", lambda dt: scores_by_date.get(dt, {}), ["d1", "d2"], returns, top_n=2,
+        )
+        assert result.n_dates == 1
+        assert result.n_dates_excluded_missing_returns == 1
+        assert result.dates == ["d1"]
+
+    def test_net_return_deducts_turnover_scaled_cost(self):
+        scores_by_date = {
+            "d1": {"A": 1.0, "B": 0.5},
+            "d2": {"C": 1.0, "D": 0.5},  # complete turnover from d1 -> d2
+        }
+        returns = {
+            "d1": {"A": 0.10, "B": 0.10},
+            "d2": {"C": 0.10, "D": 0.10},
+        }
+        result = evaluate_strategy(
+            "test", lambda dt: scores_by_date.get(dt, {}), ["d1", "d2"], returns,
+            top_n=2, cost_bps=100.0,
+        )
+        assert result.daily_returns == pytest.approx([0.10, 0.10])
+        # turnover is 1.0 on both dates (initial build, then full
+        # replacement) -> cost = 100bps = 0.01 deducted from each.
+        assert result.daily_net_returns == pytest.approx([0.09, 0.09])
+        assert result.mean_net_return == pytest.approx(0.09)
+
+    def test_zero_cost_leaves_net_equal_to_gross(self):
+        scores_by_date = {"d1": {"A": 1.0, "B": 0.5}}
+        returns = {"d1": {"A": 0.10, "B": 0.20}}
+        result = evaluate_strategy(
+            "test", lambda dt: scores_by_date.get(dt, {}), ["d1"], returns,
+            top_n=2, cost_bps=0.0,
+        )
+        assert result.daily_net_returns == pytest.approx(result.daily_returns)
+
+
 # ── Newey-West t-test ────────────────────────────────────────────────────────
 
 
@@ -221,7 +395,7 @@ class TestNeweyWestTTest:
         assert p_val < 0.05
 
 
-# ── Score loading ────────────────────────────────────────────────────────────
+# ── Score loading / provenance gate ──────────────────────────────────────────
 
 
 class TestScoreLoading:
@@ -230,7 +404,8 @@ class TestScoreLoading:
             "2025-06-01": {"AAPL": 0.5, "MSFT": 0.3},
             "2025-06-02": {"AAPL": 0.6, "MSFT": 0.4},
         })
-        expert = load_expert_scores("xgb", d)
+        digests = _admitted_digests({"xgb": d}, ["2025-06-01", "2025-06-02"])
+        expert = load_expert_scores("xgb", d, admitted_digests=digests)
         assert expert.name == "xgb"
         assert len(expert.dates) == 2
         assert expert.scores_by_date["2025-06-01"]["AAPL"] == 0.5
@@ -238,12 +413,49 @@ class TestScoreLoading:
     def test_skips_non_date_files(self, tmp_path):
         d = _make_score_dir(tmp_path, "xgb", {"2025-06-01": {"A": 0.5}})
         (d / "README.json").write_text("{}")
-        expert = load_expert_scores("xgb", d)
+        digests = _admitted_digests({"xgb": d}, ["2025-06-01"])
+        expert = load_expert_scores("xgb", d, admitted_digests=digests)
         assert len(expert.dates) == 1
 
     def test_missing_dir_raises(self, tmp_path):
         with pytest.raises(FileNotFoundError):
-            load_expert_scores("x", tmp_path / "nonexistent")
+            load_expert_scores("x", tmp_path / "nonexistent", admitted_digests={})
+
+
+class TestProvenanceGate:
+    """Codex review 2026-07-13, finding 1: load_expert_scores must not
+    accept arbitrary JSON while ignoring the ledger's admission/digests."""
+
+    def test_arbitrary_json_without_ledger_admission_is_rejected(self, tmp_path):
+        d = _make_score_dir(tmp_path, "xgb", {"2025-06-01": {"A": 0.5}})
+        expert = load_expert_scores("xgb", d, admitted_digests={})
+        assert expert.dates == []
+
+    def test_rejects_date_not_in_admitted_digests(self, tmp_path):
+        d = _make_score_dir(
+            tmp_path, "xgb",
+            {"2025-06-01": {"A": 0.5}, "2025-06-02": {"A": 0.6}},
+        )
+        digests = _admitted_digests({"xgb": d}, ["2025-06-01"])  # only 06-01 admitted
+        expert = load_expert_scores("xgb", d, admitted_digests=digests)
+        assert expert.dates == ["2025-06-01"]
+
+    def test_rejects_file_whose_digest_no_longer_matches_ledger(self, tmp_path):
+        """A file mutated after the ledger's digest was recorded must be
+        rejected -- provenance is content-addressed, not a filename match."""
+        d = _make_score_dir(tmp_path, "xgb", {"2025-06-01": {"A": 0.5}})
+        digests = _admitted_digests({"xgb": d}, ["2025-06-01"])
+        (d / "2025-06-01.json").write_text(json.dumps({"scores": {"A": 999.0}}))
+        expert = load_expert_scores("xgb", d, admitted_digests=digests)
+        assert expert.dates == []
+
+    def test_rejects_wrong_expert_name_key(self, tmp_path):
+        """A digest admitted under a DIFFERENT expert name must not
+        authorize this expert's file, even if the date matches."""
+        d = _make_score_dir(tmp_path, "xgb", {"2025-06-01": {"A": 0.5}})
+        digests = _admitted_digests({"patchtst": d}, ["2025-06-01"])
+        expert = load_expert_scores("xgb", d, admitted_digests=digests)
+        assert expert.dates == []
 
 
 class TestForwardReturnsLoading:
@@ -263,40 +475,87 @@ class TestRunPhaseA:
     def experts(self, tmp_path):
         xgb_dir = _make_score_dir(tmp_path, "xgb", XGB_SCORES)
         pt_dir = _make_score_dir(tmp_path, "patchtst", PATCHTST_SCORES)
+        digests = _admitted_digests({"xgb": xgb_dir, "patchtst": pt_dir}, DATES)
         return [
-            load_expert_scores("xgb", xgb_dir),
-            load_expert_scores("patchtst", pt_dir),
+            load_expert_scores("xgb", xgb_dir, admitted_digests=digests),
+            load_expert_scores("patchtst", pt_dir, admitted_digests=digests),
         ]
 
     def test_runs_without_error(self, experts):
-        result = run_phase_a(experts, FORWARD_RETURNS, top_n=5)
+        result = run_phase_a(experts, FORWARD_RETURNS, champion_name="xgb", top_n=5)
         assert isinstance(result, PhaseAResult)
         assert result.n_dates == 5
         assert result.n_experts == 2
-        assert result.verdict in ("L1_BEATS_CHAMPION", "CHAMPION_RETAINED", "INCONCLUSIVE")
+        assert result.verdict in (
+            "L1_BEATS_CHAMPION", "CHAMPION_RETAINED", "INCONCLUSIVE", "EXPLORATORY_ONLY",
+        )
 
     def test_requires_two_experts(self, experts):
         with pytest.raises(ValueError, match="at least 2"):
-            run_phase_a([experts[0]], FORWARD_RETURNS)
+            run_phase_a([experts[0]], FORWARD_RETURNS, champion_name="xgb")
+
+    def test_requires_valid_champion_name(self, experts):
+        with pytest.raises(ValueError, match="champion_name"):
+            run_phase_a(experts, FORWARD_RETURNS, champion_name="nonexistent")
 
     def test_result_serializable(self, experts):
-        result = run_phase_a(experts, FORWARD_RETURNS, top_n=5)
+        result = run_phase_a(experts, FORWARD_RETURNS, champion_name="xgb", top_n=5)
         d = result_to_dict(result)
         out = json.dumps(d, default=str)
         parsed = json.loads(out)
-        assert parsed["verdict"] in ("L1_BEATS_CHAMPION", "CHAMPION_RETAINED", "INCONCLUSIVE")
+        assert parsed["verdict"] in (
+            "L1_BEATS_CHAMPION", "CHAMPION_RETAINED", "INCONCLUSIVE", "EXPLORATORY_ONLY",
+        )
         assert "daily_returns" not in parsed["champion"]
+        assert "daily_net_returns" not in parsed["champion"]
 
-    def test_champion_is_first_expert(self, experts):
-        result = run_phase_a(experts, FORWARD_RETURNS, top_n=5)
-        assert "xgb" in result.champion.name
+    def test_champion_name_is_explicit_not_first_expert(self, tmp_path):
+        """Passing patchtst as champion (even though xgb is listed/loaded
+        first) must select patchtst -- champion identity is explicit, not
+        argument-order-dependent (Codex review 2026-07-13, finding 3)."""
+        xgb_dir = _make_score_dir(tmp_path, "xgb", XGB_SCORES)
+        pt_dir = _make_score_dir(tmp_path, "patchtst", PATCHTST_SCORES)
+        digests = _admitted_digests({"xgb": xgb_dir, "patchtst": pt_dir}, DATES)
+        experts = [
+            load_expert_scores("xgb", xgb_dir, admitted_digests=digests),
+            load_expert_scores("patchtst", pt_dir, admitted_digests=digests),
+        ]
+        result = run_phase_a(experts, FORWARD_RETURNS, champion_name="patchtst", top_n=5)
+        assert "patchtst" in result.champion.name
+        assert result.champion_name == "patchtst"
 
     def test_metrics_are_finite(self, experts):
-        result = run_phase_a(experts, FORWARD_RETURNS, top_n=5)
+        result = run_phase_a(experts, FORWARD_RETURNS, champion_name="xgb", top_n=5)
         assert math.isfinite(result.l1.mean_return)
         assert math.isfinite(result.champion.mean_return)
         assert math.isfinite(result.p_value)
         assert math.isfinite(result.t_statistic)
+
+    def test_falls_back_to_hac_when_insufficient_non_overlapping_blocks(self, experts):
+        """5 daily dates can never yield >= MIN_NON_OVERLAPPING_OBSERVATIONS
+        blocks at the default 60-day spacing -- must fall back to the HAC
+        method and report a non-promotable EXPLORATORY_ONLY verdict, never
+        L1_BEATS_CHAMPION/CHAMPION_RETAINED from an invalid overlapping-
+        return test (Codex review 2026-07-13, findings 4+6)."""
+        result = run_phase_a(experts, FORWARD_RETURNS, champion_name="xgb", top_n=5)
+        assert result.test_method == TEST_METHOD_HAC_FALLBACK
+        assert result.verdict == "EXPLORATORY_ONLY"
+
+    def test_uses_non_overlapping_blocks_when_sufficient(self, tmp_path):
+        experts, rets = _build_n_date_fixture(tmp_path, 10, seed=3)
+        result = run_phase_a(
+            experts, rets, champion_name="xgb", top_n=3, block_length_days=1,
+        )
+        assert result.test_method == TEST_METHOD_NON_OVERLAPPING
+        assert result.n_test_dates == 10
+        assert result.verdict in ("L1_BEATS_CHAMPION", "CHAMPION_RETAINED", "INCONCLUSIVE")
+
+    def test_cost_bps_is_applied_and_recorded(self, experts):
+        zero_cost = run_phase_a(experts, FORWARD_RETURNS, champion_name="xgb", top_n=5, cost_bps=0.0)
+        high_cost = run_phase_a(experts, FORWARD_RETURNS, champion_name="xgb", top_n=5, cost_bps=500.0)
+        assert zero_cost.cost_bps == 0.0
+        assert high_cost.cost_bps == 500.0
+        assert high_cost.l1.mean_net_return < zero_cost.l1.mean_net_return
 
 
 class TestVerdictLogic:

@@ -1,18 +1,26 @@
 """Phase A discovery runner for the ensemble combination experiment.
 
 Compares L1 (equal-weight combination of admitted experts) against the
-frozen champion (first-listed expert used alone) on the same score-to-
-portfolio mapping, using point-in-time scores that have passed the
-admissibility ledger.
+frozen champion (the pre-registered ``primary_live`` expert from the
+experiment manifest) on the same score-to-portfolio mapping, using
+point-in-time scores that have passed the Stage 0 admissibility ledger.
 
 This is RESEARCH-ONLY tooling. It does not touch production paths,
 place orders, or modify any live state.
 
 Design reference: doc/research/2026-07-12-ensemble-combination-experiment.md
-  - §3.1  L1 equal-weight combination
-  - §4.4  Evaluation and statistical test
-  - §4.5  Go/no-go decision tree
-  - §5.2  Phase A scope
+  - §3.1    L1 equal-weight combination
+  - §4.1bis Causal cross-sectional normalization + missing-expert fallback
+  - §4.2    Leakage controls (non-overlapping outer blocks, not a plain t-test)
+  - §4.4    Evaluation and statistical test (net-of-cost, dependence-robust)
+  - §4.5    Go/no-go decision tree
+  - §5.2    Phase A scope
+
+Every input this runner consumes must be traceable to the pre-registered
+experiment manifest (:mod:`experiment_manifest`) and the Stage 0
+admissibility ledger (:mod:`admissibility_ledger`) -- it does not accept
+arbitrary score directories or a CLI-order-determined champion (Codex
+review 2026-07-13 on model#53).
 
 Usage::
 
@@ -20,6 +28,8 @@ Usage::
         --expert xgb --score-dir /path/to/xgb/scores \\
         --expert patchtst --score-dir /path/to/patchtst/scores \\
         --returns-file /path/to/forward_returns.csv \\
+        --manifest-file /path/to/experiment_manifest.json \\
+        --ledger-file /path/to/admissibility_ledger.json \\
         --output-dir experiments/ensemble_phase0/output/phase_a \\
         --top-n 10
 """
@@ -33,12 +43,37 @@ import math
 import sys
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 from scipy import stats
+
+from experiments.ensemble_phase0.admissibility_ledger import (
+    AdmissibilityLedger,
+    admitted_score_digests,
+    load_and_verify_ledger,
+)
+from experiments.ensemble_phase0.experiment_manifest import (
+    ExperimentManifest,
+    load_and_verify_manifest,
+    resolve_champion_name,
+)
+
+#: Floor on the number of non-overlapping (block-spaced) observations
+#: required before the primary pre-registered statistical test
+#: ("non_overlapping_outer_blocks", §4.2/§4.4) is used. Below this, a
+#: paired test's variance estimate is too unstable to mean anything --
+#: this is a deliberate, documented judgment call (not a tuned production
+#: threshold), matching the "explicit, not silently assumed" discipline
+#: used elsewhere in this experiment (e.g. admissibility_ledger's
+#: decision-schedule requirement).
+MIN_NON_OVERLAPPING_OBSERVATIONS = 8
+
+#: Test-method labels persisted in :class:`PhaseAResult` for auditability.
+TEST_METHOD_NON_OVERLAPPING = "non_overlapping_outer_blocks"
+TEST_METHOD_HAC_FALLBACK = "hac_on_overlapping_returns_fallback"
 
 
 # ── Data structures ──────────────────────────────────────────────────────────
@@ -69,12 +104,16 @@ class StrategyResult:
 
     name: str
     n_dates: int = 0
+    n_dates_excluded_missing_returns: int = 0
+    dates: list[str] = field(default_factory=list)
     mean_ic: float = float("nan")
     mean_return: float = float("nan")
+    mean_net_return: float = float("nan")
     sharpe: float = float("nan")
     hit_rate: float = float("nan")
     mean_turnover: float = float("nan")
     daily_returns: list[float] = field(default_factory=list)
+    daily_net_returns: list[float] = field(default_factory=list)
     daily_ics: list[float] = field(default_factory=list)
 
 
@@ -86,13 +125,20 @@ class PhaseAResult:
     timestamp: str = ""
     champion: StrategyResult = field(default_factory=lambda: StrategyResult("champion"))
     l1: StrategyResult = field(default_factory=lambda: StrategyResult("l1"))
+    champion_name: str = ""
     n_experts: int = 0
     expert_names: list[str] = field(default_factory=list)
     n_dates: int = 0
     top_n: int = 10
+    cost_bps: float = 0.0
+    score_normalization_method: str = ""
+    test_method: str = ""
+    n_test_dates: int = 0
+    block_length_days: int = 0
     delta_ic: float = float("nan")
     delta_return: float = float("nan")
     delta_sharpe: float = float("nan")
+    delta_net_return_test: float = float("nan")
     p_value: float = float("nan")
     t_statistic: float = float("nan")
     effect_size: float = float("nan")
@@ -103,11 +149,24 @@ class PhaseAResult:
 # ── Score loading ────────────────────────────────────────────────────────────
 
 
-def load_expert_scores(name: str, score_dir: Path) -> ExpertScores:
-    """Load all date-named JSON score files from a directory.
+def load_expert_scores(
+    name: str,
+    score_dir: Path,
+    *,
+    admitted_digests: dict[tuple[str, str], str],
+) -> ExpertScores:
+    """Load date-named JSON score files admitted by the Stage 0 ledger.
 
-    Each file is expected to have a ``scores`` dict mapping ticker
-    symbols to numeric values. Files without ``scores`` are skipped.
+    A score file is only accepted if ``(name, date)`` is recorded as
+    ``admitted=True`` in the admissibility ledger AND the file's own
+    freshly-computed SHA-256 digest matches the ledger's recorded
+    ``score_artifact_digest`` for that record. Neither the ledger metadata
+    embedded in the JSON payload nor any other self-attested field is
+    trusted -- provenance comes only from the pre-verified ledger (Codex
+    review 2026-07-13, finding 1: ``load_expert_scores`` previously
+    accepted arbitrary JSON and ignored the ledger's cutoffs/digests
+    entirely). A date/ticker without a matching admitted ledger record is
+    silently excluded, never silently included.
     """
     expert = ExpertScores(name=name)
 
@@ -118,9 +177,23 @@ def load_expert_scores(name: str, score_dir: Path) -> ExpertScores:
         stem = path.stem
         if len(stem) != 10:
             continue
+
+        expected_digest = admitted_digests.get((name, stem))
+        if not expected_digest:
+            # Not admitted for this expert/date -- fail closed, not silently
+            # loaded anyway.
+            continue
+
+        raw_bytes = path.read_bytes()
+        actual_digest = f"sha256:{hashlib.sha256(raw_bytes).hexdigest()}"
+        if actual_digest != expected_digest:
+            # File on disk no longer matches what the ledger admitted --
+            # reject rather than trust a possibly-modified file.
+            continue
+
         try:
-            data = json.loads(path.read_bytes())
-        except (json.JSONDecodeError, OSError):
+            data = json.loads(raw_bytes)
+        except json.JSONDecodeError:
             continue
 
         scores = data.get("scores", {})
@@ -179,31 +252,68 @@ def _find_col(header: list[str], candidates: list[str]) -> int:
 # ── Combination methods ──────────────────────────────────────────────────────
 
 
+def cross_sectional_zscore(scores: dict[str, float]) -> dict[str, float]:
+    """Causal cross-sectional z-score of one expert's scores for one date.
+
+    Normalizes against that date's OWN cross-section only -- no lookahead
+    across dates, no information beyond what's in this date's universe.
+    Per the pre-registered manifest (model PR #48 §4.1bis):
+    ``score_normalization.method == "cross_sectional_zscore"``,
+    ``causal: True``. A degenerate (zero cross-sectional variance)
+    cross-section has no relative ranking information to normalize, so it
+    maps every ticker to 0.0 rather than dividing by ~zero.
+    """
+    if not scores:
+        return {}
+    values = np.array(list(scores.values()), dtype=float)
+    mean = float(values.mean())
+    std = float(values.std(ddof=0))
+    if std < 1e-12:
+        return {ticker: 0.0 for ticker in scores}
+    return {ticker: (val - mean) / std for ticker, val in scores.items()}
+
+
 def l1_equal_weight(
     experts: list[ExpertScores],
-    date: str,
+    date_str: str,
 ) -> dict[str, float]:
-    """Compute equal-weight average of expert scores for a date."""
+    """Equal-weight combination of causally-normalized expert scores.
+
+    Each expert's raw scores for ``date_str`` are first put on a common
+    scale via :func:`cross_sectional_zscore` -- raw scores from
+    heterogeneous model families (e.g. an XGB probability vs a PatchTST
+    regression output) are not comparable and averaging them directly says
+    nothing about relative ranking (Codex review 2026-07-13, finding 2).
+
+    A ticker missing from one expert's scores is EXCLUDED from that
+    expert's contribution and the remaining experts' normalized scores are
+    averaged -- per the pre-registered missing-expert fallback policy
+    (model PR #48 §4.1bis: "exclude that model from the combination for
+    that specific observation... rather than dropping the whole
+    observation"). A ticker is included in the combined output as long as
+    at least one expert scored it that date.
+    """
     combined: dict[str, list[float]] = defaultdict(list)
 
     for expert in experts:
-        scores = expert.scores_by_date.get(date, {})
-        for ticker, val in scores.items():
+        normalized = cross_sectional_zscore(expert.scores_by_date.get(date_str, {}))
+        for ticker, val in normalized.items():
             combined[ticker].append(val)
 
-    return {
-        ticker: sum(vals) / len(vals)
-        for ticker, vals in combined.items()
-        if len(vals) == len(experts)
-    }
+    return {ticker: sum(vals) / len(vals) for ticker, vals in combined.items()}
 
 
 def champion_scores(
     champion_expert: ExpertScores,
-    date: str,
+    date_str: str,
 ) -> dict[str, float]:
-    """Return the champion (first expert) scores for a date."""
-    return dict(champion_expert.scores_by_date.get(date, {}))
+    """Return the frozen champion's raw (un-normalized) scores for a date.
+
+    The champion is evaluated alone -- there is no cross-expert
+    combination to normalize against, so its own native score scale is
+    used directly, unchanged from today's production convention.
+    """
+    return dict(champion_expert.scores_by_date.get(date_str, {}))
 
 
 # ── Portfolio mapping ────────────────────────────────────────────────────────
@@ -243,11 +353,25 @@ def compute_ic(
 def compute_portfolio_return(
     selected: list[str],
     returns: dict[str, float],
-) -> float:
-    """Equal-weight portfolio return from selected tickers."""
+) -> float | None:
+    """Equal-weight GROSS portfolio return from selected tickers.
+
+    Returns ``None`` -- never a silently-defaulted 0.0 -- when any
+    selected ticker lacks a realized return for this date. A missing
+    return is not the same as a zero return, and silently substituting
+    0.0 changes the portfolio return in a way that differs (and can
+    differ systematically between champion and L1, since they may select
+    different tickers) depending on which names happen to be missing
+    (Codex review 2026-07-13, finding 5). The caller must exclude a date
+    with incomplete return coverage rather than evaluate it on a
+    fabricated value.
+    """
     if not selected:
         return 0.0
-    rets = [returns.get(t, 0.0) for t in selected]
+    missing = [t for t in selected if t not in returns]
+    if missing:
+        return None
+    rets = [returns[t] for t in selected]
     return sum(rets) / len(rets)
 
 
@@ -267,19 +391,56 @@ def compute_turnover(
     return changed / (2 * n) if n > 0 else 0.0
 
 
+def select_non_overlapping_dates(dates: list[str], block_length_days: int) -> list[str]:
+    """Greedily select a subsequence of ``dates`` spaced >= block_length_days
+    calendar days apart.
+
+    Per the pre-registered manifest's primary statistical-test design
+    (model PR #48 §4.2/§4.4): consecutive daily observations of a
+    ``label_horizon_days``-forward return share most of their observation
+    window with their neighbors, inducing much stronger serial dependence
+    than an ordinary HAC correction with ``max_lag ~ sqrt(n)`` accounts
+    for. Subsampling to block-spaced, non-overlapping observations removes
+    the induced overlap at the source rather than trying to model it away.
+    """
+    if not dates:
+        return []
+    selected = [dates[0]]
+    last = date.fromisoformat(dates[0])
+    for d in dates[1:]:
+        cur = date.fromisoformat(d)
+        if (cur - last).days >= block_length_days:
+            selected.append(d)
+            last = cur
+    return selected
+
+
 def evaluate_strategy(
     name: str,
     score_fn,
     dates: list[str],
     forward_returns: dict[str, dict[str, float]],
     top_n: int,
+    *,
+    cost_bps: float = 0.0,
 ) -> StrategyResult:
-    """Evaluate a strategy across all dates."""
+    """Evaluate a strategy across all dates.
+
+    ``cost_bps`` is deducted from the gross return in proportion to that
+    date's turnover (a full portfolio replacement costs ``cost_bps``, a
+    50%-changed portfolio costs half that), per the pre-registered cost
+    assumption (model PR #48 §4.4: net-of-cost is a co-primary pass
+    condition, not an optional/reported-but-unused metric -- Codex review
+    2026-07-13, finding 6).
+    """
     result = StrategyResult(name=name)
     daily_rets: list[float] = []
+    daily_net_rets: list[float] = []
     daily_ics: list[float] = []
     turnovers: list[float] = []
+    used_dates: list[str] = []
     prev_portfolio: list[str] = []
+    n_excluded = 0
 
     for dt in dates:
         scores = score_fn(dt)
@@ -289,27 +450,43 @@ def evaluate_strategy(
         if not rets:
             continue
 
-        ic = compute_ic(scores, rets)
         portfolio = top_n_selection(scores, top_n)
-        port_ret = compute_portfolio_return(portfolio, rets)
+        # Turnover reflects the actual trade that would have been made,
+        # independent of whether this date's return can be evaluated --
+        # excluding a return-incomplete date must not let the NEXT date's
+        # turnover be measured against a stale, two-dates-ago portfolio.
         turnover = compute_turnover(prev_portfolio, portfolio)
-
-        daily_rets.append(port_ret)
-        daily_ics.append(ic)
-        turnovers.append(turnover)
         prev_portfolio = portfolio
 
+        port_ret = compute_portfolio_return(portfolio, rets)
+        if port_ret is None:
+            n_excluded += 1
+            continue
+
+        ic = compute_ic(scores, rets)
+        net_ret = port_ret - turnover * (cost_bps / 10_000.0)
+
+        daily_rets.append(port_ret)
+        daily_net_rets.append(net_ret)
+        daily_ics.append(ic)
+        turnovers.append(turnover)
+        used_dates.append(dt)
+
     result.n_dates = len(daily_rets)
+    result.n_dates_excluded_missing_returns = n_excluded
+    result.dates = used_dates
     result.daily_returns = daily_rets
+    result.daily_net_returns = daily_net_rets
     result.daily_ics = daily_ics
 
     if daily_rets:
         valid_ics = [ic for ic in daily_ics if math.isfinite(ic)]
         result.mean_ic = np.mean(valid_ics) if valid_ics else float("nan")
         result.mean_return = float(np.mean(daily_rets))
-        std = float(np.std(daily_rets, ddof=1)) if len(daily_rets) > 1 else 0.0
-        result.sharpe = (result.mean_return / std) if std > 0 else float("nan")
-        result.hit_rate = sum(1 for r in daily_rets if r > 0) / len(daily_rets)
+        result.mean_net_return = float(np.mean(daily_net_rets))
+        std = float(np.std(daily_net_rets, ddof=1)) if len(daily_net_rets) > 1 else 0.0
+        result.sharpe = (result.mean_net_return / std) if std > 0 else float("nan")
+        result.hit_rate = sum(1 for r in daily_net_rets if r > 0) / len(daily_net_rets)
         result.mean_turnover = float(np.mean(turnovers)) if turnovers else 0.0
 
     return result
@@ -366,12 +543,35 @@ def newey_west_t_test(
 def run_phase_a(
     experts: list[ExpertScores],
     forward_returns: dict[str, dict[str, float]],
+    *,
+    champion_name: str,
     top_n: int = 10,
     alpha: float = 0.05,
+    cost_bps: float = 0.0,
+    block_length_days: int = 60,
 ) -> PhaseAResult:
-    """Run Phase A discovery: L1 vs champion."""
+    """Run Phase A discovery: L1 vs frozen champion.
+
+    ``champion_name`` is required with no default -- the champion must be
+    an explicit, pre-registered identity (from the experiment manifest's
+    ``primary_live`` expert, resolved by the caller), never inferred from
+    argument order (Codex review 2026-07-13, finding 3).
+
+    ``cost_bps``/``block_length_days`` should be sourced from the
+    pre-registered experiment manifest's ``cost_assumptions``/
+    ``statistical_test`` sections; the defaults here exist only for
+    standalone/unit-test convenience.
+    """
     if len(experts) < 2:
         raise ValueError("Phase A requires at least 2 experts")
+
+    champion_candidates = [e for e in experts if e.name == champion_name]
+    if len(champion_candidates) != 1:
+        raise ValueError(
+            f"champion_name={champion_name!r} must match exactly one loaded "
+            f"expert by name; loaded experts: {[e.name for e in experts]}"
+        )
+    champion_expert = champion_candidates[0]
 
     common_dates = set(experts[0].dates)
     for e in experts[1:]:
@@ -382,14 +582,13 @@ def run_phase_a(
     if not dates:
         raise ValueError("No common dates between experts and returns")
 
-    champion_expert = experts[0]
-
     champ_result = evaluate_strategy(
         name=f"champion ({champion_expert.name})",
         score_fn=lambda dt: champion_scores(champion_expert, dt),
         dates=dates,
         forward_returns=forward_returns,
         top_n=top_n,
+        cost_bps=cost_bps,
     )
 
     l1_result = evaluate_strategy(
@@ -398,38 +597,89 @@ def run_phase_a(
         dates=dates,
         forward_returns=forward_returns,
         top_n=top_n,
+        cost_bps=cost_bps,
+    )
+
+    # The go/no-go statistical test is run on a SEPARATE, block-restricted
+    # evaluation, never on the full daily (overlapping-return) series
+    # above (Codex review 2026-07-13, findings 4+6). champ_result/l1_result
+    # remain full-sample descriptive statistics for the human-readable
+    # report.
+    non_overlap_dates = select_non_overlapping_dates(dates, block_length_days)
+    if len(non_overlap_dates) >= MIN_NON_OVERLAPPING_OBSERVATIONS:
+        test_dates = non_overlap_dates
+        test_method = TEST_METHOD_NON_OVERLAPPING
+    else:
+        test_dates = dates
+        test_method = TEST_METHOD_HAC_FALLBACK
+
+    champ_test = evaluate_strategy(
+        name=champ_result.name,
+        score_fn=lambda dt: champion_scores(champion_expert, dt),
+        dates=test_dates,
+        forward_returns=forward_returns,
+        top_n=top_n,
+        cost_bps=cost_bps,
+    )
+    l1_test = evaluate_strategy(
+        name=l1_result.name,
+        score_fn=lambda dt: l1_equal_weight(experts, dt),
+        dates=test_dates,
+        forward_returns=forward_returns,
+        top_n=top_n,
+        cost_bps=cost_bps,
     )
 
     t_stat, p_val = newey_west_t_test(
-        l1_result.daily_returns,
-        champ_result.daily_returns,
+        l1_test.daily_net_returns,
+        champ_test.daily_net_returns,
     )
 
-    champ_std = float(np.std(champ_result.daily_returns, ddof=1)) if len(champ_result.daily_returns) > 1 else 1.0
-    effect = (l1_result.mean_return - champ_result.mean_return) / champ_std if champ_std > 0 else 0.0
+    champ_test_std = (
+        float(np.std(champ_test.daily_net_returns, ddof=1))
+        if len(champ_test.daily_net_returns) > 1
+        else 1.0
+    )
+    delta_net_return_test = l1_test.mean_net_return - champ_test.mean_net_return
+    effect = (delta_net_return_test / champ_test_std) if champ_test_std > 0 else 0.0
 
-    if p_val <= alpha and l1_result.mean_return > champ_result.mean_return:
+    if test_method != TEST_METHOD_NON_OVERLAPPING:
+        verdict = "EXPLORATORY_ONLY"
+        detail = (
+            f"Only {len(test_dates)} non-overlapping ({block_length_days}d-spaced) "
+            f"observations available (need >= {MIN_NON_OVERLAPPING_OBSERVATIONS} "
+            f"for the primary test); falling back to HAC on the full overlapping "
+            f"daily series is NOT the pre-registered primary test (model PR #48 "
+            f"§4.2/§4.4). This verdict is EXPLORATORY_ONLY and must not be "
+            f"promoted to L1_BEATS_CHAMPION / proceed-to-L2 (Codex review "
+            f"2026-07-13, findings 4+6)."
+        )
+    elif p_val <= alpha and delta_net_return_test > 0:
         verdict = "L1_BEATS_CHAMPION"
         detail = (
-            f"L1 outperforms champion at p={p_val:.4f} < alpha={alpha}. "
-            f"Proceed to L2 comparison."
+            f"L1 outperforms champion net-of-cost at p={p_val:.4f} < alpha={alpha} "
+            f"on {len(test_dates)} non-overlapping observations. Proceed to L2 "
+            f"comparison."
         )
-    elif l1_result.mean_return <= champ_result.mean_return:
+    elif delta_net_return_test <= 0:
         verdict = "CHAMPION_RETAINED"
         detail = (
-            f"L1 does not outperform champion (delta_return={effect:.4f}). "
-            f"Per §5.3: champion unchanged. Ensemble experiment stops."
+            f"L1 does not outperform champion net-of-cost "
+            f"(delta_net_return={delta_net_return_test:.4f}). Per §5.3: champion "
+            f"unchanged. Ensemble experiment stops."
         )
     else:
         verdict = "INCONCLUSIVE"
         detail = (
-            f"L1 has higher return but not significant at alpha={alpha} "
-            f"(p={p_val:.4f}). Champion retained per burden-of-proof rule."
+            f"L1 has higher net-of-cost return but not significant at "
+            f"alpha={alpha} (p={p_val:.4f}) on {len(test_dates)} non-overlapping "
+            f"observations. Champion retained per burden-of-proof rule."
         )
 
     run_id = hashlib.sha256(
         json.dumps({
             "experts": [e.name for e in experts],
+            "champion_name": champion_name,
             "dates": dates,
             "top_n": top_n,
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -441,13 +691,20 @@ def run_phase_a(
         timestamp=datetime.now(timezone.utc).isoformat(),
         champion=champ_result,
         l1=l1_result,
+        champion_name=champion_name,
         n_experts=len(experts),
         expert_names=[e.name for e in experts],
         n_dates=len(dates),
         top_n=top_n,
+        cost_bps=cost_bps,
+        score_normalization_method="cross_sectional_zscore",
+        test_method=test_method,
+        n_test_dates=len(test_dates),
+        block_length_days=block_length_days,
         delta_ic=l1_result.mean_ic - champ_result.mean_ic,
         delta_return=l1_result.mean_return - champ_result.mean_return,
         delta_sharpe=l1_result.sharpe - champ_result.sharpe,
+        delta_net_return_test=delta_net_return_test,
         p_value=p_val,
         t_statistic=t_stat,
         effect_size=effect,
@@ -464,6 +721,7 @@ def result_to_dict(result: PhaseAResult) -> dict[str, Any]:
     d = asdict(result)
     for key in ("champion", "l1"):
         d[key].pop("daily_returns", None)
+        d[key].pop("daily_net_returns", None)
         d[key].pop("daily_ics", None)
     return d
 
@@ -473,22 +731,25 @@ def print_verdict(result: PhaseAResult) -> None:
     print("=" * 60)
     print("Phase A Discovery Result")
     print("=" * 60)
-    print(f"Experts: {', '.join(result.expert_names)}")
-    print(f"Dates:   {result.n_dates} common evaluation dates")
-    print(f"Top-N:   {result.top_n}")
+    print(f"Experts:  {', '.join(result.expert_names)}")
+    print(f"Champion: {result.champion_name}")
+    print(f"Dates:    {result.n_dates} common evaluation dates")
+    print(f"Top-N:    {result.top_n}")
+    print(f"Cost:     {result.cost_bps} bps")
     print()
 
     print(f"{'Metric':<20} {'Champion':>12} {'L1':>12} {'Delta':>12}")
     print("-" * 60)
     print(f"{'Mean IC':<20} {result.champion.mean_ic:>12.4f} {result.l1.mean_ic:>12.4f} {result.delta_ic:>12.4f}")
     print(f"{'Mean Return':<20} {result.champion.mean_return:>12.4f} {result.l1.mean_return:>12.4f} {result.delta_return:>12.4f}")
-    print(f"{'Sharpe':<20} {result.champion.sharpe:>12.4f} {result.l1.sharpe:>12.4f} {result.delta_sharpe:>12.4f}")
+    print(f"{'Sharpe (net)':<20} {result.champion.sharpe:>12.4f} {result.l1.sharpe:>12.4f} {result.delta_sharpe:>12.4f}")
     print(f"{'Hit Rate':<20} {result.champion.hit_rate:>12.4f} {result.l1.hit_rate:>12.4f} {result.l1.hit_rate - result.champion.hit_rate:>12.4f}")
     print(f"{'Turnover':<20} {result.champion.mean_turnover:>12.4f} {result.l1.mean_turnover:>12.4f} {result.l1.mean_turnover - result.champion.mean_turnover:>12.4f}")
     print()
-    print(f"t-statistic: {result.t_statistic:.4f}")
-    print(f"p-value:     {result.p_value:.4f}")
-    print(f"Effect size: {result.effect_size:.4f}")
+    print(f"Test method:  {result.test_method} ({result.n_test_dates} observations, block={result.block_length_days}d)")
+    print(f"t-statistic:  {result.t_statistic:.4f}")
+    print(f"p-value:      {result.p_value:.4f}")
+    print(f"Effect size:  {result.effect_size:.4f}")
     print()
     print(f"VERDICT: {result.verdict}")
     print(f"  {result.verdict_detail}")
@@ -506,7 +767,7 @@ def main(argv: list[str] | None = None) -> int:
         "--expert",
         action="append",
         required=True,
-        help="Expert name (repeatable, first = champion)",
+        help="Expert name (repeatable) -- must be declared in --manifest-file",
     )
     parser.add_argument(
         "--score-dir",
@@ -518,6 +779,16 @@ def main(argv: list[str] | None = None) -> int:
         "--returns-file",
         required=True,
         help="CSV with forward returns (date, ticker, fwd_return columns)",
+    )
+    parser.add_argument(
+        "--manifest-file",
+        required=True,
+        help="Pre-registered experiment manifest JSON (experiment_manifest.py)",
+    )
+    parser.add_argument(
+        "--ledger-file",
+        required=True,
+        help="Verified Stage 0 admissibility ledger JSON (admissibility_ledger.py)",
     )
     parser.add_argument(
         "--output-dir",
@@ -546,22 +817,53 @@ def main(argv: list[str] | None = None) -> int:
         print("ERROR: Phase A requires at least 2 experts", file=sys.stderr)
         return 1
 
+    manifest = load_and_verify_manifest(Path(args.manifest_file))
+    manifest_expert_names = {e["name"] for e in manifest.experts}
+    unknown = sorted(set(args.expert) - manifest_expert_names)
+    if unknown:
+        print(
+            f"ERROR: experts {unknown} are not declared in the pre-registered "
+            f"manifest {args.manifest_file} -- refusing to compare an "
+            f"unregistered expert set",
+            file=sys.stderr,
+        )
+        return 1
+    champion_name = resolve_champion_name(manifest)
+    if champion_name not in args.expert:
+        print(
+            f"ERROR: pre-registered champion {champion_name!r} was not passed "
+            f"via --expert; got {args.expert}",
+            file=sys.stderr,
+        )
+        return 1
+
+    ledger = load_and_verify_ledger(Path(args.ledger_file))
+    admitted_digests = admitted_score_digests(ledger)
+
     experts = []
     for name, score_dir in zip(args.expert, args.score_dir):
         print(f"Loading {name} scores from {score_dir}...")
-        expert = load_expert_scores(name, Path(score_dir))
-        print(f"  {len(expert.dates)} dates loaded")
+        expert = load_expert_scores(name, Path(score_dir), admitted_digests=admitted_digests)
+        print(f"  {len(expert.dates)} ledger-admitted dates loaded")
         experts.append(expert)
 
     print(f"Loading forward returns from {args.returns_file}...")
     fwd_returns = load_forward_returns(Path(args.returns_file))
     print(f"  {len(fwd_returns)} dates loaded")
 
+    cost_bps = float(manifest.cost_assumptions.get("base_cost_bps", 0.0))
+    block_length_days = int(
+        manifest.statistical_test.get("block_length_days", 60)
+    )
+
     result = run_phase_a(
         experts=experts,
         forward_returns=fwd_returns,
+        champion_name=champion_name,
         top_n=args.top_n,
         alpha=args.alpha,
+        cost_bps=cost_bps,
+        block_length_days=block_length_days,
     )
 
     print_verdict(result)

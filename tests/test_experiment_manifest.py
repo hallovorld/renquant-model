@@ -14,6 +14,7 @@ from experiment_manifest import (
     ExperimentManifest,
     build_default_manifest,
     load_and_verify_manifest,
+    resolve_champion_name,
     write_manifest,
 )
 
@@ -74,3 +75,32 @@ class TestWriteAndLoad:
 
         with pytest.raises(ValueError, match="fingerprint mismatch"):
             load_and_verify_manifest(output_path)
+
+
+class TestResolveChampionName:
+    def test_resolves_primary_live_expert(self) -> None:
+        manifest = build_default_manifest()
+        assert resolve_champion_name(manifest) == "xgb"
+
+    def test_ignores_list_order(self) -> None:
+        """Champion resolution must key off status, never off which
+        expert happens to be listed/passed first (Codex review
+        2026-07-13 on model#53, finding 3)."""
+        manifest = build_default_manifest()
+        manifest.experts = list(reversed(manifest.experts))
+        assert manifest.experts[0]["name"] != "xgb"
+        assert resolve_champion_name(manifest) == "xgb"
+
+    def test_raises_when_no_primary_live_expert(self) -> None:
+        manifest = build_default_manifest()
+        for expert in manifest.experts:
+            expert["status"] = "shadow_demoted"
+        with pytest.raises(ValueError, match="primary_live"):
+            resolve_champion_name(manifest)
+
+    def test_raises_when_multiple_primary_live_experts(self) -> None:
+        manifest = build_default_manifest()
+        for expert in manifest.experts:
+            expert["status"] = "primary_live"
+        with pytest.raises(ValueError, match="primary_live"):
+            resolve_champion_name(manifest)
