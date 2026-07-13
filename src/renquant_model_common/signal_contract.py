@@ -140,13 +140,16 @@ def _parse_tz_aware_datetime(value: str, field_name: str) -> datetime:
 
 
 def _validate_crypto_pair_key(key: str) -> str:
-    """Validate and canonicalize a crypto trading pair key.
+    """Validate a crypto trading pair key (must already be canonical).
 
     Must be ``BASE/QUOTE`` format: exactly one ``/``, both parts non-empty,
-    uppercase alpha-only (A-Z).  Returns the canonical (uppercased) form.
+    uppercase alpha-only (A-Z).  Returns the key unchanged -- the key must
+    already be in canonical (uppercase) form.  Non-uppercase input is
+    rejected outright rather than silently normalized, so the payload bytes
+    and the digest always agree on the same canonical representation.
 
     Raises ``ValueError`` for invalid pairs (whitespace, missing slash,
-    numeric components, empty base/quote, multiple slashes).
+    numeric components, empty base/quote, multiple slashes, non-uppercase).
     """
     if not isinstance(key, str):
         raise ValueError(
@@ -167,21 +170,19 @@ def _validate_crypto_pair_key(key: str) -> str:
         raise ValueError(f"crypto pair key has empty base: {key!r}")
     if not quote:
         raise ValueError(f"crypto pair key has empty quote: {key!r}")
-    canonical_base = base.upper()
-    canonical_quote = quote.upper()
-    if not canonical_base.isalpha():
+    if not base.isalpha() or not base.isupper():
         raise ValueError(
-            f"crypto pair base must be alpha-only (A-Z), got {key!r}"
+            f"crypto pair base must be uppercase alpha-only (A-Z), got {key!r}"
         )
-    if not canonical_quote.isalpha():
+    if not quote.isalpha() or not quote.isupper():
         raise ValueError(
-            f"crypto pair quote must be alpha-only (A-Z), got {key!r}"
+            f"crypto pair quote must be uppercase alpha-only (A-Z), got {key!r}"
         )
-    return f"{canonical_base}/{canonical_quote}"
+    return key
 
 
 def _validate_v1_signals(signals: dict, *, asset_class: str) -> dict:
-    """Validate v1 signal payload schema and return normalized signals.
+    """Validate v1 signal payload schema and return validated signals.
 
     Enforces:
     - ``signals`` must be a non-empty dict.
@@ -192,12 +193,12 @@ def _validate_v1_signals(signals: dict, *, asset_class: str) -> dict:
     - Rejects: nested dicts/lists, strings, ``None``, bools, empty keys,
       whitespace-only keys.
     - When ``asset_class == "crypto"``, each key is additionally validated
-      as a canonical ``BASE/QUOTE`` pair (alpha-only, uppercased) via
-      ``_validate_crypto_pair_key``.  Keys are normalized to uppercase
-      canonical form.
+      as a canonical ``BASE/QUOTE`` pair (uppercase alpha-only, exactly one
+      slash) via ``_validate_crypto_pair_key``.  Non-uppercase keys are
+      **rejected**, not normalized -- producers must supply canonical keys.
 
-    Returns the (possibly key-normalized) signals dict for use in
-    downstream digest computation.
+    Returns the validated signals dict unchanged for use in downstream
+    digest computation.
     """
     if not isinstance(signals, dict) or not signals:
         raise ValueError(

@@ -57,18 +57,16 @@ def _make_manifest(**overrides) -> dict:
         content["signal_snapshot_digest"] = explicit_digest
     else:
         try:
-            # Normalize crypto pair keys to match what the loader does
-            # before digest computation, so the test manifest is
-            # self-consistent under the loader's digest-recompute check.
+            # Validate crypto pair keys to ensure they are already
+            # canonical (uppercase).  The loader no longer normalizes
+            # keys, so the digest is computed over the keys as-is.
             digest_signals = content["signals"]
             if (
                 content.get("asset_class") == "crypto"
                 and isinstance(digest_signals, dict)
             ):
-                digest_signals = {
-                    _validate_crypto_pair_key(k): v
-                    for k, v in digest_signals.items()
-                }
+                for k in digest_signals:
+                    _validate_crypto_pair_key(k)
             content["signal_snapshot_digest"] = compute_signal_snapshot_digest(
                 schema_version=content["schema_version"],
                 asset_class=content["asset_class"],
@@ -84,9 +82,10 @@ def _make_manifest(**overrides) -> dict:
             )
         except (TypeError, ValueError):
             # A negative-path test intentionally corrupted a content field
-            # (e.g. an unparsable timestamp) to something that can't feed
-            # the digest formula; that test fails earlier in the loader
-            # (before the digest check), so a placeholder here is harmless.
+            # (e.g. an unparsable timestamp or non-canonical key) to
+            # something that can't feed the digest formula; that test
+            # fails earlier in the loader (before the digest check), so a
+            # placeholder here is harmless.
             content["signal_snapshot_digest"] = _VALID_DIGEST
     return content
 
@@ -1160,36 +1159,71 @@ class TestCryptoPairKeyValidation:
         contract, _ = load_and_verify_signal_artifact(str(p))
         assert contract.schema_version == 1
 
-    # -- normalization --
+    # -- rejection of non-canonical (non-uppercase) keys --
 
-    def test_lowercase_pair_normalized_to_uppercase(self, tmp_path):
-        """'btc/usd' is normalized to 'BTC/USD' for digest computation."""
-        # Build two manifests: one with lowercase, one with uppercase.
-        # They should produce the same signal_snapshot_digest because the
-        # loader normalizes before computing the digest.
-        m_upper = _make_manifest(signals={"BTC/USD": 0.5})
-        p = _write_artifact(tmp_path, m_upper)
-        c_upper, _ = load_and_verify_signal_artifact(str(p))
+    def test_lowercase_pair_rejected(self, tmp_path):
+        """'btc/usd' is rejected -- producers must supply canonical
+        (uppercase) keys so payload bytes and digest always agree."""
+        manifest = _make_manifest(signals={"btc/usd": 0.5})
+        p = _write_artifact(tmp_path, manifest)
+        with pytest.raises(ValueError, match="uppercase"):
+            load_and_verify_signal_artifact(str(p))
 
-        m_lower = _make_manifest(signals={"btc/usd": 0.5})
-        p.write_text(json.dumps(m_lower), encoding="utf-8")
-        c_lower, _ = load_and_verify_signal_artifact(str(p))
-
-        assert c_upper.signal_snapshot_digest == c_lower.signal_snapshot_digest
-
-    def test_mixed_case_normalized(self, tmp_path):
-        """'Btc/Usd' is normalized to 'BTC/USD'."""
+    def test_mixed_case_pair_rejected(self, tmp_path):
+        """'Btc/Usd' is rejected -- must be fully uppercase."""
         manifest = _make_manifest(signals={"Btc/Usd": 0.5})
         p = _write_artifact(tmp_path, manifest)
-        contract, _ = load_and_verify_signal_artifact(str(p))
-        assert contract.schema_version == 1
-
-    # -- duplicate after normalization --
-
-    def test_rejects_duplicate_keys_after_normalization(self, tmp_path):
-        """'btc/usd' and 'BTC/USD' in the same manifest collide after
-        normalization -- rejected."""
-        manifest = _make_manifest(signals={"btc/usd": 0.1, "BTC/USD": 0.2})
-        p = _write_artifact(tmp_path, manifest)
-        with pytest.raises(ValueError, match="duplicate signal key"):
+        with pytest.raises(ValueError, match="uppercase"):
             load_and_verify_signal_artifact(str(p))
+
+    def test_lowercase_base_uppercase_quote_rejected(self, tmp_path):
+        """'btc/USD' is rejected -- base must also be uppercase."""
+        manifest = _make_manifest(signals={"btc/USD": 0.5})
+        p = _write_artifact(tmp_path, manifest)
+        with pytest.raises(ValueError, match="uppercase"):
+            load_and_verify_signal_artifact(str(p))
+
+    def test_uppercase_base_lowercase_quote_rejected(self, tmp_path):
+        """'BTC/usd' is rejected -- quote must also be uppercase."""
+        manifest = _make_manifest(signals={"BTC/usd": 0.5})
+        p = _write_artifact(tmp_path, manifest)
+        with pytest.raises(ValueError, match="uppercase"):
+            load_and_verify_signal_artifact(str(p))
+
+    # -- regression: payload keys match digest keys --
+
+    def test_payload_keys_equal_digest_canonical_keys(self, tmp_path):
+        """Regression: the keys in the returned payload must exactly equal
+        the canonical keys used in the digest, so that two byte-distinct
+        representations cannot share a snapshot identity."""
+        signals = {"BTC/USD": 0.42, "ETH/USD": -0.13}
+        manifest = _make_manifest(signals=signals)
+        p = _write_artifact(tmp_path, manifest)
+        contract, payload = load_and_verify_signal_artifact(str(p))
+
+        # Parse the payload and verify keys are exactly the canonical ones
+        loaded = json.loads(payload)
+        assert set(loaded["signals"].keys()) == set(signals.keys())
+        for key in signals:
+            assert key in loaded["signals"], (
+                f"canonical key {key!r} missing from payload"
+            )
+
+        # Recompute digest from the payload's own signal keys/values and
+        # verify it matches the contract's declared digest
+        recomputed = compute_signal_snapshot_digest(
+            schema_version=loaded["schema_version"],
+            asset_class=loaded["asset_class"],
+            producer_run_id=loaded["producer_run_id"],
+            universe_hash=loaded["universe_hash"],
+            model_content_digest=loaded["model_content_digest"],
+            calibrator_content_digest=loaded["calibrator_content_digest"],
+            data_watermark=datetime.fromisoformat(loaded["data_watermark"]),
+            decision_timestamp=datetime.fromisoformat(
+                loaded["decision_timestamp"]
+            ),
+            session_date=date.fromisoformat(loaded["session_date"]),
+            session_calendar=loaded["session_calendar"],
+            signals=loaded["signals"],
+        )
+        assert recomputed == contract.signal_snapshot_digest
