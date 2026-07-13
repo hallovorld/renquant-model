@@ -859,10 +859,26 @@ def run_phase_a(
     if not dates:
         raise ValueError("No common dates between experts and returns")
 
+    # Evaluation calendar: block-rebalance policy (Codex review round 9).
+    # The runner evaluates ONE policy matching the manifest's
+    # rebalance_cadence="block_rebalance": select a portfolio every
+    # block_length_days, hold between rebalances, charge turnover/cost
+    # only at rebalance points. There is no separate daily evaluation —
+    # all reported metrics (delta_ic, delta_return, delta_sharpe, and the
+    # primary test's delta_net_return_test) come from the same
+    # block-rebalance evaluation, so the estimand is unambiguous.
+    non_overlap_dates = select_non_overlapping_dates(dates, block_length_days)
+    if len(non_overlap_dates) >= min_non_overlapping_observations:
+        eval_dates = non_overlap_dates
+        test_method = TEST_METHOD_NON_OVERLAPPING
+    else:
+        eval_dates = dates
+        test_method = TEST_METHOD_HAC_FALLBACK
+
     champ_result = evaluate_strategy(
         name=f"champion ({champion_expert.name})",
         score_fn=lambda dt: champion_scores(champion_expert, dt),
-        dates=dates,
+        dates=eval_dates,
         forward_returns=forward_returns,
         top_n=top_n,
         cost_bps=cost_bps,
@@ -871,49 +887,16 @@ def run_phase_a(
     l1_result = evaluate_strategy(
         name="L1 (equal-weight)",
         score_fn=lambda dt: l1_equal_weight(experts, dt),
-        dates=dates,
+        dates=eval_dates,
         forward_returns=forward_returns,
         top_n=top_n,
         cost_bps=cost_bps,
     )
 
-    # The go/no-go statistical test is run on a SEPARATE, block-restricted
-    # evaluation, never on the full daily (overlapping-return) series
-    # above (Codex review 2026-07-13, findings 4+6). champ_result/l1_result
-    # remain full-sample descriptive statistics for the human-readable
-    # report.
-    non_overlap_dates = select_non_overlapping_dates(dates, block_length_days)
-    if len(non_overlap_dates) >= min_non_overlapping_observations:
-        test_dates = non_overlap_dates
-        test_method = TEST_METHOD_NON_OVERLAPPING
-    else:
-        test_dates = dates
-        test_method = TEST_METHOD_HAC_FALLBACK
-
-    champ_test = evaluate_strategy(
-        name=champ_result.name,
-        score_fn=lambda dt: champion_scores(champion_expert, dt),
-        dates=test_dates,
-        forward_returns=forward_returns,
-        top_n=top_n,
-        cost_bps=cost_bps,
-    )
-    l1_test = evaluate_strategy(
-        name=l1_result.name,
-        score_fn=lambda dt: l1_equal_weight(experts, dt),
-        dates=test_dates,
-        forward_returns=forward_returns,
-        top_n=top_n,
-        cost_bps=cost_bps,
-    )
-
-    # Build the TRUE date-keyed paired series -- never zip the two
-    # independently-filtered arrays above by position (Codex review
-    # 2026-07-13 round 4, findings 2+3).
     (
         paired_dates, paired_champ_rets, paired_l1_rets,
         paired_champ_ics, paired_l1_ics, n_excluded_pairing,
-    ) = pair_evaluations_by_date(champ_test, l1_test, top_n)
+    ) = pair_evaluations_by_date(champ_result, l1_result, top_n)
 
     # The non-overlapping-block floor must hold for the observations
     # ACTUALLY available to the paired test, not just the pre-pairing
@@ -1092,7 +1075,7 @@ def run_phase_a(
         cost_bps=cost_bps,
         score_normalization_method="cross_sectional_zscore",
         test_method=test_method,
-        n_test_dates=len(test_dates),
+        n_test_dates=len(eval_dates),
         n_paired_test_dates=len(paired_dates),
         n_test_dates_excluded_asymmetric_or_undersized=n_excluded_pairing,
         n_paired_ic_dates=n_paired_ic_dates,
@@ -1414,6 +1397,29 @@ def main(argv: list[str] | None = None) -> int:
             MIN_NON_OVERLAPPING_OBSERVATIONS,
         )
     )
+
+    if manifest.rebalance_cadence != "block_rebalance":
+        print(
+            f"ERROR: manifest.rebalance_cadence={manifest.rebalance_cadence!r} "
+            f"-- the primary test evaluates a block-rebalance policy (portfolio "
+            f"held for block_length_days={block_length_days} between rebalances, "
+            f"costs charged only at rebalance points); the manifest must "
+            f"declare 'block_rebalance' to match the implemented estimand",
+            file=sys.stderr,
+        )
+        return 1
+
+    manifest_one_sided = manifest.statistical_test.get("one_sided")
+    if manifest_one_sided is not True:
+        print(
+            f"ERROR: manifest.statistical_test.one_sided="
+            f"{manifest_one_sided!r} -- the implemented Newey-West paired "
+            f"t-test is one-sided (H1: mean(L1) > mean(champion)); a "
+            f"pre-registered field that disagrees with or is absent from "
+            f"the implementation is not a frozen statistical contract",
+            file=sys.stderr,
+        )
+        return 1
 
     print(f"Loading forward returns from {args.returns_file}...")
     returns_path = Path(args.returns_file)

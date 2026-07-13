@@ -176,7 +176,7 @@ def build_default_manifest(
             "description": "same score-to-portfolio mapping as frozen champion",
             "fixed_across_levels": True,
         },
-        rebalance_cadence="daily",
+        rebalance_cadence="block_rebalance",
         cost_assumptions={
             "base_cost_bps": 5,
             "adverse_cost_2x_bps": 10,

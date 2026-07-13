@@ -1366,3 +1366,129 @@ class TestCoverageGapFailsClosed:
         fixture = _build_cli_fixture(tmp_path)
         rc = par.main(_cli_argv(fixture))
         assert rc == 0
+
+
+# ── Round 9 (rebalance cadence + one_sided) ─────────────────────────────────
+
+
+class TestBlockRebalancePolicy:
+    """Codex review round 9: the primary test evaluates a block-rebalance
+    policy. Intermediate daily selections between block endpoints must not
+    affect the primary test result, proving that costs are charged only at
+    rebalance points and no intermediate trades are silently ignored."""
+
+    def test_intermediate_daily_scores_do_not_affect_primary_test(self, tmp_path):
+        n = 200
+        block_length = 20
+        tickers = [f"T{i}" for i in range(10)]
+        dates = [(date(2025, 1, 1) + timedelta(days=i)).isoformat() for i in range(n)]
+        block_dates = set(select_non_overlapping_dates(dates, block_length))
+        assert len(block_dates) >= 8
+
+        rng_shared = np.random.default_rng(42)
+        shared = {d: rng_shared.normal(0, 1, len(tickers)) for d in dates}
+
+        pt_scores = {
+            d: {t: float(shared[d][j] + 0.1 * j) for j, t in enumerate(tickers)}
+            for d in dates
+        }
+        rets = {
+            d: {t: float(shared[d][j] * 0.02) for j, t in enumerate(tickers)}
+            for d in dates
+        }
+
+        rng_a = np.random.default_rng(100)
+        rng_b = np.random.default_rng(200)
+        xgb_a: dict[str, dict[str, float]] = {}
+        xgb_b: dict[str, dict[str, float]] = {}
+        for d in dates:
+            if d in block_dates:
+                xgb_a[d] = {t: float(shared[d][j]) for j, t in enumerate(tickers)}
+                xgb_b[d] = {t: float(shared[d][j]) for j, t in enumerate(tickers)}
+            else:
+                xgb_a[d] = {t: float(rng_a.normal()) for t in tickers}
+                xgb_b[d] = {t: float(rng_b.normal()) for t in tickers}
+
+        expert_a = ExpertScores(name="xgb", dates=dates, scores_by_date=xgb_a)
+        expert_b = ExpertScores(name="xgb", dates=dates, scores_by_date=xgb_b)
+        expert_pt = ExpertScores(name="patchtst", dates=dates, scores_by_date=pt_scores)
+
+        result_a = run_phase_a(
+            [expert_a, expert_pt], rets, champion_name="xgb",
+            top_n=3, block_length_days=block_length,
+        )
+        result_b = run_phase_a(
+            [expert_b, expert_pt], rets, champion_name="xgb",
+            top_n=3, block_length_days=block_length,
+        )
+
+        assert result_a.test_method == TEST_METHOD_NON_OVERLAPPING
+        assert result_a.test_method == result_b.test_method
+        assert result_a.n_paired_test_dates == result_b.n_paired_test_dates
+        assert result_a.delta_net_return_test == pytest.approx(
+            result_b.delta_net_return_test,
+        )
+        assert result_a.t_statistic == pytest.approx(result_b.t_statistic)
+        assert result_a.p_value == pytest.approx(result_b.p_value)
+        assert result_a.verdict == result_b.verdict
+        assert result_a.n_test_dates < n
+
+
+class TestRebalanceCadenceValidation:
+    """Codex review round 9: manifest.rebalance_cadence must match the
+    implemented block-rebalance policy."""
+
+    def test_rejects_daily_cadence(self, tmp_path, capsys):
+        fixture = _build_cli_fixture(
+            tmp_path, rebalance_cadence="daily",
+        )
+        rc = par.main(_cli_argv(fixture))
+        assert rc == 1
+        assert "rebalance_cadence" in capsys.readouterr().err
+
+    def test_accepts_block_rebalance(self, tmp_path):
+        fixture = _build_cli_fixture(tmp_path)
+        rc = par.main(_cli_argv(fixture))
+        assert rc == 0
+
+
+class TestOneSidedValidation:
+    """Codex review round 9: statistical_test.one_sided must be True,
+    matching the implemented one-sided Newey-West paired t-test."""
+
+    def test_rejects_false_one_sided(self, tmp_path, capsys):
+        fixture = _build_cli_fixture(tmp_path)
+        manifest_path = Path(fixture["manifest_path"])
+        manifest_data = json.loads(manifest_path.read_text())
+        manifest_data["statistical_test"]["one_sided"] = False
+        from experiments.ensemble_phase0.experiment_manifest import ExperimentManifest
+        m = ExperimentManifest(**{
+            k: v for k, v in manifest_data.items()
+            if k in ExperimentManifest.__dataclass_fields__
+        })
+        manifest_data["manifest_fingerprint"] = m.compute_fingerprint()
+        manifest_path.write_text(json.dumps(manifest_data, indent=2))
+        rc = par.main(_cli_argv(fixture))
+        assert rc == 1
+        assert "one_sided" in capsys.readouterr().err
+
+    def test_rejects_absent_one_sided(self, tmp_path, capsys):
+        fixture = _build_cli_fixture(tmp_path)
+        manifest_path = Path(fixture["manifest_path"])
+        manifest_data = json.loads(manifest_path.read_text())
+        del manifest_data["statistical_test"]["one_sided"]
+        from experiments.ensemble_phase0.experiment_manifest import ExperimentManifest
+        m = ExperimentManifest(**{
+            k: v for k, v in manifest_data.items()
+            if k in ExperimentManifest.__dataclass_fields__
+        })
+        manifest_data["manifest_fingerprint"] = m.compute_fingerprint()
+        manifest_path.write_text(json.dumps(manifest_data, indent=2))
+        rc = par.main(_cli_argv(fixture))
+        assert rc == 1
+        assert "one_sided" in capsys.readouterr().err
+
+    def test_accepts_true_one_sided(self, tmp_path):
+        fixture = _build_cli_fixture(tmp_path)
+        rc = par.main(_cli_argv(fixture))
+        assert rc == 0
