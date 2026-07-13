@@ -332,12 +332,20 @@ def verify_returns_file_digest(
             f"{expected_digest} -- refusing to evaluate against a "
             "substituted or mutated returns file"
         )
-    if Path(expected_locator).name != returns_path.name:
+    # Codex round 7: basename-only comparison accepts a same-named file
+    # from an unrelated directory. Use canonical suffix match: the
+    # resolved returns_path must end with the locator's path components.
+    expected_parts = Path(expected_locator).parts
+    resolved_parts = returns_path.resolve().parts
+    if len(expected_parts) > len(resolved_parts) or \
+       resolved_parts[-len(expected_parts):] != expected_parts:
         raise ValueError(
-            f"returns file name {returns_path.name!r} does not match the "
-            f"ledger's declared label artifact locator {expected_locator!r} "
-            f"(basename {Path(expected_locator).name!r}) -- a byte-identical "
-            "file at an unrelated locator is not proof of provenance"
+            f"returns file path {str(returns_path.resolve())!r} does not "
+            f"match the ledger's declared label artifact locator "
+            f"{expected_locator!r} -- the resolved path must end with the "
+            f"locator's components (not just share the same basename); "
+            f"a byte-identical file at an unrelated locator is not proof "
+            f"of provenance"
         )
 
     # Round 6, item 4: validate label_observation_end consistency across

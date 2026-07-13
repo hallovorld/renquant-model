@@ -564,7 +564,9 @@ def _ledger_with_records(records: list[dict]) -> AdmissibilityLedger:
 
 class TestVerifyReturnsFileDigest:
     def test_matching_digest_passes(self, tmp_path):
-        p = tmp_path / "returns.csv"
+        labels_dir = tmp_path / "labels"
+        labels_dir.mkdir()
+        p = labels_dir / "returns.csv"
         p.write_text("date,ticker,fwd_return\n2025-06-01,AAPL,0.01\n")
         digest = f"sha256:{hashlib.sha256(p.read_bytes()).hexdigest()}"
         ledger = _ledger_with_records([
@@ -615,6 +617,20 @@ class TestVerifyReturnsFileDigest:
         with pytest.raises(ValueError, match="does not match the ledger's declared label artifact locator"):
             verify_returns_file_digest(p, ledger)
 
+    def test_same_basename_different_directory_is_rejected(self, tmp_path):
+        """Codex round 7: same filename in a different directory must NOT
+        pass — basename-only matching was the reviewed bug."""
+        wrong_dir = tmp_path / "other"
+        wrong_dir.mkdir()
+        p = wrong_dir / "returns.csv"
+        p.write_text("date,ticker,fwd_return\n2025-06-01,AAPL,0.01\n")
+        digest = f"sha256:{hashlib.sha256(p.read_bytes()).hexdigest()}"
+        ledger = _ledger_with_records([
+            {"admitted": True, "label_artifact_ref": f"{digest}@labels/returns.csv"},
+        ])
+        with pytest.raises(ValueError, match="does not match the ledger's declared label artifact locator"):
+            verify_returns_file_digest(p, ledger)
+
     def test_missing_locator_component_is_rejected(self, tmp_path):
         p = tmp_path / "returns.csv"
         p.write_text("date,ticker,fwd_return\n2025-06-01,AAPL,0.01\n")
@@ -632,7 +648,9 @@ class TestVerifyReturnsFileDigest:
         SAME try/except meant only to guard unparseable dates -- a
         parseable-but-too-short label window was silently accepted. It
         must now propagate as a real failure."""
-        p = tmp_path / "returns.csv"
+        labels_dir = tmp_path / "labels"
+        labels_dir.mkdir()
+        p = labels_dir / "returns.csv"
         p.write_text("date,ticker,fwd_return\n2025-01-10,AAPL,0.01\n")
         digest = f"sha256:{hashlib.sha256(p.read_bytes()).hexdigest()}"
         ledger = AdmissibilityLedger(
@@ -654,7 +672,9 @@ class TestVerifyReturnsFileDigest:
     def test_label_observation_end_meeting_horizon_passes(self, tmp_path):
         """Sanity check for the above: a span that DOES meet the declared
         horizon must not raise."""
-        p = tmp_path / "returns.csv"
+        labels_dir = tmp_path / "labels"
+        labels_dir.mkdir()
+        p = labels_dir / "returns.csv"
         p.write_text("date,ticker,fwd_return\n2025-03-02,AAPL,0.01\n")
         digest = f"sha256:{hashlib.sha256(p.read_bytes()).hexdigest()}"
         ledger = AdmissibilityLedger(
