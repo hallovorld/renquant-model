@@ -37,6 +37,21 @@ class ExperimentManifest:
     missing_score_rule: str = ""
     score_orientation_convention: str = ""
 
+    # Phase A scope (Codex review 2026-07-13, round 4 on model#53): the
+    # §4.1bis missing_score_rule ("exclude_and_renormalize") governs a
+    # ticker missing from ONE expert on a date all experts otherwise
+    # covered -- l1_equal_weight already implements exactly that at the
+    # per-ticker level. It does NOT mean Phase A's controlled champion-vs-L1
+    # comparison evaluates dates where a WHOLE expert has no score at all;
+    # doing so would let champion and L1 silently evaluate different
+    # calendars. Phase A's evaluation calendar is therefore explicitly
+    # restricted to dates every loaded expert scored -- this flag makes
+    # that restriction a versioned, checkable manifest fact instead of an
+    # implicit assumption the runner and this doc could silently diverge
+    # on. A future level that needs true partial-coverage combination
+    # requires its own manifest revision, not a silent behavior change here.
+    phase_a_requires_complete_expert_coverage: bool = True
+
     # §3.3: covariance/window rule (L2)
     covariance_window_rule: dict[str, Any] = field(default_factory=dict)
 
@@ -125,6 +140,7 @@ def build_default_manifest(
         },
         missing_score_rule="exclude_and_renormalize",
         score_orientation_convention="higher_is_bullish",
+        phase_a_requires_complete_expert_coverage=True,
         covariance_window_rule={
             "window_days": 60,
             "shrinkage": "toward_equal_weights",

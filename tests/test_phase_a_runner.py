@@ -7,6 +7,7 @@ import json
 import math
 from datetime import date, timedelta
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -36,6 +37,7 @@ from experiments.ensemble_phase0.phase_a_runner import (
     load_expert_scores,
     load_forward_returns,
     newey_west_t_test,
+    pair_evaluations_by_date,
     result_to_dict,
     run_phase_a,
     select_non_overlapping_dates,
@@ -374,6 +376,81 @@ class TestEvaluateStrategyCoverageAndCost:
         )
         assert result.daily_net_returns == pytest.approx(result.daily_returns)
 
+    def test_tracks_portfolio_size_per_surviving_date(self):
+        """A universe too small to fill top_n must be visible downstream
+        (Codex review 2026-07-13 round 4, finding 3) -- not silently
+        treated as a full top_n selection."""
+        scores_by_date = {"d1": {"A": 1.0, "B": 0.5, "C": 0.2}, "d2": {"A": 1.0}}
+        returns = {"d1": {"A": 0.1, "B": 0.1, "C": 0.1}, "d2": {"A": 0.1}}
+        result = evaluate_strategy(
+            "test", lambda dt: scores_by_date.get(dt, {}), ["d1", "d2"], returns, top_n=3,
+        )
+        assert result.dates == ["d1", "d2"]
+        assert result.portfolio_sizes == [3, 1]
+
+
+# ── Date-keyed paired evaluation (Codex review 2026-07-13 round 4) ─────────
+
+
+class TestPairEvaluationsByDate:
+    def _strategy_result(self, dates, rets, sizes, ics=None):
+        ics = ics if ics is not None else [0.1] * len(dates)
+        return StrategyResult(
+            name="test", dates=list(dates), daily_net_returns=list(rets),
+            portfolio_sizes=list(sizes), daily_ics=list(ics),
+        )
+
+    def test_pairs_by_date_not_position(self):
+        """Champion and L1 each independently exclude a DIFFERENT date --
+        the paired series must align by date identity, not array
+        position (Codex review 2026-07-13 round 4, finding 2)."""
+        champ = self._strategy_result(
+            dates=["d1", "d2", "d3"], rets=[0.01, 0.02, 0.03], sizes=[5, 5, 5],
+        )
+        # L1 excluded d2 (e.g. incomplete return coverage) but the
+        # remaining array is still the SAME LENGTH as champion's.
+        l1 = self._strategy_result(
+            dates=["d1", "d3", "d4"], rets=[0.05, 0.06, 0.07], sizes=[5, 5, 5],
+        )
+        dates, champ_rets, l1_rets, champ_ics, l1_ics, n_excluded = (
+            pair_evaluations_by_date(champ, l1, top_n=5)
+        )
+        # Only d1 and d3 are present on both sides.
+        assert dates == ["d1", "d3"]
+        assert champ_rets == pytest.approx([0.01, 0.03])
+        assert l1_rets == pytest.approx([0.05, 0.06])
+        # d2 (champion-only) and d4 (L1-only) are both excluded.
+        assert n_excluded == 2
+
+    def test_excludes_undersized_selection_symmetrically(self):
+        """A date where either side selected fewer than top_n names is
+        excluded from BOTH series, even if the other side's selection was
+        full (Codex review 2026-07-13 round 4, finding 3)."""
+        champ = self._strategy_result(
+            dates=["d1", "d2"], rets=[0.01, 0.02], sizes=[5, 5],
+        )
+        l1 = self._strategy_result(
+            dates=["d1", "d2"], rets=[0.05, 0.06], sizes=[5, 3],  # d2 undersized
+        )
+        dates, champ_rets, l1_rets, _, _, n_excluded = pair_evaluations_by_date(
+            champ, l1, top_n=5,
+        )
+        assert dates == ["d1"]
+        assert champ_rets == pytest.approx([0.01])
+        assert l1_rets == pytest.approx([0.05])
+        assert n_excluded == 1
+
+    def test_empty_when_no_overlap(self):
+        champ = self._strategy_result(dates=["d1"], rets=[0.01], sizes=[5])
+        l1 = self._strategy_result(dates=["d2"], rets=[0.05], sizes=[5])
+        dates, champ_rets, l1_rets, _, _, n_excluded = pair_evaluations_by_date(
+            champ, l1, top_n=5,
+        )
+        assert dates == []
+        assert champ_rets == []
+        assert l1_rets == []
+        assert n_excluded == 2
+
 
 # ── Newey-West t-test ────────────────────────────────────────────────────────
 
@@ -492,7 +569,7 @@ class TestVerifyReturnsFileDigest:
         ledger = _ledger_with_records([
             {"admitted": True, "label_artifact_ref": f"{digest}@labels/returns.csv"},
         ])
-        assert verify_returns_file_digest(p, ledger) == digest
+        assert verify_returns_file_digest(p, ledger) == (digest, "labels/returns.csv")
 
     def test_mismatched_digest_is_rejected(self, tmp_path):
         p = tmp_path / "returns.csv"
@@ -522,6 +599,29 @@ class TestVerifyReturnsFileDigest:
             {"admitted": True, "label_artifact_ref": f"sha256:{'1' * 64}@labels/b.csv"},
         ])
         with pytest.raises(ValueError, match="disagree"):
+            verify_returns_file_digest(p, ledger)
+
+    def test_mismatched_locator_is_rejected_despite_matching_digest(self, tmp_path):
+        """A byte-identical file at an unrelated locator must be rejected
+        -- digest agreement alone is not proof of provenance (Codex review
+        2026-07-13 round 4)."""
+        p = tmp_path / "returns.csv"
+        p.write_text("date,ticker,fwd_return\n2025-06-01,AAPL,0.01\n")
+        digest = f"sha256:{hashlib.sha256(p.read_bytes()).hexdigest()}"
+        ledger = _ledger_with_records([
+            {"admitted": True, "label_artifact_ref": f"{digest}@labels/unrelated_file.csv"},
+        ])
+        with pytest.raises(ValueError, match="does not match the ledger's declared label artifact locator"):
+            verify_returns_file_digest(p, ledger)
+
+    def test_missing_locator_component_is_rejected(self, tmp_path):
+        p = tmp_path / "returns.csv"
+        p.write_text("date,ticker,fwd_return\n2025-06-01,AAPL,0.01\n")
+        digest = f"sha256:{hashlib.sha256(p.read_bytes()).hexdigest()}"
+        ledger = _ledger_with_records([
+            {"admitted": True, "label_artifact_ref": digest},  # no "@locator"
+        ])
+        with pytest.raises(ValueError, match="no locator component"):
             verify_returns_file_digest(p, ledger)
 
 
@@ -633,6 +733,32 @@ class TestRunPhaseA:
         assert result.dates == sorted(result.dates)
         assert len(result.dates) == result.n_dates
 
+    def test_ic_effect_size_gate_blocks_promotion_when_too_small(self, tmp_path):
+        """A statistically significant, net-positive result must still not
+        promote to L1_BEATS_CHAMPION if the IC effect size is below the
+        pre-registered minimum (Codex review 2026-07-13 round 4, finding
+        4: minimum_effect_size_delta_ic was registered but never checked)."""
+        experts, rets = _build_n_date_fixture(tmp_path, 10, seed=3)
+        unconstrained = run_phase_a(
+            experts, rets, champion_name="xgb", top_n=3, block_length_days=1,
+            minimum_effect_size_delta_ic=0.0,
+        )
+        impossible = run_phase_a(
+            experts, rets, champion_name="xgb", top_n=3, block_length_days=1,
+            minimum_effect_size_delta_ic=1.0,  # IC deltas are bounded in [-2, 2]; ~unreachable
+        )
+        assert impossible.verdict != "L1_BEATS_CHAMPION"
+        assert impossible.minimum_effect_size_delta_ic == 1.0
+        assert math.isfinite(impossible.delta_ic_test) or math.isnan(impossible.delta_ic_test)
+        # Sanity: the gate is the only difference introduced -- the
+        # unconstrained run's own verdict is unaffected by adding this test.
+        assert unconstrained.minimum_effect_size_delta_ic == 0.0
+
+    def test_paired_test_dates_and_exclusions_are_recorded(self, experts):
+        result = run_phase_a(experts, FORWARD_RETURNS, champion_name="xgb", top_n=5)
+        assert result.n_paired_test_dates <= result.n_test_dates
+        assert result.n_test_dates_excluded_asymmetric_or_undersized >= 0
+
 
 class TestVerdictLogic:
     def test_champion_retained_when_l1_worse(self):
@@ -647,7 +773,7 @@ class TestVerdictLogic:
 # 2026-07-13, findings 2+4) ──────────────────────────────────────────────────
 
 
-def _build_cli_fixture(tmp_path: Path) -> dict[str, str]:
+def _build_cli_fixture(tmp_path: Path, **manifest_overrides: Any) -> dict[str, str]:
     """Build a full manifest+ledger+scores+returns fixture on disk, and
     return the paths needed to invoke ``main()`` against it end-to-end."""
     universe = [f"T{i}" for i in range(12)]
@@ -681,6 +807,9 @@ def _build_cli_fixture(tmp_path: Path) -> dict[str, str]:
     returns_digest = f"sha256:{hashlib.sha256(returns_path.read_bytes()).hexdigest()}"
 
     manifest = build_default_manifest()
+    for key, value in manifest_overrides.items():
+        setattr(manifest, key, value)
+    manifest.manifest_fingerprint = manifest.compute_fingerprint()
     manifest_path = write_manifest(manifest, tmp_path)
 
     records = [
@@ -745,6 +874,18 @@ class TestMainManifestLockedParameters:
         manifest_top_n = build_default_manifest().portfolio_mapping["top_n"]
         rc = par.main(_cli_argv(fixture, top_n=manifest_top_n))
         assert rc == 0
+
+    def test_rejects_manifest_declaring_partial_expert_coverage(self, tmp_path, capsys):
+        """The runner's evaluation calendar always requires complete
+        expert coverage -- a manifest that declares otherwise must be
+        rejected rather than silently evaluated as if it agreed (Codex
+        review 2026-07-13 round 4, finding 1)."""
+        fixture = _build_cli_fixture(
+            tmp_path, phase_a_requires_complete_expert_coverage=False,
+        )
+        rc = par.main(_cli_argv(fixture))
+        assert rc == 1
+        assert "phase_a_requires_complete_expert_coverage" in capsys.readouterr().err
 
 
 class TestMainExitCode:

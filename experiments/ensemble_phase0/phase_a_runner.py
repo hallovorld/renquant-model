@@ -106,6 +106,7 @@ class StrategyResult:
     n_dates: int = 0
     n_dates_excluded_missing_returns: int = 0
     dates: list[str] = field(default_factory=list)
+    portfolio_sizes: list[int] = field(default_factory=list)
     mean_ic: float = float("nan")
     mean_return: float = float("nan")
     mean_net_return: float = float("nan")
@@ -139,8 +140,13 @@ class PhaseAResult:
     manifest_fingerprint: str = ""
     ledger_fingerprint: str = ""
     returns_file_digest: str = ""
+    returns_file_locator: str = ""
     expert_score_digests: dict[str, list[str]] = field(default_factory=dict)
+    n_paired_test_dates: int = 0
+    n_test_dates_excluded_asymmetric_or_undersized: int = 0
+    minimum_effect_size_delta_ic: float = 0.0
     delta_ic: float = float("nan")
+    delta_ic_test: float = float("nan")
     delta_return: float = float("nan")
     delta_sharpe: float = float("nan")
     delta_net_return_test: float = float("nan")
@@ -254,7 +260,9 @@ def _find_col(header: list[str], candidates: list[str]) -> int:
     raise ValueError(f"No column found matching {candidates} in {header}")
 
 
-def verify_returns_file_digest(returns_path: Path, ledger: AdmissibilityLedger) -> str:
+def verify_returns_file_digest(
+    returns_path: Path, ledger: AdmissibilityLedger,
+) -> tuple[str, str]:
     """Verify the forward-returns file is the SAME artifact the ledger's
     admitted records declare as their label source -- not an arbitrary or
     substituted/mutated file (Codex review 2026-07-13, finding 1: the
@@ -262,30 +270,42 @@ def verify_returns_file_digest(returns_path: Path, ledger: AdmissibilityLedger) 
     any path with no binding to the admitted label locator/digest).
 
     Every admitted record's ``label_artifact_ref`` (``sha256:<64hex>@<locator>``)
-    must agree on the same digest -- a coherent Phase A run has exactly one
-    canonical label/returns artifact. Returns that digest on success.
+    must be IDENTICAL -- a coherent Phase A run has exactly one canonical
+    label/returns artifact, referenced consistently. Checking the digest
+    alone is not sufficient (Codex review 2026-07-13, round 4): a
+    byte-identical file at an unrelated locator would pass a digest-only
+    check but is not proof this is the file the ledger's provenance chain
+    actually points at, so the locator's basename must also match the
+    returns file actually supplied. Returns ``(digest, locator)`` on
+    success.
     """
     raw_bytes = returns_path.read_bytes()
     actual_digest = f"sha256:{hashlib.sha256(raw_bytes).hexdigest()}"
 
-    admitted_label_digests = {
-        record["label_artifact_ref"].split("@", 1)[0]
+    admitted_refs = {
+        record["label_artifact_ref"]
         for record in ledger.records
         if record.get("admitted") and record.get("label_artifact_ref")
     }
-    if not admitted_label_digests:
+    if not admitted_refs:
         raise ValueError(
             "ledger has no admitted records with a label_artifact_ref -- "
             "cannot verify the forward-returns file against any declared "
             "label artifact"
         )
-    if len(admitted_label_digests) > 1:
+    if len(admitted_refs) > 1:
         raise ValueError(
-            "ledger's admitted records disagree on label artifact digest "
-            f"({sorted(admitted_label_digests)}) -- ambiguous which is the "
-            "canonical forward-returns source"
+            "ledger's admitted records disagree on label_artifact_ref "
+            f"({sorted(admitted_refs)}) -- ambiguous which is the canonical "
+            "forward-returns source"
         )
-    expected_digest = next(iter(admitted_label_digests))
+    expected_ref = next(iter(admitted_refs))
+    if "@" not in expected_ref:
+        raise ValueError(
+            f"admitted label_artifact_ref {expected_ref!r} has no locator "
+            "component (expected sha256:<digest>@<locator>)"
+        )
+    expected_digest, expected_locator = expected_ref.split("@", 1)
     if actual_digest != expected_digest:
         raise ValueError(
             f"forward-returns file digest {actual_digest} does not match "
@@ -293,7 +313,14 @@ def verify_returns_file_digest(returns_path: Path, ledger: AdmissibilityLedger) 
             f"{expected_digest} -- refusing to evaluate against a "
             "substituted or mutated returns file"
         )
-    return actual_digest
+    if Path(expected_locator).name != returns_path.name:
+        raise ValueError(
+            f"returns file name {returns_path.name!r} does not match the "
+            f"ledger's declared label artifact locator {expected_locator!r} "
+            f"(basename {Path(expected_locator).name!r}) -- a byte-identical "
+            "file at an unrelated locator is not proof of provenance"
+        )
+    return actual_digest, expected_locator
 
 
 # ── Combination methods ──────────────────────────────────────────────────────
@@ -486,6 +513,7 @@ def evaluate_strategy(
     daily_ics: list[float] = []
     turnovers: list[float] = []
     used_dates: list[str] = []
+    portfolio_sizes: list[int] = []
     prev_portfolio: list[str] = []
     n_excluded = 0
 
@@ -518,10 +546,12 @@ def evaluate_strategy(
         daily_ics.append(ic)
         turnovers.append(turnover)
         used_dates.append(dt)
+        portfolio_sizes.append(len(portfolio))
 
     result.n_dates = len(daily_rets)
     result.n_dates_excluded_missing_returns = n_excluded
     result.dates = used_dates
+    result.portfolio_sizes = portfolio_sizes
     result.daily_returns = daily_rets
     result.daily_net_returns = daily_net_rets
     result.daily_ics = daily_ics
@@ -537,6 +567,74 @@ def evaluate_strategy(
         result.mean_turnover = float(np.mean(turnovers)) if turnovers else 0.0
 
     return result
+
+
+def pair_evaluations_by_date(
+    champ: StrategyResult,
+    l1: StrategyResult,
+    top_n: int,
+) -> tuple[list[str], list[float], list[float], list[float], list[float], int]:
+    """Build a date-keyed paired evaluation table for the statistical test.
+
+    ``evaluate_strategy`` independently excludes dates for incomplete
+    return coverage on each strategy -- champion and L1 can therefore
+    exclude DIFFERENT dates and still end up with equal-length arrays.
+    Subtracting those arrays positionally (the previous behavior) can
+    silently pair values from different calendar dates, and if the
+    lengths happen to differ it degrades to NaN without ever surfacing
+    the misalignment (Codex review 2026-07-13 round 4, finding 2).
+
+    A date is admissible for the paired test only if BOTH strategies
+    evaluated it AND both selected exactly ``top_n`` names -- an
+    under-sized selection on either side breaks the "same fixed portfolio
+    mapping" guarantee the whole comparison depends on (finding 3): a
+    9-name champion portfolio and a 10-name L1 portfolio are not
+    comparable under a claimed identical top-N mapping.
+
+    Returns ``(dates, champ_net_returns, l1_net_returns, champ_ics,
+    l1_ics, n_excluded)`` -- all list-of-N are aligned by the SAME date
+    at each index. ``n_excluded`` counts dates dropped for asymmetric
+    coverage or an under-sized selection on either side.
+    """
+    champ_by_date = {
+        d: (ret, sz, ic)
+        for d, ret, sz, ic in zip(
+            champ.dates, champ.daily_net_returns, champ.portfolio_sizes, champ.daily_ics,
+        )
+    }
+    l1_by_date = {
+        d: (ret, sz, ic)
+        for d, ret, sz, ic in zip(
+            l1.dates, l1.daily_net_returns, l1.portfolio_sizes, l1.daily_ics,
+        )
+    }
+    all_candidate_dates = sorted(set(champ_by_date) | set(l1_by_date))
+
+    dates: list[str] = []
+    champ_rets: list[float] = []
+    l1_rets: list[float] = []
+    champ_ics: list[float] = []
+    l1_ics: list[float] = []
+    n_excluded = 0
+
+    for d in all_candidate_dates:
+        c = champ_by_date.get(d)
+        l = l1_by_date.get(d)
+        if c is None or l is None:
+            n_excluded += 1
+            continue
+        c_ret, c_sz, c_ic = c
+        l_ret, l_sz, l_ic = l
+        if c_sz != top_n or l_sz != top_n:
+            n_excluded += 1
+            continue
+        dates.append(d)
+        champ_rets.append(c_ret)
+        l1_rets.append(l_ret)
+        champ_ics.append(c_ic)
+        l1_ics.append(l_ic)
+
+    return dates, champ_rets, l1_rets, champ_ics, l1_ics, n_excluded
 
 
 # ── Statistical test ─────────────────────────────────────────────────────────
@@ -596,9 +694,11 @@ def run_phase_a(
     alpha: float = 0.05,
     cost_bps: float = 0.0,
     block_length_days: int = 60,
+    minimum_effect_size_delta_ic: float = 0.0,
     manifest_fingerprint: str = "",
     ledger_fingerprint: str = "",
     returns_file_digest: str = "",
+    returns_file_locator: str = "",
     expert_score_digests: dict[str, list[str]] | None = None,
 ) -> PhaseAResult:
     """Run Phase A discovery: L1 vs frozen champion.
@@ -608,18 +708,29 @@ def run_phase_a(
     ``primary_live`` expert, resolved by the caller), never inferred from
     argument order (Codex review 2026-07-13, finding 3).
 
-    ``cost_bps``/``block_length_days`` should be sourced from the
-    pre-registered experiment manifest's ``cost_assumptions``/
-    ``statistical_test`` sections; the defaults here exist only for
-    standalone/unit-test convenience.
+    ``cost_bps``/``block_length_days``/``minimum_effect_size_delta_ic``
+    should be sourced from the pre-registered experiment manifest's
+    ``cost_assumptions``/``statistical_test`` sections; the defaults here
+    exist only for standalone/unit-test convenience.
+
+    The evaluation calendar (``dates``) requires every loaded expert to
+    have scored a date -- per the manifest's
+    ``phase_a_requires_complete_expert_coverage`` flag, Phase A's
+    controlled champion-vs-L1 comparison does not evaluate a date where a
+    whole expert is missing (that would let champion and L1 silently
+    evaluate different calendars). The §4.1bis missing-expert
+    exclude-and-renormalize policy remains fully in effect at the
+    per-ticker level within any such shared date (see
+    :func:`l1_equal_weight`) -- this restriction is about whole-expert
+    availability, a narrower and separate concern (Codex review
+    2026-07-13 round 4, finding 1).
 
     ``manifest_fingerprint``/``ledger_fingerprint``/``returns_file_digest``/
-    ``expert_score_digests`` are provenance-only -- they do not affect the
-    computation, but are persisted on the result (and folded into
-    ``run_id``) so a favorable output can be independently reproduced and
-    re-verified against the exact inputs that produced it (Codex review
-    2026-07-13, finding 3: a result with no recorded input digests cannot
-    be reproduced or audited).
+    ``returns_file_locator``/``expert_score_digests`` are provenance-only
+    -- they do not affect the computation, but are persisted on the
+    result (and folded into ``run_id``) so a favorable output can be
+    independently reproduced and re-verified against the exact inputs
+    that produced it.
     """
     if len(experts) < 2:
         raise ValueError("Phase A requires at least 2 experts")
@@ -689,50 +800,91 @@ def run_phase_a(
         cost_bps=cost_bps,
     )
 
-    t_stat, p_val = newey_west_t_test(
-        l1_test.daily_net_returns,
-        champ_test.daily_net_returns,
-    )
+    # Build the TRUE date-keyed paired series -- never zip the two
+    # independently-filtered arrays above by position (Codex review
+    # 2026-07-13 round 4, findings 2+3).
+    (
+        paired_dates, paired_champ_rets, paired_l1_rets,
+        paired_champ_ics, paired_l1_ics, n_excluded_pairing,
+    ) = pair_evaluations_by_date(champ_test, l1_test, top_n)
+
+    # The non-overlapping-block floor must hold for the observations
+    # ACTUALLY available to the paired test, not just the pre-pairing
+    # candidate count -- asymmetric coverage/undersized selections can
+    # shrink the usable set below the floor even when the initial block
+    # selection cleared it.
+    if test_method == TEST_METHOD_NON_OVERLAPPING and len(paired_dates) < MIN_NON_OVERLAPPING_OBSERVATIONS:
+        test_method = TEST_METHOD_HAC_FALLBACK
+
+    t_stat, p_val = newey_west_t_test(paired_l1_rets, paired_champ_rets)
 
     champ_test_std = (
-        float(np.std(champ_test.daily_net_returns, ddof=1))
-        if len(champ_test.daily_net_returns) > 1
-        else 1.0
+        float(np.std(paired_champ_rets, ddof=1)) if len(paired_champ_rets) > 1 else 1.0
     )
-    delta_net_return_test = l1_test.mean_net_return - champ_test.mean_net_return
-    effect = (delta_net_return_test / champ_test_std) if champ_test_std > 0 else 0.0
+    delta_net_return_test = (
+        float(np.mean(paired_l1_rets)) - float(np.mean(paired_champ_rets))
+        if paired_champ_rets and paired_l1_rets
+        else float("nan")
+    )
+    effect = (
+        (delta_net_return_test / champ_test_std)
+        if champ_test_std > 0 and math.isfinite(delta_net_return_test)
+        else 0.0
+    )
+
+    valid_champ_ics = [ic for ic in paired_champ_ics if math.isfinite(ic)]
+    valid_l1_ics = [ic for ic in paired_l1_ics if math.isfinite(ic)]
+    delta_ic_test = (
+        float(np.mean(valid_l1_ics)) - float(np.mean(valid_champ_ics))
+        if valid_champ_ics and valid_l1_ics
+        else float("nan")
+    )
 
     if test_method != TEST_METHOD_NON_OVERLAPPING:
         verdict = "EXPLORATORY_ONLY"
         detail = (
-            f"Only {len(test_dates)} non-overlapping ({block_length_days}d-spaced) "
-            f"observations available (need >= {MIN_NON_OVERLAPPING_OBSERVATIONS} "
-            f"for the primary test); falling back to HAC on the full overlapping "
-            f"daily series is NOT the pre-registered primary test (model PR #48 "
-            f"§4.2/§4.4). This verdict is EXPLORATORY_ONLY and must not be "
-            f"promoted to L1_BEATS_CHAMPION / proceed-to-L2 (Codex review "
-            f"2026-07-13, findings 4+6)."
+            f"Only {len(paired_dates)} paired non-overlapping "
+            f"({block_length_days}d-spaced) observations available (need >= "
+            f"{MIN_NON_OVERLAPPING_OBSERVATIONS} for the primary test, after "
+            f"excluding {n_excluded_pairing} date(s) for asymmetric coverage "
+            f"or an under-sized selection); falling back to HAC on the full "
+            f"overlapping daily series is NOT the pre-registered primary "
+            f"test (model PR #48 §4.2/§4.4). This verdict is EXPLORATORY_ONLY "
+            f"and must not be promoted to L1_BEATS_CHAMPION / proceed-to-L2."
         )
-    elif p_val <= alpha and delta_net_return_test > 0:
-        verdict = "L1_BEATS_CHAMPION"
-        detail = (
-            f"L1 outperforms champion net-of-cost at p={p_val:.4f} < alpha={alpha} "
-            f"on {len(test_dates)} non-overlapping observations. Proceed to L2 "
-            f"comparison."
-        )
-    elif delta_net_return_test <= 0:
+    elif not math.isfinite(delta_net_return_test) or delta_net_return_test <= 0:
         verdict = "CHAMPION_RETAINED"
         detail = (
             f"L1 does not outperform champion net-of-cost "
-            f"(delta_net_return={delta_net_return_test:.4f}). Per §5.3: champion "
+            f"(delta_net_return={delta_net_return_test:.4f}) on "
+            f"{len(paired_dates)} paired observations. Per §5.3: champion "
             f"unchanged. Ensemble experiment stops."
         )
-    else:
+    elif not (math.isfinite(p_val) and p_val <= alpha):
         verdict = "INCONCLUSIVE"
         detail = (
             f"L1 has higher net-of-cost return but not significant at "
-            f"alpha={alpha} (p={p_val:.4f}) on {len(test_dates)} non-overlapping "
-            f"observations. Champion retained per burden-of-proof rule."
+            f"alpha={alpha} (p={p_val:.4f}) on {len(paired_dates)} paired "
+            f"non-overlapping observations. Champion retained per "
+            f"burden-of-proof rule."
+        )
+    elif not math.isfinite(delta_ic_test) or delta_ic_test < minimum_effect_size_delta_ic:
+        verdict = "INCONCLUSIVE"
+        detail = (
+            f"L1 outperforms champion net-of-cost at p={p_val:.4f} < "
+            f"alpha={alpha}, but the IC effect size (delta_ic="
+            f"{delta_ic_test:.4f}) is below the pre-registered minimum "
+            f"{minimum_effect_size_delta_ic} (model PR #48 §4.4: a "
+            f"necessary but not sufficient statistical result is not "
+            f"economically meaningful on its own). Champion retained."
+        )
+    else:
+        verdict = "L1_BEATS_CHAMPION"
+        detail = (
+            f"L1 outperforms champion net-of-cost at p={p_val:.4f} < alpha={alpha} "
+            f"with IC effect size delta_ic={delta_ic_test:.4f} >= "
+            f"{minimum_effect_size_delta_ic} on {len(paired_dates)} paired "
+            f"non-overlapping observations. Proceed to L2 comparison."
         )
 
     expert_score_digests = expert_score_digests or {}
@@ -746,6 +898,7 @@ def run_phase_a(
             "manifest_fingerprint": manifest_fingerprint,
             "ledger_fingerprint": ledger_fingerprint,
             "returns_file_digest": returns_file_digest,
+            "returns_file_locator": returns_file_locator,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }).encode()
     ).hexdigest()[:16]
@@ -765,12 +918,17 @@ def run_phase_a(
         score_normalization_method="cross_sectional_zscore",
         test_method=test_method,
         n_test_dates=len(test_dates),
+        n_paired_test_dates=len(paired_dates),
+        n_test_dates_excluded_asymmetric_or_undersized=n_excluded_pairing,
         block_length_days=block_length_days,
+        minimum_effect_size_delta_ic=minimum_effect_size_delta_ic,
         manifest_fingerprint=manifest_fingerprint,
         ledger_fingerprint=ledger_fingerprint,
         returns_file_digest=returns_file_digest,
+        returns_file_locator=returns_file_locator,
         expert_score_digests=expert_score_digests,
         delta_ic=l1_result.mean_ic - champ_result.mean_ic,
+        delta_ic_test=delta_ic_test,
         delta_return=l1_result.mean_return - champ_result.mean_return,
         delta_sharpe=l1_result.sharpe - champ_result.sharpe,
         delta_net_return_test=delta_net_return_test,
@@ -815,10 +973,16 @@ def print_verdict(result: PhaseAResult) -> None:
     print(f"{'Hit Rate':<20} {result.champion.hit_rate:>12.4f} {result.l1.hit_rate:>12.4f} {result.l1.hit_rate - result.champion.hit_rate:>12.4f}")
     print(f"{'Turnover':<20} {result.champion.mean_turnover:>12.4f} {result.l1.mean_turnover:>12.4f} {result.l1.mean_turnover - result.champion.mean_turnover:>12.4f}")
     print()
-    print(f"Test method:  {result.test_method} ({result.n_test_dates} observations, block={result.block_length_days}d)")
+    print(
+        f"Test method:  {result.test_method} "
+        f"({result.n_paired_test_dates} paired observations, "
+        f"{result.n_test_dates_excluded_asymmetric_or_undersized} excluded "
+        f"asymmetric/undersized, block={result.block_length_days}d)"
+    )
     print(f"t-statistic:  {result.t_statistic:.4f}")
     print(f"p-value:      {result.p_value:.4f}")
     print(f"Effect size:  {result.effect_size:.4f}")
+    print(f"Delta IC (test): {result.delta_ic_test:.4f} (minimum required: {result.minimum_effect_size_delta_ic})")
     print()
     print(f"VERDICT: {result.verdict}")
     print(f"  {result.verdict_detail}")
@@ -950,9 +1114,21 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  {len(expert.dates)} ledger-admitted dates loaded")
         experts.append(expert)
 
+    if not manifest.phase_a_requires_complete_expert_coverage:
+        print(
+            "ERROR: manifest.phase_a_requires_complete_expert_coverage is "
+            "False, but this runner's evaluation calendar always requires "
+            "every loaded expert to have scored a date (it does not "
+            "implement partial-expert-coverage combination) -- the "
+            "manifest and runner would silently disagree about Phase A's "
+            "scope",
+            file=sys.stderr,
+        )
+        return 1
+
     print(f"Loading forward returns from {args.returns_file}...")
     returns_path = Path(args.returns_file)
-    returns_file_digest = verify_returns_file_digest(returns_path, ledger)
+    returns_file_digest, returns_file_locator = verify_returns_file_digest(returns_path, ledger)
     fwd_returns = load_forward_returns(returns_path)
     print(f"  {len(fwd_returns)} dates loaded (digest {returns_file_digest} verified against ledger)")
 
@@ -973,6 +1149,9 @@ def main(argv: list[str] | None = None) -> int:
     block_length_days = int(
         manifest.statistical_test.get("block_length_days", 60)
     )
+    minimum_effect_size_delta_ic = float(
+        manifest.statistical_test.get("minimum_effect_size_delta_ic", 0.0)
+    )
 
     result = run_phase_a(
         experts=experts,
@@ -982,9 +1161,11 @@ def main(argv: list[str] | None = None) -> int:
         alpha=alpha,
         cost_bps=cost_bps,
         block_length_days=block_length_days,
+        minimum_effect_size_delta_ic=minimum_effect_size_delta_ic,
         manifest_fingerprint=manifest.manifest_fingerprint,
         ledger_fingerprint=ledger.ledger_fingerprint,
         returns_file_digest=returns_file_digest,
+        returns_file_locator=returns_file_locator,
         expert_score_digests=expert_score_digests,
     )
 
