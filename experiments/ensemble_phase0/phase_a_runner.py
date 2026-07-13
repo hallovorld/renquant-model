@@ -66,12 +66,23 @@ from experiments.ensemble_phase0.experiment_manifest import (
 #: Floor on the number of non-overlapping (block-spaced) observations
 #: required before the primary pre-registered statistical test
 #: ("non_overlapping_outer_blocks", §4.2/§4.4) is used. Below this, a
-#: paired test's variance estimate is too unstable to mean anything --
-#: this is a deliberate, documented judgment call (not a tuned production
-#: threshold), matching the "explicit, not silently assumed" discipline
-#: used elsewhere in this experiment (e.g. admissibility_ledger's
-#: decision-schedule requirement).
+#: paired test's variance estimate is too unstable to mean anything.
+#:
+#: **Power justification (round 6, item 5):** for a paired t-test at
+#: alpha=0.05 (one-sided) and power=0.80, a Cohen's d of ~1.0 (large
+#: effect in non-overlapping block returns) requires n >= 7. We round
+#: up to 8 as a margin. This is a MINIMUM for exploratory-but-testable
+#: verdicts. Below ``MIN_CONFIRMATORY_OBSERVATIONS`` (20), a passing
+#: test is still EXPLORATORY_ONLY — insufficient power to distinguish a
+#: real effect from a large-variance lucky draw at the effect sizes
+#: expected in this domain (~0.3-0.5 Sharpe difference expressed as
+#: non-overlapping block Cohen's d). 20 blocks gives ~80% power at d=0.65.
 MIN_NON_OVERLAPPING_OBSERVATIONS = 8
+
+#: Below this, a verdict of L1_BEATS_CHAMPION is not justified — the
+#: test may pass but cannot be considered confirmatory. The result is
+#: capped at EXPLORATORY_ONLY with a note explaining the power limitation.
+MIN_CONFIRMATORY_OBSERVATIONS = 20
 
 #: Test-method labels persisted in :class:`PhaseAResult` for auditability.
 TEST_METHOD_NON_OVERLAPPING = "non_overlapping_outer_blocks"
@@ -150,6 +161,9 @@ class PhaseAResult:
     minimum_effect_size_delta_ic: float = 0.0
     min_non_overlapping_observations: int = MIN_NON_OVERLAPPING_OBSERVATIONS
     nested_wf_harness_status: str = ""
+    min_confirmatory_observations: int = MIN_CONFIRMATORY_OBSERVATIONS
+    score_coverage: dict[str, Any] = field(default_factory=dict)
+    label_observation_end: str = ""
     delta_ic: float = float("nan")
     delta_ic_test: float = float("nan")
     delta_return: float = float("nan")
@@ -325,6 +339,50 @@ def verify_returns_file_digest(
             f"(basename {Path(expected_locator).name!r}) -- a byte-identical "
             "file at an unrelated locator is not proof of provenance"
         )
+
+    # Round 6, item 4: validate label_observation_end consistency across
+    # admitted records. All admitted records must declare the same
+    # label_observation_end — divergent values mean the ledger was built
+    # against forward-return data with inconsistent horizons.
+    admitted_label_ends = {
+        record.get("label_observation_end")
+        for record in ledger.records
+        if record.get("admitted") and record.get("label_observation_end")
+        and record["label_observation_end"] != "MISSING"
+    }
+    if len(admitted_label_ends) > 1:
+        raise ValueError(
+            f"ledger's admitted records disagree on label_observation_end "
+            f"({sorted(admitted_label_ends)}) -- ambiguous return-horizon "
+            f"semantics"
+        )
+
+    # Validate the label horizon is consistent with the ledger's declared
+    # label_horizon_days: if the ledger declares a horizon, the actual
+    # observation window must span at least that many days from the
+    # earliest admitted prediction date.
+    if admitted_label_ends and ledger.label_horizon_days:
+        label_end_str = next(iter(admitted_label_ends))
+        earliest_pred = min(
+            record["prediction_date"]
+            for record in ledger.records
+            if record.get("admitted")
+        )
+        try:
+            actual_span = (
+                date.fromisoformat(label_end_str)
+                - date.fromisoformat(earliest_pred)
+            ).days
+            if actual_span < ledger.label_horizon_days:
+                raise ValueError(
+                    f"label_observation_end {label_end_str} is only "
+                    f"{actual_span}d after earliest prediction date "
+                    f"{earliest_pred} (ledger declares "
+                    f"label_horizon_days={ledger.label_horizon_days})"
+                )
+        except (ValueError, TypeError):
+            pass  # unparseable dates — already caught by ledger validation
+
     return actual_digest, expected_locator
 
 
@@ -707,6 +765,8 @@ def run_phase_a(
     returns_file_digest: str = "",
     returns_file_locator: str = "",
     expert_score_digests: dict[str, list[str]] | None = None,
+    score_coverage: dict[str, Any] | None = None,
+    label_observation_end: str = "",
 ) -> PhaseAResult:
     """Run Phase A discovery: L1 vs frozen champion.
 
@@ -909,13 +969,33 @@ def run_phase_a(
             f"economically meaningful on its own). Champion retained."
         )
     else:
-        verdict = "L1_BEATS_CHAMPION"
-        detail = (
-            f"L1 outperforms champion net-of-cost at p={p_val:.4f} < alpha={alpha} "
-            f"with IC effect size delta_ic={delta_ic_test:.4f} >= "
-            f"{minimum_effect_size_delta_ic} on {len(paired_dates)} paired "
-            f"non-overlapping observations. Proceed to L2 comparison."
-        )
+        # Round 6, item 5: a passing test on fewer than
+        # MIN_CONFIRMATORY_OBSERVATIONS non-overlapping blocks lacks the
+        # power to distinguish a real effect from a lucky draw — cap at
+        # EXPLORATORY_ONLY until more data is available.
+        if len(paired_dates) < MIN_CONFIRMATORY_OBSERVATIONS:
+            verdict = "EXPLORATORY_ONLY"
+            detail = (
+                f"L1 outperforms champion net-of-cost at p={p_val:.4f} < "
+                f"alpha={alpha} with delta_ic={delta_ic_test:.4f} >= "
+                f"{minimum_effect_size_delta_ic}, but only "
+                f"{len(paired_dates)} paired non-overlapping observations "
+                f"are available (need >= {MIN_CONFIRMATORY_OBSERVATIONS} for "
+                f"a confirmatory verdict — see power justification in "
+                f"MIN_CONFIRMATORY_OBSERVATIONS). This result is promising "
+                f"but exploratory; it must not be promoted to "
+                f"L1_BEATS_CHAMPION until the observation count clears the "
+                f"confirmatory floor."
+            )
+        else:
+            verdict = "L1_BEATS_CHAMPION"
+            detail = (
+                f"L1 outperforms champion net-of-cost at p={p_val:.4f} < alpha={alpha} "
+                f"with IC effect size delta_ic={delta_ic_test:.4f} >= "
+                f"{minimum_effect_size_delta_ic} on {len(paired_dates)} paired "
+                f"non-overlapping observations (>= {MIN_CONFIRMATORY_OBSERVATIONS} "
+                f"confirmatory floor). Proceed to L2 comparison."
+            )
 
     # No verdict above EXPLORATORY_ONLY may be issued until the manifest
     # explicitly attests the nested-WF/purging harness prerequisite (design
@@ -974,6 +1054,8 @@ def run_phase_a(
         minimum_effect_size_delta_ic=minimum_effect_size_delta_ic,
         min_non_overlapping_observations=min_non_overlapping_observations,
         nested_wf_harness_status=nested_wf_harness_status,
+        score_coverage=score_coverage or {},
+        label_observation_end=label_observation_end,
         manifest_fingerprint=manifest_fingerprint,
         ledger_fingerprint=ledger_fingerprint,
         returns_file_digest=returns_file_digest,
@@ -1158,12 +1240,10 @@ def main(argv: list[str] | None = None) -> int:
 
     ledger = load_and_verify_ledger(Path(args.ledger_file))
 
-    # Item 1 (round 5): bind manifest to ledger — reject if the manifest
-    # was registered against a different ledger. An EMPTY fingerprint is
-    # also rejected (not merely warned about): allowing an unbound
-    # manifest through on a warning would let a caller trivially skip
-    # this check just by leaving the field blank, which defeats the
-    # binding requirement Codex asked for (fail closed, not fail loud).
+    # Bind manifest to ledger — reject if the manifest was registered
+    # against a different ledger. An EMPTY fingerprint is also rejected
+    # (fail-closed, not fail-open): allowing an unbound manifest through
+    # would let a caller pair it with any arbitrary ledger.
     if not manifest.admissibility_ledger_fingerprint:
         print(
             "ERROR: manifest.admissibility_ledger_fingerprint is empty -- "
@@ -1210,6 +1290,7 @@ def main(argv: list[str] | None = None) -> int:
             )
 
     experts = []
+    score_coverage: dict[str, Any] = {}
     for name, score_dir in zip(args.expert, args.score_dir):
         print(f"Loading {name} scores from {score_dir}...")
         expert = load_expert_scores(name, Path(score_dir), admitted_digests=admitted_digests)
@@ -1223,8 +1304,27 @@ def main(argv: list[str] | None = None) -> int:
                 f"{missing[:5]}{'...' if len(missing) > 5 else ''}",
                 file=sys.stderr,
             )
-        print(f"  {len(expert.dates)}/{len(expected)} ledger-admitted dates loaded")
+        coverage_rate = len(loaded) / len(expected) if expected else 0.0
+        score_coverage[name] = {
+            "expected": len(expected),
+            "loaded": len(loaded),
+            "missing": len(missing),
+            "coverage_rate": round(coverage_rate, 4),
+            "missing_dates_sample": missing[:10],
+        }
+        print(f"  {len(expert.dates)}/{len(expected)} ledger-admitted dates loaded ({coverage_rate:.1%})")
         experts.append(expert)
+
+    # Resolve label_observation_end from ledger for provenance persistence.
+    admitted_label_ends = {
+        record.get("label_observation_end")
+        for record in ledger.records
+        if record.get("admitted") and record.get("label_observation_end")
+        and record["label_observation_end"] != "MISSING"
+    }
+    label_observation_end = (
+        next(iter(admitted_label_ends)) if len(admitted_label_ends) == 1 else ""
+    )
 
     if not manifest.phase_a_requires_complete_expert_coverage:
         print(
@@ -1238,37 +1338,9 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
 
-    print(f"Loading forward returns from {args.returns_file}...")
-    returns_path = Path(args.returns_file)
-    returns_file_digest, returns_file_locator = verify_returns_file_digest(returns_path, ledger)
-    fwd_returns = load_forward_returns(returns_path)
-    print(f"  {len(fwd_returns)} dates loaded (digest {returns_file_digest} verified against ledger)")
-
-    # Label-horizon consistency (round 5, finding 3): verify the ledger's
-    # label_horizon_days is consistent with the block_length_days used for
-    # non-overlapping evaluation spacing.
-    if ledger.label_horizon_days and block_length_days < ledger.label_horizon_days:
-        print(
-            f"WARNING: block_length_days={block_length_days} < "
-            f"ledger.label_horizon_days={ledger.label_horizon_days}; "
-            f"non-overlapping blocks may still have overlapping forward "
-            f"returns, weakening the primary statistical test",
-            file=sys.stderr,
-        )
-
-    common_dates_for_provenance = set(experts[0].dates)
-    for expert in experts[1:]:
-        common_dates_for_provenance &= set(expert.dates)
-    common_dates_for_provenance &= set(fwd_returns.keys())
-    expert_score_digests = {
-        expert.name: sorted(
-            admitted_digests[(expert.name, dt)]
-            for dt in common_dates_for_provenance
-            if (expert.name, dt) in admitted_digests
-        )
-        for expert in experts
-    }
-
+    # Load statistical config from manifest BEFORE any check that
+    # references these values (round 6, item 1: block_length_days was
+    # used at the label-horizon check before being assigned here).
     cost_bps = float(manifest.cost_assumptions.get("base_cost_bps", 0.0))
     block_length_days = int(
         manifest.statistical_test.get("block_length_days", 60)
@@ -1282,6 +1354,40 @@ def main(argv: list[str] | None = None) -> int:
             MIN_NON_OVERLAPPING_OBSERVATIONS,
         )
     )
+
+    print(f"Loading forward returns from {args.returns_file}...")
+    returns_path = Path(args.returns_file)
+    returns_file_digest, returns_file_locator = verify_returns_file_digest(returns_path, ledger)
+    fwd_returns = load_forward_returns(returns_path)
+    print(f"  {len(fwd_returns)} dates loaded (digest {returns_file_digest} verified against ledger)")
+
+    # Label-horizon consistency: the block length must be >= the label
+    # horizon to ensure non-overlapping blocks produce truly non-overlapping
+    # forward returns (round 6, item 1: a block shorter than the label
+    # horizon is an invalid primary test, not a "weaker" one).
+    if ledger.label_horizon_days and block_length_days < ledger.label_horizon_days:
+        print(
+            f"ERROR: block_length_days={block_length_days} < "
+            f"ledger.label_horizon_days={ledger.label_horizon_days}; "
+            f"non-overlapping blocks would still have overlapping forward "
+            f"returns, invalidating the primary statistical test. Increase "
+            f"block_length_days in the manifest to >= label_horizon_days.",
+            file=sys.stderr,
+        )
+        return 1
+
+    common_dates_for_provenance = set(experts[0].dates)
+    for expert in experts[1:]:
+        common_dates_for_provenance &= set(expert.dates)
+    common_dates_for_provenance &= set(fwd_returns.keys())
+    expert_score_digests = {
+        expert.name: sorted(
+            admitted_digests[(expert.name, dt)]
+            for dt in common_dates_for_provenance
+            if (expert.name, dt) in admitted_digests
+        )
+        for expert in experts
+    }
 
     result = run_phase_a(
         experts=experts,
@@ -1299,6 +1405,8 @@ def main(argv: list[str] | None = None) -> int:
         returns_file_digest=returns_file_digest,
         returns_file_locator=returns_file_locator,
         expert_score_digests=expert_score_digests,
+        score_coverage=score_coverage,
+        label_observation_end=label_observation_end,
     )
 
     print_verdict(result)

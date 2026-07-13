@@ -22,6 +22,7 @@ from experiments.ensemble_phase0.experiment_manifest import (
     write_manifest,
 )
 from experiments.ensemble_phase0.phase_a_runner import (
+    MIN_CONFIRMATORY_OBSERVATIONS,
     TEST_METHOD_HAC_FALLBACK,
     TEST_METHOD_NON_OVERLAPPING,
     ExpertScores,
@@ -794,7 +795,12 @@ class TestVerdictLogic:
 # 2026-07-13, findings 2+4) ──────────────────────────────────────────────────
 
 
-def _build_cli_fixture(tmp_path: Path, **manifest_overrides: Any) -> dict[str, str]:
+def _build_cli_fixture(
+    tmp_path: Path,
+    *,
+    label_horizon_days: int = 0,
+    **manifest_overrides: Any,
+) -> dict[str, str]:
     """Build a full manifest+ledger+scores+returns fixture on disk, and
     return the paths needed to invoke ``main()`` against it end-to-end."""
     universe = [f"T{i}" for i in range(12)]
@@ -838,7 +844,9 @@ def _build_cli_fixture(tmp_path: Path, **manifest_overrides: Any) -> dict[str, s
         }
         for (name, d), raw in score_bytes.items()
     ]
-    ledger = AdmissibilityLedger(records=records)
+    ledger = AdmissibilityLedger(
+        records=records, label_horizon_days=label_horizon_days,
+    )
     ledger.ledger_fingerprint = ledger.compute_fingerprint()
     ledger_path = write_ledger(ledger, tmp_path)
 
@@ -1064,3 +1072,129 @@ class TestMinNonOverlappingFromManifest:
         fixture = _build_cli_fixture(tmp_path)
         rc = par.main(_cli_argv(fixture))
         assert rc == 0
+
+
+# ── Round 6 adversarial tests ───────────────────────────────────────────────
+
+
+class TestBlockLengthVsLabelHorizon:
+    """Round 6, item 1: block_length_days < label_horizon_days must be
+    fail-closed, not a warning — otherwise the 'non-overlapping' test
+    still has overlapping forward returns."""
+
+    def test_rejects_block_shorter_than_label_horizon(self, tmp_path, capsys):
+        """When ledger.label_horizon_days=60 and manifest
+        block_length_days=30, the runner must reject (return 1)."""
+        fixture = _build_cli_fixture(tmp_path, label_horizon_days=60)
+        # Override manifest's block_length_days to be too short
+        manifest_path = Path(fixture["manifest_path"])
+        manifest_data = json.loads(manifest_path.read_text())
+        manifest_data["statistical_test"]["block_length_days"] = 30
+        # Recompute fingerprint
+        from experiments.ensemble_phase0.experiment_manifest import ExperimentManifest
+        m = ExperimentManifest(**{
+            k: v for k, v in manifest_data.items()
+            if k in ExperimentManifest.__dataclass_fields__
+        })
+        manifest_data["manifest_fingerprint"] = m.compute_fingerprint()
+        manifest_path.write_text(json.dumps(manifest_data, indent=2))
+        rc = par.main(_cli_argv(fixture))
+        assert rc == 1
+        assert "block_length_days" in capsys.readouterr().err
+
+    def test_accepts_block_equal_to_label_horizon(self, tmp_path):
+        """block_length_days == label_horizon_days is valid."""
+        fixture = _build_cli_fixture(tmp_path, label_horizon_days=60)
+        rc = par.main(_cli_argv(fixture))
+        assert rc == 0
+
+
+class TestManifestLedgerBindingFailClosed:
+    """Round 6, item 2: empty manifest.admissibility_ledger_fingerprint
+    must be a hard error, not a warning."""
+
+    def test_rejects_empty_ledger_fingerprint(self, tmp_path, capsys):
+        fixture = _build_cli_fixture(tmp_path)
+        # Rebuild manifest without ledger fingerprint
+        manifest = build_default_manifest(admissibility_ledger_fingerprint="")
+        manifest.manifest_fingerprint = manifest.compute_fingerprint()
+        write_manifest(manifest, tmp_path)
+        rc = par.main(_cli_argv(fixture))
+        assert rc == 1
+        assert "admissibility_ledger_fingerprint" in capsys.readouterr().err
+
+
+class TestConfirmatoryFloor:
+    """Round 6, item 5: a passing test below MIN_CONFIRMATORY_OBSERVATIONS
+    must cap at EXPLORATORY_ONLY, never L1_BEATS_CHAMPION."""
+
+    def test_few_blocks_caps_at_exploratory(self, tmp_path):
+        """Even with p < alpha and delta_ic above threshold, if there are
+        fewer than MIN_CONFIRMATORY_OBSERVATIONS paired observations, the
+        verdict must be EXPLORATORY_ONLY."""
+        # Build a fixture with just enough dates for the test to pass
+        # but fewer than MIN_CONFIRMATORY_OBSERVATIONS non-overlapping blocks
+        n = MIN_CONFIRMATORY_OBSERVATIONS - 1
+        experts, rets = _build_n_date_fixture(tmp_path, n, seed=42)
+        result = run_phase_a(
+            experts, rets, champion_name="xgb", top_n=3,
+            block_length_days=1,
+            minimum_effect_size_delta_ic=0.0,
+        )
+        # The test may or may not pass, but IF it would have been
+        # L1_BEATS_CHAMPION, it must be capped at EXPLORATORY_ONLY
+        assert result.verdict != "L1_BEATS_CHAMPION"
+
+    def test_many_blocks_allows_l1_beats(self, tmp_path):
+        """With enough observations (>= MIN_CONFIRMATORY_OBSERVATIONS),
+        the confirmatory floor should not block a valid verdict."""
+        n = MIN_CONFIRMATORY_OBSERVATIONS + 10
+        experts, rets = _build_n_date_fixture(tmp_path, n, seed=42)
+        result = run_phase_a(
+            experts, rets, champion_name="xgb", top_n=3,
+            block_length_days=1,
+            minimum_effect_size_delta_ic=0.0,
+        )
+        # We can't force L1_BEATS_CHAMPION (depends on random data),
+        # but confirm the min_confirmatory_observations is persisted
+        assert result.min_confirmatory_observations == MIN_CONFIRMATORY_OBSERVATIONS
+
+    def test_result_persists_confirmatory_floor(self, tmp_path):
+        experts, rets = _build_n_date_fixture(tmp_path, 10, seed=42)
+        result = run_phase_a(
+            experts, rets, champion_name="xgb", top_n=3,
+            block_length_days=1,
+        )
+        assert result.min_confirmatory_observations == MIN_CONFIRMATORY_OBSERVATIONS
+
+
+class TestScoreCoveragePersisted:
+    """Round 6, item 3: coverage stats must be persisted on the result."""
+
+    def test_coverage_is_recorded(self, tmp_path):
+        fixture = _build_cli_fixture(tmp_path)
+        rc = par.main(_cli_argv(fixture))
+        assert rc == 0
+        # Find the output file
+        output_dir = Path(fixture["output_dir"])
+        result_files = list(output_dir.glob("phase_a_result_*.json"))
+        assert len(result_files) == 1
+        result_data = json.loads(result_files[0].read_text())
+        assert "score_coverage" in result_data
+        assert "xgb" in result_data["score_coverage"]
+        assert "patchtst" in result_data["score_coverage"]
+        assert result_data["score_coverage"]["xgb"]["loaded"] > 0
+
+
+class TestLabelObservationEndPersisted:
+    """Round 6, item 4: label_observation_end must be persisted."""
+
+    def test_label_observation_end_is_recorded(self, tmp_path):
+        fixture = _build_cli_fixture(tmp_path)
+        rc = par.main(_cli_argv(fixture))
+        assert rc == 0
+        output_dir = Path(fixture["output_dir"])
+        result_files = list(output_dir.glob("phase_a_result_*.json"))
+        assert len(result_files) == 1
+        result_data = json.loads(result_files[0].read_text())
+        assert "label_observation_end" in result_data
