@@ -166,6 +166,12 @@ class PhaseAResult:
     min_non_overlapping_observations: int = MIN_NON_OVERLAPPING_OBSERVATIONS
     nested_wf_harness_status: str = ""
     min_confirmatory_observations: int = MIN_CONFIRMATORY_OBSERVATIONS
+    session_calendar_digest: str = ""
+    session_calendar_verified: bool = False
+    selected_block_indices: list[int] = field(default_factory=list)
+    experiment_version: str = ""
+    champion_policy_artifact_digest: str = ""
+    embargo_justification: str = ""
     score_coverage: dict[str, Any] = field(default_factory=dict)
     label_observation_end: str = ""
     delta_ic: float = float("nan")
@@ -554,35 +560,60 @@ def compute_turnover(
 
 
 def select_non_overlapping_dates(
-    dates: list[str], min_spacing: int, *, embargo: int = 0,
-) -> list[str]:
+    dates: list[str],
+    min_spacing: int,
+    *,
+    embargo: int = 0,
+    session_calendar: list[str] | None = None,
+) -> tuple[list[str], list[int]]:
     """Greedily select a subsequence of ``dates`` spaced >= ``min_spacing +
-    embargo`` positions apart in the input list.
+    embargo`` positions apart.
 
-    Spacing is measured in **input-list index positions**, not calendar
-    days. When the input is a list of trading-session dates (the equity
-    convention), index distance IS session distance, so
-    ``min_spacing=60`` correctly means "60 sessions" regardless of
-    weekends/holidays that inflate calendar-day distance. Codex review
-    round 10 (2026-07-13T23:35:43Z): the prior implementation compared
-    ISO calendar-day differences, which for equities meant 60 calendar
-    days ≈ 42 sessions — less than the 60-session label horizon, so
-    "non-overlapping" blocks still had overlapping forward-return windows.
+    When ``session_calendar`` is provided (the frozen, manifest-bound
+    list of ALL expected trading sessions), spacing is measured in
+    **calendar-index positions** -- each date's position is looked up in
+    the full calendar, so gaps from missing sessions are preserved as
+    index distance rather than compressed away (Codex review round 11,
+    2026-07-14T02:02:08Z, finding 1). Without a calendar, spacing falls
+    back to input-list index positions (round 10 behavior, suitable only
+    for unit tests where the input IS the complete calendar).
+
+    Returns ``(selected_dates, selected_calendar_indices)`` -- the
+    calendar indices are persisted on the result for auditability.
 
     ``embargo`` adds extra positions beyond ``min_spacing`` to skip,
     ensuring a buffer between the end of one block's label horizon and the
     start of the next evaluation point (§4.1 embargo requirement).
     """
     if not dates:
-        return []
+        return [], []
     total_gap = min_spacing + embargo
+
+    if session_calendar is not None:
+        cal_index = {d: i for i, d in enumerate(session_calendar)}
+        indexed = [(cal_index[d], d) for d in dates if d in cal_index]
+        if not indexed:
+            return [], []
+        indexed.sort()
+        selected = [indexed[0][1]]
+        selected_indices = [indexed[0][0]]
+        last_cal_idx = indexed[0][0]
+        for cal_idx, d in indexed[1:]:
+            if cal_idx - last_cal_idx >= total_gap:
+                selected.append(d)
+                selected_indices.append(cal_idx)
+                last_cal_idx = cal_idx
+        return selected, selected_indices
+
     selected = [dates[0]]
+    selected_indices = [0]
     last_idx = 0
     for i, d in enumerate(dates[1:], start=1):
         if i - last_idx >= total_gap:
             selected.append(d)
+            selected_indices.append(i)
             last_idx = i
-    return selected
+    return selected, selected_indices
 
 
 def evaluate_strategy(
@@ -795,6 +826,11 @@ def run_phase_a(
     minimum_effect_size_delta_ic: float = 0.0,
     min_non_overlapping_observations: int = MIN_NON_OVERLAPPING_OBSERVATIONS,
     nested_wf_harness_status: str = NESTED_WF_HARNESS_NOT_BUILT,
+    session_calendar: list[str] | None = None,
+    session_calendar_digest: str = "",
+    experiment_version: str = "",
+    champion_policy_artifact_digest: str = "",
+    embargo_justification: str = "",
     manifest_fingerprint: str = "",
     ledger_fingerprint: str = "",
     returns_file_digest: str = "",
@@ -881,8 +917,9 @@ def run_phase_a(
     # all reported metrics (delta_ic, delta_return, delta_sharpe, and the
     # primary test's delta_net_return_test) come from the same
     # block-rebalance evaluation, so the estimand is unambiguous.
-    non_overlap_dates = select_non_overlapping_dates(
+    non_overlap_dates, selected_block_indices = select_non_overlapping_dates(
         dates, block_length_days, embargo=embargo_sessions,
+        session_calendar=session_calendar,
     )
     if len(non_overlap_dates) >= min_non_overlapping_observations:
         eval_dates = non_overlap_dates
@@ -1114,6 +1151,12 @@ def run_phase_a(
         minimum_effect_size_delta_ic=minimum_effect_size_delta_ic,
         min_non_overlapping_observations=min_non_overlapping_observations,
         nested_wf_harness_status=nested_wf_harness_status,
+        session_calendar_digest=session_calendar_digest,
+        session_calendar_verified=session_calendar is not None,
+        selected_block_indices=selected_block_indices,
+        experiment_version=experiment_version,
+        champion_policy_artifact_digest=champion_policy_artifact_digest,
+        embargo_justification=embargo_justification,
         score_coverage=score_coverage or {},
         label_observation_end=label_observation_end,
         manifest_fingerprint=manifest_fingerprint,
@@ -1242,6 +1285,17 @@ def main(argv: list[str] | None = None) -> int:
             "Significance level for the paired test. Sourced from the "
             "verified manifest's statistical_test.alpha by default; if "
             "supplied, must equal the manifest value."
+        ),
+    )
+    parser.add_argument(
+        "--session-calendar",
+        default=None,
+        help=(
+            "JSON file listing every expected trading session (a JSON "
+            "array of ISO date strings). The calendar's SHA-256 digest "
+            "must match manifest.session_calendar_digest. Spacing between "
+            "non-overlapping blocks is measured against this calendar, not "
+            "the (potentially compressed) intersection of loaded data."
         ),
     )
     args = parser.parse_args(argv)
@@ -1431,7 +1485,57 @@ def main(argv: list[str] | None = None) -> int:
     embargo_sessions = int(
         manifest.statistical_test.get("embargo_sessions", 0)
     )
+    if embargo_sessions <= 0:
+        print(
+            f"ERROR: manifest.statistical_test.embargo_sessions="
+            f"{embargo_sessions} -- the design (§4.1/§4.2) requires blocks "
+            f"at least label_horizon PLUS embargo; a zero or absent embargo "
+            f"does not implement 'plus embargo' and is rejected. Set a "
+            f"positive embargo tied to the training/label contract.",
+            file=sys.stderr,
+        )
+        return 1
     champion_production_policy = manifest.champion_production_policy or "daily"
+
+    if not manifest.experiment_version:
+        print(
+            "ERROR: manifest.experiment_version is empty -- the "
+            "block-rebalance evaluation is a distinct research arm (not a "
+            "repair to the daily champion comparison) and requires a named, "
+            "versioned experiment design",
+            file=sys.stderr,
+        )
+        return 1
+
+    # Session calendar: load, digest-verify, and pass to the runner for
+    # calendar-indexed spacing (Codex review round 11, finding 1).
+    session_calendar: list[str] | None = None
+    session_calendar_digest = manifest.session_calendar_digest
+    if args.session_calendar:
+        cal_path = Path(args.session_calendar)
+        cal_bytes = cal_path.read_bytes()
+        actual_cal_digest = f"sha256:{hashlib.sha256(cal_bytes).hexdigest()}"
+        session_calendar = json.loads(cal_bytes)
+        if not isinstance(session_calendar, list) or not all(
+            isinstance(d, str) for d in session_calendar
+        ):
+            print(
+                "ERROR: --session-calendar must be a JSON array of ISO date "
+                "strings",
+                file=sys.stderr,
+            )
+            return 1
+        if session_calendar_digest and actual_cal_digest != session_calendar_digest:
+            print(
+                f"ERROR: session calendar digest {actual_cal_digest} does not "
+                f"match manifest.session_calendar_digest "
+                f"{session_calendar_digest}",
+                file=sys.stderr,
+            )
+            return 1
+        if not session_calendar_digest:
+            session_calendar_digest = actual_cal_digest
+        print(f"  Session calendar: {len(session_calendar)} sessions (digest {session_calendar_digest})")
 
     if manifest.rebalance_cadence != "block_rebalance":
         print(
@@ -1506,6 +1610,11 @@ def main(argv: list[str] | None = None) -> int:
         minimum_effect_size_delta_ic=minimum_effect_size_delta_ic,
         min_non_overlapping_observations=min_non_overlapping_observations,
         nested_wf_harness_status=manifest.nested_wf_harness_status,
+        session_calendar=session_calendar,
+        session_calendar_digest=session_calendar_digest,
+        experiment_version=manifest.experiment_version,
+        champion_policy_artifact_digest=manifest.champion_policy_artifact_digest,
+        embargo_justification=manifest.embargo_justification,
         manifest_fingerprint=manifest.manifest_fingerprint,
         ledger_fingerprint=ledger.ledger_fingerprint,
         returns_file_digest=returns_file_digest,

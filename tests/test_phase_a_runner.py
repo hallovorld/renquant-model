@@ -309,62 +309,97 @@ class TestSelectNonOverlappingDates:
     def test_all_dates_far_enough_apart_are_kept(self):
         dates = [f"2025-01-{i:02d}" for i in range(1, 4)]  # 3 dates
         # spacing=1 means at least 1 index apart — every date qualifies
-        assert select_non_overlapping_dates(dates, 1) == dates
+        selected, indices = select_non_overlapping_dates(dates, 1)
+        assert selected == dates
 
     def test_close_dates_are_dropped(self):
         dates = [f"2025-01-{i:02d}" for i in range(1, 11)]  # 10 dates
         # spacing=3 selects indices 0, 3, 6, 9
-        result = select_non_overlapping_dates(dates, 3)
-        assert result == ["2025-01-01", "2025-01-04", "2025-01-07", "2025-01-10"]
+        selected, indices = select_non_overlapping_dates(dates, 3)
+        assert selected == ["2025-01-01", "2025-01-04", "2025-01-07", "2025-01-10"]
 
     def test_empty(self):
-        assert select_non_overlapping_dates([], 60) == []
+        selected, indices = select_non_overlapping_dates([], 60)
+        assert selected == []
+        assert indices == []
 
     def test_single_date(self):
-        assert select_non_overlapping_dates(["2025-01-01"], 60) == ["2025-01-01"]
+        selected, indices = select_non_overlapping_dates(["2025-01-01"], 60)
+        assert selected == ["2025-01-01"]
 
     def test_index_spacing_not_calendar_day(self):
         """Codex review round 10: spacing is measured in input-list index
-        positions, not calendar days. A list of 5 trading sessions that
-        spans 7 calendar days (Mon-Fri with a weekend gap) must space by
-        session count, not calendar distance."""
-        # Mon-Fri + skip weekend + Mon-Fri = 10 sessions, 14 calendar days
+        positions, not calendar days."""
         sessions = [
             "2025-01-06", "2025-01-07", "2025-01-08", "2025-01-09", "2025-01-10",
             "2025-01-13", "2025-01-14", "2025-01-15", "2025-01-16", "2025-01-17",
         ]
-        # min_spacing=5: indices 0, 5, ... → sessions[0]="01-06", sessions[5]="01-13"
-        result = select_non_overlapping_dates(sessions, 5)
-        assert result == ["2025-01-06", "2025-01-13"]
-        # Under the OLD calendar-day implementation with 5 calendar days,
-        # "01-06" → "01-11" (Sat, not in list) → "01-13" (7 cal days ≥ 5)
-        # would also select 2, but with spacing=7 it would have selected
-        # only 1 — the old code conflated calendar and session counts.
+        selected, indices = select_non_overlapping_dates(sessions, 5)
+        assert selected == ["2025-01-06", "2025-01-13"]
 
     def test_embargo_adds_extra_spacing(self):
         dates = [f"2025-01-{i:02d}" for i in range(1, 21)]  # 20 dates
         # spacing=3, embargo=2 → total gap = 5
-        result = select_non_overlapping_dates(dates, 3, embargo=2)
-        assert result == ["2025-01-01", "2025-01-06", "2025-01-11", "2025-01-16"]
+        selected, indices = select_non_overlapping_dates(dates, 3, embargo=2)
+        assert selected == ["2025-01-01", "2025-01-06", "2025-01-11", "2025-01-16"]
 
     def test_weekend_holiday_regression(self):
         """Regression: a trading session calendar with holidays must still
         produce correctly-spaced blocks by session index, even though the
         calendar-day gaps between sessions vary."""
-        # 2 weeks of trading with a holiday on Wed Jan 8
         sessions = [
-            "2025-01-06", "2025-01-07",  # Mon, Tue
-            # Wed 01-08 is a holiday — skipped
-            "2025-01-09", "2025-01-10",  # Thu, Fri
+            "2025-01-06", "2025-01-07",
+            "2025-01-09", "2025-01-10",
             "2025-01-13", "2025-01-14", "2025-01-15", "2025-01-16", "2025-01-17",
-        ]  # 9 sessions total
-        # min_spacing=4: want 4 sessions apart
-        result = select_non_overlapping_dates(sessions, 4)
-        # indices: 0→"01-06", 4→"01-13", 8→"01-17"
-        assert result == ["2025-01-06", "2025-01-13", "2025-01-17"]
-        # Calendar-day diff 01-06→01-13 = 7 days, 01-13→01-17 = 4 days.
-        # Both are >= 4 sessions apart, which is what matters for a
-        # 4-session label horizon.
+        ]
+        selected, indices = select_non_overlapping_dates(sessions, 4)
+        assert selected == ["2025-01-06", "2025-01-13", "2025-01-17"]
+
+    def test_returns_calendar_indices(self):
+        """select_non_overlapping_dates must return the selected calendar
+        indices for auditability (Codex review round 11, finding 1)."""
+        dates = [f"2025-01-{i:02d}" for i in range(1, 11)]
+        selected, indices = select_non_overlapping_dates(dates, 3)
+        assert indices == [0, 3, 6, 9]
+
+    def test_session_calendar_uses_full_calendar_indices(self):
+        """Codex review round 11, finding 1: when a session calendar is
+        provided, spacing is measured in FULL calendar indices, not the
+        compressed input-list indices. Missing sessions must NOT compress
+        the spacing."""
+        # Full calendar: 10 sessions
+        full_calendar = [f"2025-01-{i:02d}" for i in range(1, 11)]
+        # Loaded data: only sessions 1, 2, 6, 7, 8, 9, 10 (missing 3, 4, 5)
+        loaded_dates = ["2025-01-01", "2025-01-02",
+                        "2025-01-06", "2025-01-07", "2025-01-08",
+                        "2025-01-09", "2025-01-10"]
+        # With min_spacing=5 and full calendar:
+        # "01-01" is cal index 0, next must be >= 5, which is "01-06" (cal index 5)
+        selected, indices = select_non_overlapping_dates(
+            loaded_dates, 5, session_calendar=full_calendar,
+        )
+        assert selected == ["2025-01-01", "2025-01-06"]
+        assert indices == [0, 5]
+
+    def test_compressed_list_without_calendar_gives_different_spacing(self):
+        """Without a session calendar, missing sessions compress the list.
+        Compressed gaps can differ from calendar-accurate gaps. This test
+        documents the difference: with a full calendar, 01-01→01-06 is
+        gap=5 (selectable), but without one it's gap=2 (not selectable
+        at min_spacing=5)."""
+        full_calendar = [f"2025-01-{i:02d}" for i in range(1, 11)]
+        loaded_dates = ["2025-01-01", "2025-01-02",
+                        "2025-01-06", "2025-01-07", "2025-01-08",
+                        "2025-01-09", "2025-01-10"]
+        # With calendar: cal indices are correct → "01-06" at gap=5 ✓
+        with_cal, _ = select_non_overlapping_dates(
+            loaded_dates, 5, session_calendar=full_calendar,
+        )
+        assert with_cal == ["2025-01-01", "2025-01-06"]
+        # Without calendar: compressed index of "01-06" is 2 (gap=2 < 5)
+        # → must wait until index 5 = "01-09" (overly conservative)
+        without_cal, _ = select_non_overlapping_dates(loaded_dates, 5)
+        assert without_cal == ["2025-01-01", "2025-01-09"]
 
 
 # ── Complete return-coverage requirement ────────────────────────────────────
@@ -1428,7 +1463,8 @@ class TestBlockRebalancePolicy:
         block_length = 20
         tickers = [f"T{i}" for i in range(10)]
         dates = [(date(2025, 1, 1) + timedelta(days=i)).isoformat() for i in range(n)]
-        block_dates = set(select_non_overlapping_dates(dates, block_length))
+        block_dates_list, _ = select_non_overlapping_dates(dates, block_length)
+        block_dates = set(block_dates_list)
         assert len(block_dates) >= 8
 
         rng_shared = np.random.default_rng(42)
@@ -1591,7 +1627,7 @@ class TestEstimandPolicyVersioning:
         assert data["estimand_policy"] == "block_rebalance_paired"
         assert data["champion_production_policy"] == "daily"
         assert data["block_spacing_unit"] == "session_index"
-        assert data["embargo_sessions"] == 0
+        assert data["embargo_sessions"] == 10
 
 
 class TestEmbargoSessions:
@@ -1619,3 +1655,187 @@ class TestEmbargoSessions:
             min_non_overlapping_observations=2,
         )
         assert result_with_embargo.n_paired_test_dates < result_no_embargo.n_paired_test_dates
+
+
+# ── Round 11 adversarial tests ────────────────────────────────────────────────
+# Codex review 2026-07-14T02:02:08Z: frozen session calendar, positive
+# embargo, block-rebalance experiment versioning.
+
+
+class TestSessionCalendar:
+    """Codex review round 11, finding 1: spacing must be measured against
+    a frozen, manifest-bound session calendar, not the compressed
+    intersection of loaded data."""
+
+    def test_calendar_indexed_spacing_preserves_gaps(self, tmp_path):
+        """Missing sessions in loaded data must NOT compress spacing when
+        a session calendar is provided."""
+        full_calendar = [f"2025-01-{i:02d}" for i in range(1, 21)]
+        # Loaded dates skip sessions 4-8 (5 missing)
+        loaded = [f"2025-01-{i:02d}" for i in [1, 2, 3, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]]
+        # With calendar, "01-01" is cal_idx 0, "01-09" is cal_idx 8
+        # min_spacing=5 → selects 0, then next >= 5 is "01-06" (not in loaded!),
+        # then next >= 5 from "01-09" (cal_idx=8) is cal_idx >= 13 → "01-14"
+        selected, indices = select_non_overlapping_dates(
+            loaded, 5, session_calendar=full_calendar,
+        )
+        # First: "01-01" (cal 0), next loaded date with cal >= 5 is "01-09" (cal 8),
+        # next >= 8+5=13 is "01-14" (cal 13), next >= 13+5=18 is "01-19" (cal 18)
+        assert selected == ["2025-01-01", "2025-01-09", "2025-01-14", "2025-01-19"]
+        assert indices == [0, 8, 13, 18]
+
+    def test_without_calendar_spacing_is_compressed(self, tmp_path):
+        """Without calendar, the same loaded data uses compressed indices
+        which understate real gaps."""
+        loaded = [f"2025-01-{i:02d}" for i in [1, 2, 3, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]]
+        selected, indices = select_non_overlapping_dates(loaded, 5)
+        # Compressed: "01-01"=0, "01-09"=3 (gap=3 < 5 → skip), "01-10"=4 (<5),
+        # "01-11"=5 → select. Real gap is 10 sessions, but compressed says 5.
+        assert "2025-01-11" in selected
+
+    def test_session_calendar_fields_persisted_on_result(self, tmp_path):
+        """session_calendar_digest, session_calendar_verified, and
+        selected_block_indices must be persisted on the result."""
+        experts, rets = _build_n_date_fixture(tmp_path, 10, seed=42)
+        calendar = sorted(rets.keys())
+        result = run_phase_a(
+            experts, rets, champion_name="xgb", top_n=3,
+            block_length_days=1,
+            session_calendar=calendar,
+            session_calendar_digest="sha256:test-digest",
+            embargo_sessions=1,
+        )
+        assert result.session_calendar_digest == "sha256:test-digest"
+        assert result.session_calendar_verified is True
+        assert len(result.selected_block_indices) > 0
+
+    def test_no_calendar_sets_verified_false(self, tmp_path):
+        experts, rets = _build_n_date_fixture(tmp_path, 10, seed=42)
+        result = run_phase_a(
+            experts, rets, champion_name="xgb", top_n=3,
+            block_length_days=1,
+        )
+        assert result.session_calendar_verified is False
+
+    def test_cli_rejects_mismatched_calendar_digest(self, tmp_path):
+        """A session calendar whose digest doesn't match the manifest's
+        must be rejected."""
+        fixture = _build_cli_fixture(tmp_path)
+        cal_path = tmp_path / "calendar.json"
+        cal_path.write_text(json.dumps(["2025-06-01", "2025-06-02", "2025-06-03"]))
+
+        # Override manifest to expect a different digest
+        manifest_path = Path(fixture["manifest_path"])
+        manifest_data = json.loads(manifest_path.read_text())
+        manifest_data["session_calendar_digest"] = "sha256:wrong-digest"
+        from experiments.ensemble_phase0.experiment_manifest import ExperimentManifest
+        m = ExperimentManifest(**{
+            k: v for k, v in manifest_data.items()
+            if k in ExperimentManifest.__dataclass_fields__
+        })
+        manifest_data["manifest_fingerprint"] = m.compute_fingerprint()
+        manifest_path.write_text(json.dumps(manifest_data, indent=2))
+
+        rc = par.main(_cli_argv(fixture) + ["--session-calendar", str(cal_path)])
+        assert rc == 1
+
+
+class TestPositiveEmbargo:
+    """Codex review round 11, finding 2: embargo_sessions must be positive.
+    A zero or absent embargo does not implement 'plus embargo'."""
+
+    def test_zero_embargo_rejected_by_cli(self, tmp_path, capsys):
+        """embargo_sessions=0 in the manifest must cause main() to reject."""
+        fixture = _build_cli_fixture(tmp_path)
+        manifest_path = Path(fixture["manifest_path"])
+        manifest_data = json.loads(manifest_path.read_text())
+        manifest_data["statistical_test"]["embargo_sessions"] = 0
+        from experiments.ensemble_phase0.experiment_manifest import ExperimentManifest
+        m = ExperimentManifest(**{
+            k: v for k, v in manifest_data.items()
+            if k in ExperimentManifest.__dataclass_fields__
+        })
+        manifest_data["manifest_fingerprint"] = m.compute_fingerprint()
+        manifest_path.write_text(json.dumps(manifest_data, indent=2))
+        rc = par.main(_cli_argv(fixture))
+        assert rc == 1
+        assert "embargo_sessions" in capsys.readouterr().err
+
+    def test_negative_embargo_rejected_by_cli(self, tmp_path, capsys):
+        fixture = _build_cli_fixture(tmp_path)
+        manifest_path = Path(fixture["manifest_path"])
+        manifest_data = json.loads(manifest_path.read_text())
+        manifest_data["statistical_test"]["embargo_sessions"] = -1
+        from experiments.ensemble_phase0.experiment_manifest import ExperimentManifest
+        m = ExperimentManifest(**{
+            k: v for k, v in manifest_data.items()
+            if k in ExperimentManifest.__dataclass_fields__
+        })
+        manifest_data["manifest_fingerprint"] = m.compute_fingerprint()
+        manifest_path.write_text(json.dumps(manifest_data, indent=2))
+        rc = par.main(_cli_argv(fixture))
+        assert rc == 1
+
+    def test_positive_embargo_accepted(self, tmp_path):
+        """Default manifest with embargo_sessions=10 must be accepted."""
+        fixture = _build_cli_fixture(tmp_path)
+        rc = par.main(_cli_argv(fixture))
+        assert rc == 0
+
+    def test_embargo_justification_persisted(self, tmp_path):
+        experts, rets = _build_n_date_fixture(tmp_path, 10, seed=42)
+        result = run_phase_a(
+            experts, rets, champion_name="xgb", top_n=3,
+            block_length_days=1, embargo_sessions=5,
+            embargo_justification="test justification",
+        )
+        assert result.embargo_justification == "test justification"
+
+
+class TestExperimentVersioning:
+    """Codex review round 11, finding 3: block-rebalance is a separate
+    versioned experiment, not a fix to the daily champion comparison."""
+
+    def test_empty_experiment_version_rejected_by_cli(self, tmp_path, capsys):
+        fixture = _build_cli_fixture(tmp_path)
+        manifest_path = Path(fixture["manifest_path"])
+        manifest_data = json.loads(manifest_path.read_text())
+        manifest_data["experiment_version"] = ""
+        from experiments.ensemble_phase0.experiment_manifest import ExperimentManifest
+        m = ExperimentManifest(**{
+            k: v for k, v in manifest_data.items()
+            if k in ExperimentManifest.__dataclass_fields__
+        })
+        manifest_data["manifest_fingerprint"] = m.compute_fingerprint()
+        manifest_path.write_text(json.dumps(manifest_data, indent=2))
+        rc = par.main(_cli_argv(fixture))
+        assert rc == 1
+        assert "experiment_version" in capsys.readouterr().err
+
+    def test_experiment_version_persisted_on_result(self, tmp_path):
+        experts, rets = _build_n_date_fixture(tmp_path, 10, seed=42)
+        result = run_phase_a(
+            experts, rets, champion_name="xgb", top_n=3,
+            block_length_days=1,
+            experiment_version="v2-block-rebalance",
+        )
+        assert result.experiment_version == "v2-block-rebalance"
+
+    def test_champion_policy_artifact_digest_persisted(self, tmp_path):
+        experts, rets = _build_n_date_fixture(tmp_path, 10, seed=42)
+        result = run_phase_a(
+            experts, rets, champion_name="xgb", top_n=3,
+            block_length_days=1,
+            champion_policy_artifact_digest="sha256:test-champion-digest",
+        )
+        assert result.champion_policy_artifact_digest == "sha256:test-champion-digest"
+
+    def test_cli_persists_versioning_fields(self, tmp_path):
+        fixture = _build_cli_fixture(tmp_path)
+        rc = par.main(_cli_argv(fixture))
+        assert rc == 0
+        [out] = list(Path(fixture["output_dir"]).glob("phase_a_result_*.json"))
+        data = json.loads(out.read_text())
+        assert data["experiment_version"] == "v2-block-rebalance"
+        assert "champion_policy_artifact_digest" in data
+        assert "embargo_justification" in data

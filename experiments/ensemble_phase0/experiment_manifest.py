@@ -101,6 +101,26 @@ class ExperimentManifest:
     rejected_candidates: list[dict[str, Any]] = field(default_factory=list)
     failed_runs: list[dict[str, Any]] = field(default_factory=list)
 
+    # Session calendar artifact (Codex review round 11, finding 1):
+    # the frozen list of ALL expected trading sessions. Spacing
+    # arithmetic uses calendar-index positions so missing sessions
+    # preserve gaps instead of compressing the index.
+    session_calendar_digest: str = ""
+
+    # Experiment version (round 11, finding 3): block-rebalance is a
+    # DISTINCT research arm from the daily-rebalance champion, not a
+    # repair. Named versions prevent silent design drift.
+    experiment_version: str = ""
+
+    # Champion policy artifact digest (round 11, finding 3): binds the
+    # comparison to a specific, digested champion policy. Without this
+    # a block-rebalance experiment cannot claim "L1 vs frozen champion."
+    champion_policy_artifact_digest: str = ""
+
+    # Embargo justification (round 11, finding 2): a concrete reason
+    # for the chosen embargo length, tied to the training/label contract.
+    embargo_justification: str = ""
+
     # Ledger reference
     admissibility_ledger_fingerprint: str = ""
 
@@ -118,6 +138,8 @@ class ExperimentManifest:
 def build_default_manifest(
     *,
     admissibility_ledger_fingerprint: str = "",
+    session_calendar_digest: str = "",
+    champion_policy_artifact_digest: str = "",
 ) -> ExperimentManifest:
     """Build the default manifest for the L1-L3 ensemble experiment.
 
@@ -198,7 +220,12 @@ def build_default_manifest(
             "minimum_effect_size_delta_ic": 0.005,
             "min_non_overlapping_observations": 8,
             "one_sided": True,
-            "embargo_sessions": 0,
+            "embargo_sessions": 10,
+            "embargo_justification": (
+                "10 sessions: conservative buffer beyond the 60-session "
+                "label horizon to account for any residual serial "
+                "dependence in forward returns near block boundaries"
+            ),
             "block_spacing_unit": "session_index",
         },
         correction_procedure="hierarchical_sequential_gatekeeping",
@@ -225,6 +252,14 @@ def build_default_manifest(
             "status": "UNREAD",
         },
         confirmation_status="UNREAD",
+        session_calendar_digest=session_calendar_digest,
+        experiment_version="v2-block-rebalance",
+        champion_policy_artifact_digest=champion_policy_artifact_digest,
+        embargo_justification=(
+            "10 sessions: conservative buffer beyond the 60-session "
+            "label horizon to account for any residual serial "
+            "dependence in forward returns near block boundaries"
+        ),
         admissibility_ledger_fingerprint=admissibility_ledger_fingerprint,
     )
 
