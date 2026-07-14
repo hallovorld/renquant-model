@@ -88,6 +88,67 @@ MIN_CONFIRMATORY_OBSERVATIONS = 20
 TEST_METHOD_NON_OVERLAPPING = "non_overlapping_outer_blocks"
 TEST_METHOD_HAC_FALLBACK = "hac_on_overlapping_returns_fallback"
 
+#: Required fields in a champion policy artifact (Codex review round 13,
+#: finding 2). The digest alone proves the bytes are the same, but not
+#: that those bytes encode a policy whose decision-affecting parameters
+#: match the manifest and runner configuration.
+CHAMPION_POLICY_REQUIRED_FIELDS = frozenset({
+    "champion_name",
+    "top_n",
+    "rebalance_cadence",
+    "cost_model",
+    "score_normalization",
+})
+
+
+def validate_champion_policy(
+    policy_bytes: bytes,
+    manifest: Any,
+) -> tuple[dict[str, Any], list[str]]:
+    """Parse and validate a champion policy artifact against the manifest.
+
+    Returns (parsed_policy, errors). If errors is non-empty, the policy
+    is invalid and should be rejected.
+    """
+    errors: list[str] = []
+    try:
+        policy = json.loads(policy_bytes)
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        return {}, [f"champion policy artifact is not valid JSON: {exc}"]
+
+    if not isinstance(policy, dict):
+        return {}, ["champion policy artifact must be a JSON object"]
+
+    missing = CHAMPION_POLICY_REQUIRED_FIELDS - set(policy.keys())
+    if missing:
+        errors.append(
+            f"champion policy artifact missing required fields: "
+            f"{sorted(missing)}"
+        )
+        return policy, errors
+
+    if str(policy["champion_name"]) != resolve_champion_name(manifest):
+        errors.append(
+            f"policy champion_name={policy['champion_name']!r} does not "
+            f"match manifest primary_live champion "
+            f"{resolve_champion_name(manifest)!r}"
+        )
+
+    manifest_top_n = manifest.portfolio_mapping.get("top_n")
+    if manifest_top_n is not None and int(policy["top_n"]) != int(manifest_top_n):
+        errors.append(
+            f"policy top_n={policy['top_n']} does not match "
+            f"manifest.portfolio_mapping.top_n={manifest_top_n}"
+        )
+
+    if str(policy["rebalance_cadence"]) != manifest.rebalance_cadence:
+        errors.append(
+            f"policy rebalance_cadence={policy['rebalance_cadence']!r} does "
+            f"not match manifest.rebalance_cadence={manifest.rebalance_cadence!r}"
+        )
+
+    return policy, errors
+
 
 # ── Data structures ──────────────────────────────────────────────────────────
 
@@ -1600,7 +1661,23 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 1
-    print(f"  Champion policy artifact verified (digest {actual_policy_digest})")
+    print(f"  Champion policy artifact digest verified ({actual_policy_digest})")
+
+    # Typed policy schema validation (Codex review round 13, finding 2):
+    # the digest proves byte identity but not that the policy's
+    # decision-affecting fields match the manifest and runner config.
+    policy_obj, policy_errors = validate_champion_policy(policy_bytes, manifest)
+    if policy_errors:
+        for err in policy_errors:
+            print(f"ERROR: {err}", file=sys.stderr)
+        print(
+            "The champion policy artifact must be a JSON object with "
+            f"required fields {sorted(CHAMPION_POLICY_REQUIRED_FIELDS)} "
+            "whose values are consistent with the experiment manifest.",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"  Champion policy schema validated (champion={policy_obj['champion_name']}, top_n={policy_obj['top_n']})")
 
     if manifest.rebalance_cadence != "block_rebalance":
         print(
@@ -1630,6 +1707,31 @@ def main(argv: list[str] | None = None) -> int:
     returns_file_digest, returns_file_locator = verify_returns_file_digest(returns_path, ledger)
     fwd_returns = load_forward_returns(returns_path)
     print(f"  {len(fwd_returns)} dates loaded (digest {returns_file_digest} verified against ledger)")
+
+    # Return-date coverage: every ledger-admitted prediction date that
+    # passes the session calendar MUST be present in the returns file.
+    # Without this, dates absent from returns silently disappear before
+    # select_non_overlapping_dates() sees them, changing selected blocks,
+    # P&L, and significance while passing all other guards (Codex review
+    # round 13, finding 1).
+    required_prediction_dates = set(experts[0].dates)
+    for expert in experts[1:]:
+        required_prediction_dates &= set(expert.dates)
+    required_prediction_dates &= set(session_calendar)
+    missing_return_dates = sorted(required_prediction_dates - set(fwd_returns.keys()))
+    if missing_return_dates:
+        print(
+            f"ERROR: {len(missing_return_dates)} required prediction date(s) "
+            f"are absent from the returns file (first 5: "
+            f"{missing_return_dates[:5]}). Required dates are derived from "
+            f"the intersection of admitted expert dates and the frozen "
+            f"session calendar — the returns file must cover all of them. "
+            f"A missing return date silently shrinks the evaluation "
+            f"calendar, which can change block selection and significance.",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"  Return-date coverage: all {len(required_prediction_dates)} required dates present")
 
     # Label-horizon consistency: the block length must be >= the label
     # horizon to ensure non-overlapping blocks produce truly non-overlapping

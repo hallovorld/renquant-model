@@ -107,8 +107,17 @@ deliberately simple:
 
 ## Phase A → Phase B graduation requirements
 
-A Phase A GO result authorizes Phase B design and implementation. Phase B
-must address ALL of the following before any production deployment claim:
+A Phase A GO result **does not authorize progression to production**. It
+authorizes only manual follow-up design work: an independent review of
+Phase A's output and, if warranted, the specification of a Phase B
+experiment with its own pre-registration. Phase A cannot emit a promotable
+production GO — it can only establish whether the ensemble signal contains
+cross-sectional information worth investigating further.
+
+Any positive Phase A result requires **independent review** (not automated
+promotion) before Phase B design begins.
+
+Phase B must address ALL of the following before any production deployment claim:
 
 1. **Daily rebalance estimand**: match the production champion's rebalance
    cadence exactly. No block-rebalance shortcuts.
@@ -134,4 +143,5 @@ and design amendment. Phase A's results are input evidence, not binding.
 - Phase A runner: `phase_a_runner.py` (§4.2 non-overlapping outer blocks)
 - Design doc: `doc/research/2026-07-12-ensemble-combination-experiment.md`
 - Codex review round 12 (2026-07-13): fail-closed calendar + verified policy artifact
+- Codex review round 13 (2026-07-13): return-date coverage + typed policy schema + GO language fix
 - Operator design review (2026-07-13): estimand mismatch, nested WF, portfolio construction
