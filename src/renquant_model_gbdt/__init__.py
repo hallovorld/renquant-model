@@ -62,6 +62,13 @@ from .pipelines import (
     TrainingContext,
     Validator,
 )
+# Re-exported for caller convenience (F-7 round 4): every TrainingContext
+# construction must declare one of these explicitly -- see
+# renquant_model_common.workflow_provenance for the full contract.
+from renquant_model_common.workflow_provenance import (
+    WORKFLOW_CLASS_CANONICAL,
+    WORKFLOW_CLASS_EXPERIMENT,
+)
 
 __all__ = [
     "DEFAULT_LABEL",
@@ -71,6 +78,8 @@ __all__ = [
     "TREND_INTERACTION_FEATURES",
     "VOL_TREND_FEATURES",
     "VOL_TREND_FEATURE_SET_VERSION",
+    "WORKFLOW_CLASS_CANONICAL",
+    "WORKFLOW_CLASS_EXPERIMENT",
     "ArtifactContractJob",
     "BuildArtifactManifestTask",
     "BuildArtifactTask",

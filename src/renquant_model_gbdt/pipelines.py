@@ -15,15 +15,28 @@ from typing import Any
 from renquant_common import Job, Pipeline, Task
 from renquant_artifacts import validate_artifact_manifest, validate_panel_artifact_contract
 from renquant_base_data import validate_data_manifest
+from renquant_model_common.workflow_provenance import build_verified_provenance
 
 
 @dataclass
 class TrainingContext:
-    """Mutable context passed through the GBDT training pipeline."""
+    """Mutable context passed through the GBDT training pipeline.
+
+    ``workflow_class`` is REQUIRED with no default (F-7 round 4, Codex
+    review 2026-07-14 on PR #55: "The producer is therefore self-classifying
+    an experiment artifact as none, precisely the bypass the gate must
+    prevent"). Every caller MUST declare
+    ``renquant_model_common.workflow_provenance.WORKFLOW_CLASS_CANONICAL`` or
+    ``WORKFLOW_CLASS_EXPERIMENT`` explicitly -- see
+    :class:`BuildArtifactManifestTask` and
+    ``renquant_model_common.workflow_provenance`` for the full contract and
+    its honestly-disclosed residual limitations.
+    """
 
     dataset_manifest: dict[str, Any]
     model_config: dict[str, Any]
     output_dir: Path
+    workflow_class: str
     dataset: Any | None = None
     model_artifact: dict[str, Any] | None = None
     calibration_artifact: dict[str, Any] | None = None
@@ -121,12 +134,46 @@ class BuildArtifactManifestTask(Task):
             "data_fingerprint": ctx.dataset_manifest["fingerprint"],
             "config_fingerprint": ctx.model_config.get("config_fingerprint", "unfingerprinted"),
             "code_commit": ctx.model_config.get("code_commit", "uncommitted"),
+            # F-7 round 4 (Codex review 2026-07-14 on PR #55, follow-up to
+            # renquant-artifacts#24 / RenQuant#471 round 3): "The producer is
+            # therefore self-classifying an experiment artifact as none,
+            # precisely the bypass the gate must prevent." Hardcoding
+            # kind="none" here regardless of context was the bug -- this
+            # training pipeline is a GENERIC entry point that can run as
+            # genuine canonical production training OR as part of a
+            # registered exploratory/experiment invocation writing to a
+            # fresh path with no pre-existing marker for the round-3
+            # on-disk check to find. ``ctx.workflow_class`` is now a
+            # REQUIRED, no-default constructor argument (see
+            # TrainingContext's docstring) and
+            # renquant_model_common.workflow_provenance.build_verified_provenance
+            # independently verifies an "experiment" declaration against the
+            # real experiment-registry marker + immutable registration index
+            # rather than trusting it -- see that module's docstring for the
+            # full contract and its honestly-disclosed residual limitation
+            # on the canonical side (kind="none" remains self-declared;
+            # there is no non-forgeable "canonical production run" proof
+            # mechanism anywhere in this codebase yet to bind to).
+            "provenance": build_verified_provenance(
+                ctx.workflow_class,
+                output_dir=ctx.output_dir,
+                model_config=ctx.model_config,
+            ),
         }
         for key in _RUNTIME_ARTIFACT_FIELDS:
             if key in ctx.model_artifact and ctx.model_artifact[key] is not None:
                 manifest[key] = ctx.model_artifact[key]
-        validate_artifact_manifest(manifest)
+        # Stash the constructed manifest BEFORE the promotion-boundary
+        # validate call so a caller/test can inspect exactly what was built
+        # (including the correctly-verified provenance.kind) even when
+        # validate_artifact_manifest correctly rejects it below -- e.g. a
+        # genuinely registered experiment's manifest is fully built and
+        # correctly classified "experiment" here, and is THEN
+        # unconditionally rejected for promotion by the registry-side gate
+        # (renquant_artifacts.experiment_registry.reject_exploratory_promotion),
+        # never silently reclassified as "none".
         ctx.artifact_manifest = manifest
+        validate_artifact_manifest(manifest)
         return True
 
 

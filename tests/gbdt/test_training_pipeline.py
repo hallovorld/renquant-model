@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from renquant_model_gbdt import (
+    WORKFLOW_CLASS_CANONICAL,
     PanelGbdtTrainingPipeline,
     TrainingContext,
     transform_feature_frame,
@@ -58,6 +59,7 @@ def test_training_pipeline_uses_common_task_job_pattern(tmp_path: Path) -> None:
         },
         model_config={"objective": "rank:pairwise", "strategy": "renquant_104"},
         output_dir=tmp_path / "out",
+        workflow_class=WORKFLOW_CLASS_CANONICAL,
     )
     result = PanelGbdtTrainingPipeline(loader, trainer, validator).run(ctx)
 
@@ -71,6 +73,19 @@ def test_training_pipeline_uses_common_task_job_pattern(tmp_path: Path) -> None:
     assert ctx.artifact_manifest["feature_cols"] == ["alpha_1", "alpha_2"]
     assert ctx.artifact_manifest["local_artifact_path"].endswith("gbdt-fixture.json")
     assert ctx.artifact_manifest["lookahead_days"] == 5
+    # F-7 round 4 (Codex review 2026-07-14, follow-up to renquant-artifacts#24
+    # round 3): provenance is no longer hardcoded -- it is derived from the
+    # caller's explicit, required workflow_class declaration.
+    # workflow_class=WORKFLOW_CLASS_CANONICAL is this test's positive control:
+    # genuine canonical publication still succeeds and still gets kind="none".
+    # validate_artifact_manifest inside BuildArtifactManifestTask already
+    # proves this validates against the real (non-mocked) F-7 contract,
+    # including the round-3 kind="none" re-verification against this
+    # manifest's own local_artifact_path. The adversarial counterpart --
+    # workflow_class=WORKFLOW_CLASS_EXPERIMENT at a fresh path correctly
+    # getting kind="experiment", never "none" -- lives in
+    # test_workflow_class_provenance.py.
+    assert ctx.artifact_manifest["provenance"] == {"kind": "none"}
     assert ctx.metrics_record["oos_mean_ic"] == pytest.approx(0.031)
     assert ctx.metrics_record["panel_contract_ok"] is True
 
@@ -80,6 +95,7 @@ def test_training_pipeline_requires_auditable_dataset_manifest(tmp_path: Path) -
         dataset_manifest={"dataset_id": "missing_fingerprint"},
         model_config={},
         output_dir=tmp_path / "out",
+        workflow_class=WORKFLOW_CLASS_CANONICAL,
     )
 
     with pytest.raises(ValueError, match="data manifest missing"):
@@ -112,6 +128,7 @@ def test_training_pipeline_requires_strict_panel_oos_contract(tmp_path: Path) ->
         },
         model_config={"objective": "rank:pairwise", "strategy": "renquant_104"},
         output_dir=tmp_path / "out",
+        workflow_class=WORKFLOW_CLASS_CANONICAL,
     )
 
     with pytest.raises(ValueError, match="panel contract failed"):

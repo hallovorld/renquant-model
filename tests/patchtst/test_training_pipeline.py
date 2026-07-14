@@ -4,7 +4,11 @@ from pathlib import Path
 
 import pytest
 
-from renquant_model_patchtst import PatchTstTrainingContext, PatchTstTrainingPipeline
+from renquant_model_patchtst import (
+    WORKFLOW_CLASS_CANONICAL,
+    PatchTstTrainingContext,
+    PatchTstTrainingPipeline,
+)
 
 
 def test_patchtst_training_pipeline_runs_sanity_stage(tmp_path: Path) -> None:
@@ -56,6 +60,7 @@ def test_patchtst_training_pipeline_runs_sanity_stage(tmp_path: Path) -> None:
         },
         model_config={"architecture": "hf_patchtst"},
         output_dir=tmp_path / "out",
+        workflow_class=WORKFLOW_CLASS_CANONICAL,
     )
     result = PatchTstTrainingPipeline(loader, trainer, validator).run(ctx)
 
@@ -67,6 +72,15 @@ def test_patchtst_training_pipeline_runs_sanity_stage(tmp_path: Path) -> None:
     assert ctx.artifact_manifest["promotion_status"] == "shadow"
     assert ctx.sanity_report["passed"] is True
     assert ctx.sanity_report["model_evidence_contract_ok"] is True
+    # F-7 round 4 (Codex review 2026-07-14, follow-up to renquant-artifacts#24
+    # round 3): provenance is no longer hardcoded -- workflow_class is now a
+    # required, explicit declaration. This is the positive control: genuine
+    # canonical publication (workflow_class=WORKFLOW_CLASS_CANONICAL) still
+    # succeeds and still gets kind="none". The adversarial counterpart --
+    # workflow_class=WORKFLOW_CLASS_EXPERIMENT at a fresh path correctly
+    # getting kind="experiment", never "none" -- lives in
+    # test_workflow_class_provenance.py.
+    assert ctx.artifact_manifest["provenance"] == {"kind": "none"}
 
 
 def test_patchtst_training_pipeline_requires_split_and_label_contract(tmp_path: Path) -> None:
@@ -74,6 +88,7 @@ def test_patchtst_training_pipeline_requires_split_and_label_contract(tmp_path: 
         dataset_manifest={"dataset_id": "bad"},
         model_config={},
         output_dir=tmp_path / "out",
+        workflow_class=WORKFLOW_CLASS_CANONICAL,
     )
 
     with pytest.raises(ValueError, match="dataset_manifest missing"):
@@ -109,6 +124,7 @@ def test_patchtst_training_pipeline_requires_model_evidence_contract(tmp_path: P
         },
         model_config={"architecture": "hf_patchtst"},
         output_dir=tmp_path / "out",
+        workflow_class=WORKFLOW_CLASS_CANONICAL,
     )
 
     with pytest.raises(ValueError, match="model evidence contract failed"):

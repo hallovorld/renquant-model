@@ -9,13 +9,21 @@ from typing import Any
 from renquant_common import Job, Pipeline, Task
 from renquant_artifacts import validate_artifact_manifest, validate_model_evidence_contract
 from renquant_base_data import validate_data_manifest
+from renquant_model_common.workflow_provenance import build_verified_provenance
 
 
 @dataclass
 class PatchTstTrainingContext:
+    """``workflow_class`` is REQUIRED with no default (F-7 round 4) -- see
+    ``renquant_model_gbdt.pipelines.TrainingContext``'s docstring (the
+    identical contract applies to this PatchTST twin) and
+    ``renquant_model_common.workflow_provenance`` for the full rationale.
+    """
+
     dataset_manifest: dict[str, Any]
     model_config: dict[str, Any]
     output_dir: Path
+    workflow_class: str
     sequence_frame: Any | None = None
     checkpoint_artifact: dict[str, Any] | None = None
     calibration_artifact: dict[str, Any] | None = None
@@ -111,9 +119,31 @@ class BuildPatchTstArtifactManifestTask(Task):
             "data_fingerprint": ctx.dataset_manifest["fingerprint"],
             "config_fingerprint": ctx.model_config.get("config_fingerprint", "unfingerprinted"),
             "code_commit": ctx.model_config.get("code_commit", "uncommitted"),
+            # F-7 round 4 (Codex review 2026-07-14 on PR #55, follow-up to
+            # renquant-artifacts#24 / RenQuant#471 round 3): "The producer is
+            # therefore self-classifying an experiment artifact as none,
+            # precisely the bypass the gate must prevent." See the identical
+            # note in renquant_model_gbdt.pipelines.BuildArtifactManifestTask
+            # -- this is the PatchTST twin of that same generic model-factory
+            # producer. ``ctx.workflow_class`` is now a REQUIRED, no-default
+            # constructor argument and
+            # renquant_model_common.workflow_provenance.build_verified_provenance
+            # independently verifies an "experiment" declaration against the
+            # real experiment-registry marker + immutable registration index
+            # rather than trusting it -- see that module's docstring for the
+            # full contract and its honestly-disclosed residual limitation
+            # on the canonical side.
+            "provenance": build_verified_provenance(
+                ctx.workflow_class,
+                output_dir=ctx.output_dir,
+                model_config=ctx.model_config,
+            ),
         }
-        validate_artifact_manifest(manifest)
+        # Stash the manifest BEFORE the promotion-boundary validate call --
+        # see the identical comment in
+        # renquant_model_gbdt.pipelines.BuildArtifactManifestTask.
         ctx.artifact_manifest = manifest
+        validate_artifact_manifest(manifest)
         return True
 
 

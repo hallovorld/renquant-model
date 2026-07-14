@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from renquant_model_gbdt import (
+    WORKFLOW_CLASS_CANONICAL,
     PanelGbdtTrainingPipeline,
     TrainingContext,
 )
@@ -132,6 +133,7 @@ def test_full_wf_pipeline_writes_readiness_report_to_manifest_metrics(tmp_path: 
         dataset_manifest=_dataset_manifest(),
         model_config=_config(),
         output_dir=tmp_path / "out",
+        workflow_class=WORKFLOW_CLASS_CANONICAL,
     )
     result = PanelGbdtTrainingPipeline(loader, trainer, validator).run(ctx)
 

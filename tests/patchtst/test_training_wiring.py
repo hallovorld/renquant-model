@@ -14,6 +14,9 @@ import pytest
 pytest.importorskip("torch")
 pytest.importorskip("transformers")
 
+from renquant_model_common.workflow_provenance import (  # noqa: E402
+    WORKFLOW_CLASS_CANONICAL,
+)
 from renquant_model_patchtst.pipelines import PatchTstTrainingContext  # noqa: E402
 from renquant_model_patchtst.training import (  # noqa: E402
     build_training_pipeline, sanity_validator, summary_to_checkpoint,
@@ -61,6 +64,7 @@ def test_pipeline_runs_with_adapter_checkpoint(tmp_path: Path):
     ctx = PatchTstTrainingContext(
         dataset_manifest=_manifest(), model_config={"architecture": "hf_patchtst"},
         output_dir=tmp_path / "out",
+        workflow_class=WORKFLOW_CLASS_CANONICAL,
     )
     result = pipeline.run(ctx)
 
