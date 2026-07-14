@@ -2050,63 +2050,136 @@ class TestChampionPolicyArtifactVerification:
         assert rc == 1
         assert "champion_name" in capsys.readouterr().err
 
+    def test_policy_cost_model_mismatch_rejected(self, tmp_path, capsys):
+        """Codex r14: policy cost_model.base_cost_bps must match manifest."""
+        mismatched = {
+            "champion_name": "xgb", "top_n": 10,
+            "rebalance_cadence": "block_rebalance",
+            "cost_model": {"base_cost_bps": 99.0},
+            "score_normalization": "cross_sectional_zscore",
+        }
+        new_bytes = json.dumps(mismatched).encode()
+        new_digest = f"sha256:{hashlib.sha256(new_bytes).hexdigest()}"
+        fixture = _build_cli_fixture(
+            tmp_path, champion_policy_artifact_digest=new_digest,
+        )
+        Path(fixture["policy_path"]).write_bytes(new_bytes)
+        rc = par.main(_cli_argv(fixture))
+        assert rc == 1
+        assert "base_cost_bps" in capsys.readouterr().err
+
+    def test_policy_score_normalization_mismatch_rejected(self, tmp_path, capsys):
+        """Codex r14: policy score_normalization must match manifest method."""
+        mismatched = {
+            "champion_name": "xgb", "top_n": 10,
+            "rebalance_cadence": "block_rebalance",
+            "cost_model": {"base_cost_bps": 5.0},
+            "score_normalization": "raw",
+        }
+        new_bytes = json.dumps(mismatched).encode()
+        new_digest = f"sha256:{hashlib.sha256(new_bytes).hexdigest()}"
+        fixture = _build_cli_fixture(
+            tmp_path, champion_policy_artifact_digest=new_digest,
+        )
+        Path(fixture["policy_path"]).write_bytes(new_bytes)
+        rc = par.main(_cli_argv(fixture))
+        assert rc == 1
+        assert "score_normalization" in capsys.readouterr().err
+
 
 class TestReturnDateCoverage:
     """Codex review round 13, finding 1: every required prediction date
     must be present in the returns file."""
 
-    def test_missing_return_date_rejected(self, tmp_path, capsys):
-        """A required prediction date absent from returns fails closed."""
-        # Build fixture, then surgically remove one date from returns
-        fixture = _build_cli_fixture(tmp_path)
-        returns_path = Path(fixture["returns_path"])
-        lines = returns_path.read_text().strip().split("\n")
-        header = lines[0]
-        data_lines = lines[1:]
-        dates_in_returns = sorted({line.split(",")[0] for line in data_lines})
-        if len(dates_in_returns) < 2:
-            pytest.skip("Need at least 2 dates")
-        target_date = dates_in_returns[len(dates_in_returns) // 2]
-        filtered = [line for line in data_lines if not line.startswith(target_date + ",")]
-        returns_path.write_text(header + "\n" + "\n".join(filtered) + "\n")
-        # The returns file now has a different digest. We need to update
-        # the ledger's label_artifact_ref to match, AND the manifest's
-        # admissibility_ledger_fingerprint. But note: the check happens
-        # BEFORE digest verification of returns against ledger in the
-        # current code flow. Actually the verify_returns_file_digest
-        # happens first and will fail. Let's instead test the coverage
-        # check at the run_phase_a() level directly.
-        #
-        # The simplest approach: the return-date coverage check in main()
-        # compares required_prediction_dates against fwd_returns keys.
-        # We can test this by calling run_phase_a directly with a
-        # forward_returns dict that's missing a date.
-        from experiments.ensemble_phase0.phase_a_runner import run_phase_a, ExpertScores
-        e1 = ExpertScores(name="xgb", dates=["2024-01-01", "2024-02-01", "2024-03-01"])
-        e1.scores_by_date = {d: {"A": 0.1, "B": 0.2} for d in e1.dates}
-        e2 = ExpertScores(name="patchtst", dates=["2024-01-01", "2024-02-01", "2024-03-01"])
-        e2.scores_by_date = {d: {"A": 0.15, "B": 0.25} for d in e2.dates}
-        fwd = {
-            "2024-01-01": {"A": 0.05, "B": -0.02},
-            # 2024-02-01 intentionally missing
-            "2024-03-01": {"A": 0.03, "B": 0.01},
-        }
-        # run_phase_a's common_dates intersection will silently drop 2024-02-01
-        # and produce results on only 2 dates — this is the problem.
-        # After our fix, main() catches this BEFORE calling run_phase_a.
-        # We can verify by checking that main()'s check catches it.
-        # But since we can't easily call main() with tampered returns,
-        # let's just verify the intersection behavior documents the gap.
-        result = run_phase_a(
-            experts=[e1, e2],
-            forward_returns=fwd,
-            champion_name="xgb",
-            top_n=2,
-            block_length_days=1,
-            embargo_sessions=1,
-            min_non_overlapping_observations=1,
+    def test_missing_return_date_rejected_e2e(self, tmp_path, capsys):
+        """E2e CLI test: a required prediction date absent from returns
+        causes main() to return 1, not silently shrink the evaluation
+        calendar (Codex r14, finding 2)."""
+        # Build a full fixture with 3 dates
+        universe = [f"T{i}" for i in range(12)]
+        all_dates = ["2025-06-01", "2025-06-02", "2025-06-03"]
+        # Returns only has 2 dates (missing 2025-06-02)
+        returns_dates = ["2025-06-01", "2025-06-03"]
+        rng = np.random.default_rng(42)
+        label_end = "2025-08-02"
+
+        xgb_dir = tmp_path / "xgb"
+        xgb_dir.mkdir()
+        pt_dir = tmp_path / "patchtst"
+        pt_dir.mkdir()
+
+        # Scores exist for ALL 3 dates (admitted)
+        score_bytes: dict[tuple[str, str], bytes] = {}
+        for d in all_dates:
+            base = rng.normal(0, 1, len(universe))
+            xgb_bytes = json.dumps({"scores": {t: float(base[i]) for i, t in enumerate(universe)}}).encode()
+            pt_bytes = json.dumps({"scores": {t: float(base[i] + rng.normal(0, 0.2)) for i, t in enumerate(universe)}}).encode()
+            (xgb_dir / f"{d}.json").write_bytes(xgb_bytes)
+            (pt_dir / f"{d}.json").write_bytes(pt_bytes)
+            score_bytes[("xgb", d)] = xgb_bytes
+            score_bytes[("patchtst", d)] = pt_bytes
+
+        # Returns file covers only 2 of 3 dates
+        returns_lines = ["date,ticker,fwd_return"]
+        for d in returns_dates:
+            base = rng.normal(0, 1, len(universe))
+            for i, t in enumerate(universe):
+                returns_lines.append(f"{d},{t},{base[i] * 0.01}")
+        returns_path = tmp_path / "returns.csv"
+        returns_path.write_text("\n".join(returns_lines))
+        returns_digest = f"sha256:{hashlib.sha256(returns_path.read_bytes()).hexdigest()}"
+
+        # Session calendar has ALL 3 dates
+        cal_path = tmp_path / "session_calendar.json"
+        cal_bytes = json.dumps(sorted(all_dates)).encode()
+        cal_path.write_bytes(cal_bytes)
+        cal_digest = f"sha256:{hashlib.sha256(cal_bytes).hexdigest()}"
+
+        policy_path = tmp_path / "champion_policy.json"
+        policy_bytes = json.dumps({
+            "champion_name": "xgb", "top_n": 10,
+            "rebalance_cadence": "block_rebalance",
+            "cost_model": {"base_cost_bps": 5.0},
+            "score_normalization": "cross_sectional_zscore",
+        }).encode()
+        policy_path.write_bytes(policy_bytes)
+        policy_digest = f"sha256:{hashlib.sha256(policy_bytes).hexdigest()}"
+
+        # Ledger admits ALL 3 dates with the CORRECT shortened returns digest
+        records = [
+            {
+                "expert_name": name,
+                "prediction_date": d,
+                "admitted": True,
+                "score_artifact_digest": f"sha256:{hashlib.sha256(raw).hexdigest()}",
+                "label_artifact_ref": f"{returns_digest}@returns.csv",
+                "label_observation_end": label_end,
+            }
+            for (name, d), raw in score_bytes.items()
+        ]
+        ledger = AdmissibilityLedger(records=records, label_horizon_days=0)
+        ledger.ledger_fingerprint = ledger.compute_fingerprint()
+        ledger_path = write_ledger(ledger, tmp_path)
+
+        manifest = build_default_manifest(
+            admissibility_ledger_fingerprint=ledger.ledger_fingerprint,
+            session_calendar_digest=cal_digest,
+            champion_policy_artifact_digest=policy_digest,
         )
-        # Without the main()-level check, run_phase_a silently uses 2 dates
-        assert result.n_dates <= 2
-        # The main()-level guard (which we added) prevents reaching here
-        # in production — this test documents the gap that the guard fixes.
+        manifest.manifest_fingerprint = manifest.compute_fingerprint()
+        manifest_path = write_manifest(manifest, tmp_path)
+
+        argv = _cli_argv({
+            "xgb_dir": str(xgb_dir),
+            "pt_dir": str(pt_dir),
+            "returns_path": str(returns_path),
+            "manifest_path": str(manifest_path),
+            "ledger_path": str(ledger_path),
+            "output_dir": str(tmp_path / "output"),
+            "cal_path": str(cal_path),
+            "policy_path": str(policy_path),
+        })
+        rc = par.main(argv)
+        assert rc == 1, "main() should reject when a required prediction date is missing from returns"
+        err = capsys.readouterr().err
+        assert "required prediction date" in err

@@ -147,6 +147,36 @@ def validate_champion_policy(
             f"not match manifest.rebalance_cadence={manifest.rebalance_cadence!r}"
         )
 
+    # cost_model: must be a dict with base_cost_bps matching manifest
+    pol_cost = policy.get("cost_model")
+    if not isinstance(pol_cost, dict):
+        errors.append(
+            f"policy cost_model must be a dict, got {type(pol_cost).__name__}"
+        )
+    else:
+        pol_bps = pol_cost.get("base_cost_bps")
+        manifest_bps = manifest.cost_assumptions.get("base_cost_bps")
+        if pol_bps is None:
+            errors.append("policy cost_model missing required key 'base_cost_bps'")
+        elif manifest_bps is not None and float(pol_bps) != float(manifest_bps):
+            errors.append(
+                f"policy cost_model.base_cost_bps={pol_bps} does not match "
+                f"manifest.cost_assumptions.base_cost_bps={manifest_bps}"
+            )
+
+    # score_normalization: must match manifest score_normalization.method
+    pol_norm = policy.get("score_normalization")
+    manifest_norm_method = manifest.score_normalization.get("method", "")
+    if isinstance(pol_norm, dict):
+        pol_norm_method = pol_norm.get("method", "")
+    else:
+        pol_norm_method = str(pol_norm) if pol_norm else ""
+    if manifest_norm_method and pol_norm_method != manifest_norm_method:
+        errors.append(
+            f"policy score_normalization={pol_norm_method!r} does not match "
+            f"manifest.score_normalization.method={manifest_norm_method!r}"
+        )
+
     return policy, errors
 
 
