@@ -591,7 +591,16 @@ def select_non_overlapping_dates(
 
     if session_calendar is not None:
         cal_index = {d: i for i, d in enumerate(session_calendar)}
-        indexed = [(cal_index[d], d) for d in dates if d in cal_index]
+        unknown = [d for d in dates if d not in cal_index]
+        if unknown:
+            raise ValueError(
+                f"{len(unknown)} evaluation date(s) are absent from the "
+                f"session calendar (first 5: {unknown[:5]}). This is a "
+                f"hard failure: silently dropping unknown dates mutates "
+                f"the sample, which can change both which names get "
+                f"selected and the significance of the resulting test."
+            )
+        indexed = [(cal_index[d], d) for d in dates]
         if not indexed:
             return [], []
         indexed.sort()
@@ -1289,13 +1298,24 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--session-calendar",
-        default=None,
+        required=True,
         help=(
             "JSON file listing every expected trading session (a JSON "
             "array of ISO date strings). The calendar's SHA-256 digest "
             "must match manifest.session_calendar_digest. Spacing between "
             "non-overlapping blocks is measured against this calendar, not "
             "the (potentially compressed) intersection of loaded data."
+        ),
+    )
+    parser.add_argument(
+        "--champion-policy-artifact",
+        required=True,
+        help=(
+            "Path to the champion's frozen policy artifact file. Its "
+            "SHA-256 digest must match "
+            "manifest.champion_policy_artifact_digest — fail closed on "
+            "absence/mismatch. Binds the comparison to a specific, "
+            "digested champion policy."
         ),
     )
     args = parser.parse_args(argv)
@@ -1508,34 +1528,79 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     # Session calendar: load, digest-verify, and pass to the runner for
-    # calendar-indexed spacing (Codex review round 11, finding 1).
-    session_calendar: list[str] | None = None
+    # calendar-indexed spacing (Codex review round 11/12).
+    if not manifest.session_calendar_digest:
+        print(
+            "ERROR: manifest.session_calendar_digest is empty -- the "
+            "manifest must declare the expected calendar digest before "
+            "the run, not learn it at runtime (post-hoc calendar problem)",
+            file=sys.stderr,
+        )
+        return 1
     session_calendar_digest = manifest.session_calendar_digest
-    if args.session_calendar:
-        cal_path = Path(args.session_calendar)
-        cal_bytes = cal_path.read_bytes()
-        actual_cal_digest = f"sha256:{hashlib.sha256(cal_bytes).hexdigest()}"
-        session_calendar = json.loads(cal_bytes)
-        if not isinstance(session_calendar, list) or not all(
-            isinstance(d, str) for d in session_calendar
-        ):
-            print(
-                "ERROR: --session-calendar must be a JSON array of ISO date "
-                "strings",
-                file=sys.stderr,
-            )
-            return 1
-        if session_calendar_digest and actual_cal_digest != session_calendar_digest:
-            print(
-                f"ERROR: session calendar digest {actual_cal_digest} does not "
-                f"match manifest.session_calendar_digest "
-                f"{session_calendar_digest}",
-                file=sys.stderr,
-            )
-            return 1
-        if not session_calendar_digest:
-            session_calendar_digest = actual_cal_digest
-        print(f"  Session calendar: {len(session_calendar)} sessions (digest {session_calendar_digest})")
+
+    cal_path = Path(args.session_calendar)
+    cal_bytes = cal_path.read_bytes()
+    actual_cal_digest = f"sha256:{hashlib.sha256(cal_bytes).hexdigest()}"
+    session_calendar: list[str] = json.loads(cal_bytes)
+    if not isinstance(session_calendar, list) or not all(
+        isinstance(d, str) for d in session_calendar
+    ):
+        print(
+            "ERROR: --session-calendar must be a JSON array of ISO date "
+            "strings",
+            file=sys.stderr,
+        )
+        return 1
+    if not session_calendar:
+        print("ERROR: session calendar is empty", file=sys.stderr)
+        return 1
+    if session_calendar != sorted(set(session_calendar)):
+        print(
+            "ERROR: session calendar must be sorted and contain unique "
+            "sessions",
+            file=sys.stderr,
+        )
+        return 1
+    if actual_cal_digest != session_calendar_digest:
+        print(
+            f"ERROR: session calendar digest {actual_cal_digest} does not "
+            f"match manifest.session_calendar_digest "
+            f"{session_calendar_digest}",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"  Session calendar: {len(session_calendar)} sessions (digest {session_calendar_digest})")
+
+    # Champion policy artifact: load, digest-verify (Codex review round 12).
+    if not manifest.champion_policy_artifact_digest:
+        print(
+            "ERROR: manifest.champion_policy_artifact_digest is empty -- "
+            "the experiment cannot claim 'L1 vs frozen champion' without "
+            "a digested, verifiable champion policy artifact",
+            file=sys.stderr,
+        )
+        return 1
+    policy_path = Path(args.champion_policy_artifact)
+    if not policy_path.exists():
+        print(
+            f"ERROR: --champion-policy-artifact {policy_path} does not "
+            f"exist",
+            file=sys.stderr,
+        )
+        return 1
+    policy_bytes = policy_path.read_bytes()
+    actual_policy_digest = f"sha256:{hashlib.sha256(policy_bytes).hexdigest()}"
+    if actual_policy_digest != manifest.champion_policy_artifact_digest:
+        print(
+            f"ERROR: champion policy artifact digest "
+            f"{actual_policy_digest} does not match "
+            f"manifest.champion_policy_artifact_digest "
+            f"{manifest.champion_policy_artifact_digest}",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"  Champion policy artifact verified (digest {actual_policy_digest})")
 
     if manifest.rebalance_cadence != "block_rebalance":
         print(

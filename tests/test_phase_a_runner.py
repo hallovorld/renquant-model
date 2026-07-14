@@ -1023,6 +1023,18 @@ def _build_cli_fixture(
     returns_path.write_text("\n".join(returns_lines))
     returns_digest = f"sha256:{hashlib.sha256(returns_path.read_bytes()).hexdigest()}"
 
+    # Session calendar: all dates used in the fixture
+    cal_path = tmp_path / "session_calendar.json"
+    cal_bytes = json.dumps(sorted(dates)).encode()
+    cal_path.write_bytes(cal_bytes)
+    cal_digest = f"sha256:{hashlib.sha256(cal_bytes).hexdigest()}"
+
+    # Champion policy artifact: a minimal frozen policy document
+    policy_path = tmp_path / "champion_policy.json"
+    policy_bytes = json.dumps({"champion": "xgb", "frozen": True}).encode()
+    policy_path.write_bytes(policy_bytes)
+    policy_digest = f"sha256:{hashlib.sha256(policy_bytes).hexdigest()}"
+
     records = [
         {
             "expert_name": name,
@@ -1042,6 +1054,8 @@ def _build_cli_fixture(
 
     manifest = build_default_manifest(
         admissibility_ledger_fingerprint=ledger.ledger_fingerprint,
+        session_calendar_digest=cal_digest,
+        champion_policy_artifact_digest=policy_digest,
     )
     for key, value in manifest_overrides.items():
         setattr(manifest, key, value)
@@ -1055,6 +1069,8 @@ def _build_cli_fixture(
         "manifest_path": str(manifest_path),
         "ledger_path": str(ledger_path),
         "output_dir": str(tmp_path / "output"),
+        "cal_path": str(cal_path),
+        "policy_path": str(policy_path),
     }
 
 
@@ -1066,6 +1082,8 @@ def _cli_argv(fixture: dict[str, str], **overrides: str) -> list[str]:
         "--manifest-file", fixture["manifest_path"],
         "--ledger-file", fixture["ledger_path"],
         "--output-dir", fixture["output_dir"],
+        "--session-calendar", fixture["cal_path"],
+        "--champion-policy-artifact", fixture["policy_path"],
     ]
     for key, value in overrides.items():
         argv.extend([f"--{key.replace('_', '-')}", str(value)])
@@ -1139,6 +1157,8 @@ class TestMainExitCode:
             "--manifest-file", fixture["manifest_path"],
             "--ledger-file", fixture["ledger_path"],
             "--output-dir", fixture["output_dir"],
+            "--session-calendar", fixture["cal_path"],
+            "--champion-policy-artifact", fixture["policy_path"],
         ]
         rc = par.main(argv)
         assert rc == 1
@@ -1189,6 +1209,8 @@ class TestManifestLedgerBinding:
             "--manifest-file", fixture["manifest_path"],
             "--ledger-file", fixture["ledger_path"],
             "--output-dir", fixture["output_dir"],
+            "--session-calendar", fixture["cal_path"],
+            "--champion-policy-artifact", fixture["policy_path"],
         ]
         rc = par.main(argv)
         assert rc == 1
@@ -1839,3 +1861,130 @@ class TestExperimentVersioning:
         assert data["experiment_version"] == "v2-block-rebalance"
         assert "champion_policy_artifact_digest" in data
         assert "embargo_justification" in data
+
+
+# ── Round 12 adversarial tests ────────────────────────────────────────────────
+# Codex review round 12: fail-closed session calendar + verified champion
+# policy artifact digest.
+
+
+class TestSessionCalendarFailClosed:
+    """Codex review round 12, finding 1: main() must require
+    --session-calendar with a nonempty manifest digest, reject unknown
+    dates in the calendar, and enforce sorted/unique sessions."""
+
+    def test_empty_manifest_calendar_digest_rejected(self, tmp_path, capsys):
+        fixture = _build_cli_fixture(
+            tmp_path, session_calendar_digest="",
+        )
+        rc = par.main(_cli_argv(fixture))
+        assert rc == 1
+        assert "session_calendar_digest" in capsys.readouterr().err
+
+    def test_manifest_calendar_digest_mismatch_rejected(self, tmp_path, capsys):
+        fixture = _build_cli_fixture(
+            tmp_path, session_calendar_digest="sha256:wrong-digest",
+        )
+        rc = par.main(_cli_argv(fixture))
+        assert rc == 1
+        assert "does not match" in capsys.readouterr().err
+
+    def test_unknown_date_in_evaluation_raises(self):
+        """select_non_overlapping_dates must raise when any evaluation date
+        is absent from the session calendar — silently dropping dates
+        mutates the sample."""
+        calendar = ["2025-01-01", "2025-01-02", "2025-01-03"]
+        dates = ["2025-01-01", "2025-01-04"]  # 01-04 not in calendar
+        with pytest.raises(ValueError, match="absent from the session calendar"):
+            select_non_overlapping_dates(
+                dates, 1, session_calendar=calendar,
+            )
+
+    def test_unsorted_calendar_rejected(self, tmp_path, capsys):
+        fixture = _build_cli_fixture(tmp_path)
+        cal_path = Path(fixture["cal_path"])
+        unsorted = ["2025-06-03", "2025-06-01", "2025-06-02"]
+        cal_bytes = json.dumps(unsorted).encode()
+        cal_path.write_bytes(cal_bytes)
+        # Update manifest digest to match the unsorted calendar
+        manifest_path = Path(fixture["manifest_path"])
+        manifest_data = json.loads(manifest_path.read_text())
+        manifest_data["session_calendar_digest"] = (
+            f"sha256:{hashlib.sha256(cal_bytes).hexdigest()}"
+        )
+        from experiments.ensemble_phase0.experiment_manifest import ExperimentManifest
+        m = ExperimentManifest(**{
+            k: v for k, v in manifest_data.items()
+            if k in ExperimentManifest.__dataclass_fields__
+        })
+        manifest_data["manifest_fingerprint"] = m.compute_fingerprint()
+        manifest_path.write_text(json.dumps(manifest_data, indent=2))
+        rc = par.main(_cli_argv(fixture))
+        assert rc == 1
+        assert "sorted" in capsys.readouterr().err
+
+    def test_duplicate_sessions_rejected(self, tmp_path, capsys):
+        fixture = _build_cli_fixture(tmp_path)
+        cal_path = Path(fixture["cal_path"])
+        dupes = ["2025-06-01", "2025-06-01", "2025-06-02", "2025-06-03"]
+        cal_bytes = json.dumps(dupes).encode()
+        cal_path.write_bytes(cal_bytes)
+        manifest_path = Path(fixture["manifest_path"])
+        manifest_data = json.loads(manifest_path.read_text())
+        manifest_data["session_calendar_digest"] = (
+            f"sha256:{hashlib.sha256(cal_bytes).hexdigest()}"
+        )
+        from experiments.ensemble_phase0.experiment_manifest import ExperimentManifest
+        m = ExperimentManifest(**{
+            k: v for k, v in manifest_data.items()
+            if k in ExperimentManifest.__dataclass_fields__
+        })
+        manifest_data["manifest_fingerprint"] = m.compute_fingerprint()
+        manifest_path.write_text(json.dumps(manifest_data, indent=2))
+        rc = par.main(_cli_argv(fixture))
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "sorted" in err or "unique" in err
+
+    def test_valid_calendar_accepted(self, tmp_path):
+        fixture = _build_cli_fixture(tmp_path)
+        rc = par.main(_cli_argv(fixture))
+        assert rc == 0
+
+
+class TestChampionPolicyArtifactVerification:
+    """Codex review round 12, finding 2: champion_policy_artifact_digest
+    must be nonempty and verified against an actual artifact file."""
+
+    def test_empty_policy_digest_rejected(self, tmp_path, capsys):
+        fixture = _build_cli_fixture(
+            tmp_path, champion_policy_artifact_digest="",
+        )
+        rc = par.main(_cli_argv(fixture))
+        assert rc == 1
+        assert "champion_policy_artifact_digest" in capsys.readouterr().err
+
+    def test_missing_policy_artifact_file_rejected(self, tmp_path, capsys):
+        fixture = _build_cli_fixture(tmp_path)
+        # Point to a nonexistent file
+        argv = _cli_argv(fixture)
+        # Replace the --champion-policy-artifact value
+        idx = argv.index("--champion-policy-artifact")
+        argv[idx + 1] = str(tmp_path / "nonexistent_policy.json")
+        rc = par.main(argv)
+        assert rc == 1
+        assert "does not exist" in capsys.readouterr().err
+
+    def test_policy_digest_mismatch_rejected(self, tmp_path, capsys):
+        fixture = _build_cli_fixture(tmp_path)
+        # Mutate the policy artifact so its digest no longer matches
+        policy_path = Path(fixture["policy_path"])
+        policy_path.write_text(json.dumps({"champion": "xgb", "frozen": True, "mutated": True}))
+        rc = par.main(_cli_argv(fixture))
+        assert rc == 1
+        assert "does not match" in capsys.readouterr().err
+
+    def test_valid_policy_artifact_accepted(self, tmp_path):
+        fixture = _build_cli_fixture(tmp_path)
+        rc = par.main(_cli_argv(fixture))
+        assert rc == 0
