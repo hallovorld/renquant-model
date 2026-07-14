@@ -18,6 +18,17 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+#: ``nested_wf_harness_status`` sentinel values. Per design doc §5.1's
+#: prerequisite table, "Nested WF + purging harness" is listed as
+#: "Not built -- Blocks discovery": Phase A itself is not supposed to be
+#: able to issue a promotable verdict until that harness exists and has
+#: been applied to freeze the evaluation calendar BEFORE any outer-fold
+#: evaluation (§4.1). Manifests default to NOT_BUILT; only an explicit,
+#: deliberate change to APPLIED unlocks a promotable (non-EXPLORATORY_ONLY)
+#: verdict (Codex review 2026-07-13 round 5, finding 2).
+NESTED_WF_HARNESS_NOT_BUILT = "not_built"
+NESTED_WF_HARNESS_APPLIED = "applied_frozen_calendar"
+
 
 @dataclass
 class ExperimentManifest:
@@ -37,12 +48,39 @@ class ExperimentManifest:
     missing_score_rule: str = ""
     score_orientation_convention: str = ""
 
+    # Phase A scope (Codex review 2026-07-13, round 4 on model#53): the
+    # §4.1bis missing_score_rule ("exclude_and_renormalize") governs a
+    # ticker missing from ONE expert on a date all experts otherwise
+    # covered -- l1_equal_weight already implements exactly that at the
+    # per-ticker level. It does NOT mean Phase A's controlled champion-vs-L1
+    # comparison evaluates dates where a WHOLE expert has no score at all;
+    # doing so would let champion and L1 silently evaluate different
+    # calendars. Phase A's evaluation calendar is therefore explicitly
+    # restricted to dates every loaded expert scored -- this flag makes
+    # that restriction a versioned, checkable manifest fact instead of an
+    # implicit assumption the runner and this doc could silently diverge
+    # on. A future level that needs true partial-coverage combination
+    # requires its own manifest revision, not a silent behavior change here.
+    phase_a_requires_complete_expert_coverage: bool = True
+
+    # §4.1/§5.1: Phase A's own prerequisite table lists "Nested WF + purging
+    # harness" as "Not built -- Blocks discovery". phase_a_runner does not
+    # implement a nested outer/inner-fold split or a frozen, pre-registered
+    # evaluation calendar -- it evaluates over whatever is currently
+    # admitted. Defaults to NESTED_WF_HARNESS_NOT_BUILT, which forces every
+    # run_phase_a verdict to EXPLORATORY_ONLY regardless of the underlying
+    # statistics, until this is deliberately changed to
+    # NESTED_WF_HARNESS_APPLIED by whoever builds and applies that harness
+    # (Codex review 2026-07-13 round 5, finding 2).
+    nested_wf_harness_status: str = "not_built"
+
     # §3.3: covariance/window rule (L2)
     covariance_window_rule: dict[str, Any] = field(default_factory=dict)
 
     # §4.4: portfolio mapping (fixed across levels)
     portfolio_mapping: dict[str, Any] = field(default_factory=dict)
     rebalance_cadence: str = ""
+    champion_production_policy: str = "daily"
     cost_assumptions: dict[str, Any] = field(default_factory=dict)
     risk_constraints: dict[str, Any] = field(default_factory=dict)
 
@@ -63,6 +101,26 @@ class ExperimentManifest:
     rejected_candidates: list[dict[str, Any]] = field(default_factory=list)
     failed_runs: list[dict[str, Any]] = field(default_factory=list)
 
+    # Session calendar artifact (Codex review round 11, finding 1):
+    # the frozen list of ALL expected trading sessions. Spacing
+    # arithmetic uses calendar-index positions so missing sessions
+    # preserve gaps instead of compressing the index.
+    session_calendar_digest: str = ""
+
+    # Experiment version (round 11, finding 3): block-rebalance is a
+    # DISTINCT research arm from the daily-rebalance champion, not a
+    # repair. Named versions prevent silent design drift.
+    experiment_version: str = ""
+
+    # Champion policy artifact digest (round 11, finding 3): binds the
+    # comparison to a specific, digested champion policy. Without this
+    # a block-rebalance experiment cannot claim "L1 vs frozen champion."
+    champion_policy_artifact_digest: str = ""
+
+    # Embargo justification (round 11, finding 2): a concrete reason
+    # for the chosen embargo length, tied to the training/label contract.
+    embargo_justification: str = ""
+
     # Ledger reference
     admissibility_ledger_fingerprint: str = ""
 
@@ -80,6 +138,8 @@ class ExperimentManifest:
 def build_default_manifest(
     *,
     admissibility_ledger_fingerprint: str = "",
+    session_calendar_digest: str = "",
+    champion_policy_artifact_digest: str = "",
 ) -> ExperimentManifest:
     """Build the default manifest for the L1-L3 ensemble experiment.
 
@@ -125,6 +185,8 @@ def build_default_manifest(
         },
         missing_score_rule="exclude_and_renormalize",
         score_orientation_convention="higher_is_bullish",
+        phase_a_requires_complete_expert_coverage=True,
+        nested_wf_harness_status=NESTED_WF_HARNESS_NOT_BUILT,
         covariance_window_rule={
             "window_days": 60,
             "shrinkage": "toward_equal_weights",
@@ -133,10 +195,12 @@ def build_default_manifest(
         },
         portfolio_mapping={
             "method": "fixed_top_n_selection",
+            "top_n": 10,
             "description": "same score-to-portfolio mapping as frozen champion",
             "fixed_across_levels": True,
         },
-        rebalance_cadence="daily",
+        rebalance_cadence="block_rebalance",
+        champion_production_policy="daily",
         cost_assumptions={
             "base_cost_bps": 5,
             "adverse_cost_2x_bps": 10,
@@ -154,7 +218,15 @@ def build_default_manifest(
             "block_length_days": 60,
             "alpha": 0.05,
             "minimum_effect_size_delta_ic": 0.005,
+            "min_non_overlapping_observations": 8,
             "one_sided": True,
+            "embargo_sessions": 10,
+            "embargo_justification": (
+                "10 sessions: conservative buffer beyond the 60-session "
+                "label horizon to account for any residual serial "
+                "dependence in forward returns near block boundaries"
+            ),
+            "block_spacing_unit": "session_index",
         },
         correction_procedure="hierarchical_sequential_gatekeeping",
         hypothesis_family=[
@@ -180,6 +252,14 @@ def build_default_manifest(
             "status": "UNREAD",
         },
         confirmation_status="UNREAD",
+        session_calendar_digest=session_calendar_digest,
+        experiment_version="v2-block-rebalance",
+        champion_policy_artifact_digest=champion_policy_artifact_digest,
+        embargo_justification=(
+            "10 sessions: conservative buffer beyond the 60-session "
+            "label horizon to account for any residual serial "
+            "dependence in forward returns near block boundaries"
+        ),
         admissibility_ledger_fingerprint=admissibility_ledger_fingerprint,
     )
 
@@ -195,9 +275,27 @@ def write_manifest(manifest: ExperimentManifest, output_dir: Path) -> Path:
 
 
 def load_and_verify_manifest(path: Path) -> ExperimentManifest:
-    """Load a manifest and verify its fingerprint hasn't been tampered with."""
+    """Load a manifest and verify its fingerprint hasn't been tampered with.
+
+    An absent/empty ``manifest_fingerprint`` is rejected outright, not
+    merely a mismatched one. The prior version only checked
+    ``if stored_fp and computed_fp != stored_fp``, so a manifest with a
+    correctly-bound ``admissibility_ledger_fingerprint`` but no integrity
+    fingerprint of its own was consumed as if frozen -- the ledger binding
+    proves which ledger the manifest claims to pair with, but proves
+    nothing about whether the manifest's OWN content has been tampered
+    with, since there was nothing to check it against (Codex review
+    2026-07-13T17:00:21Z round 6, finding 4).
+    """
     data = json.loads(path.read_text())
     stored_fp = data.get("manifest_fingerprint", "")
+    if not stored_fp:
+        raise ValueError(
+            "manifest_fingerprint is absent or empty -- a manifest with no "
+            "integrity fingerprint cannot be verified and is refused, not "
+            "merely warned about (a missing fingerprint is not the same as "
+            "a matching one)"
+        )
 
     manifest = ExperimentManifest(**{
         k: v for k, v in data.items()
@@ -205,10 +303,28 @@ def load_and_verify_manifest(path: Path) -> ExperimentManifest:
     })
 
     computed_fp = manifest.compute_fingerprint()
-    if stored_fp and computed_fp != stored_fp:
+    if computed_fp != stored_fp:
         raise ValueError(
             f"manifest fingerprint mismatch: stored={stored_fp}, "
             f"computed={computed_fp} — manifest may have been modified"
         )
 
     return manifest
+
+
+def resolve_champion_name(manifest: ExperimentManifest) -> str:
+    """Resolve the frozen champion's name from the manifest's declared
+    experts, never from caller/CLI argument order.
+
+    Exactly one manifest expert must carry ``status == "primary_live"`` --
+    that is the pre-registered frozen champion (Codex review 2026-07-13
+    on model#53, finding 3: "first --expert" is CLI-order-dependent, not a
+    frozen identity).
+    """
+    candidates = [e["name"] for e in manifest.experts if e.get("status") == "primary_live"]
+    if len(candidates) != 1:
+        raise ValueError(
+            f"expected exactly one manifest expert with status=primary_live "
+            f"to serve as the frozen champion, found {len(candidates)}: {candidates}"
+        )
+    return candidates[0]

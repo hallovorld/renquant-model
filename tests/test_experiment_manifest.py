@@ -11,9 +11,12 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parents[1] / "experiments" / "ensemble_phase0"))
 
 from experiment_manifest import (
+    NESTED_WF_HARNESS_APPLIED,
+    NESTED_WF_HARNESS_NOT_BUILT,
     ExperimentManifest,
     build_default_manifest,
     load_and_verify_manifest,
+    resolve_champion_name,
     write_manifest,
 )
 
@@ -74,3 +77,79 @@ class TestWriteAndLoad:
 
         with pytest.raises(ValueError, match="fingerprint mismatch"):
             load_and_verify_manifest(output_path)
+
+    def test_rejects_empty_fingerprint(self, tmp_path: Path) -> None:
+        """Codex review 2026-07-13T17:00:21Z round 6, finding 4:
+        load_and_verify_manifest must reject an absent/empty
+        manifest_fingerprint outright, not merely a mismatched one -- the
+        prior check (``if stored_fp and computed_fp != stored_fp``) let a
+        manifest with no integrity fingerprint of its own through as if it
+        were frozen, even if its ``admissibility_ledger_fingerprint``
+        correctly named a real ledger."""
+        manifest = build_default_manifest()
+        output_path = write_manifest(manifest, tmp_path)
+
+        data = json.loads(output_path.read_text())
+        data["manifest_fingerprint"] = ""
+        output_path.write_text(json.dumps(data))
+
+        with pytest.raises(ValueError, match="absent or empty"):
+            load_and_verify_manifest(output_path)
+
+    def test_rejects_missing_fingerprint_key(self, tmp_path: Path) -> None:
+        """Same as above, but the key is absent entirely rather than an
+        empty string -- both must be rejected identically."""
+        manifest = build_default_manifest()
+        output_path = write_manifest(manifest, tmp_path)
+
+        data = json.loads(output_path.read_text())
+        del data["manifest_fingerprint"]
+        output_path.write_text(json.dumps(data))
+
+        with pytest.raises(ValueError, match="absent or empty"):
+            load_and_verify_manifest(output_path)
+
+
+class TestResolveChampionName:
+    def test_resolves_primary_live_expert(self) -> None:
+        manifest = build_default_manifest()
+        assert resolve_champion_name(manifest) == "xgb"
+
+    def test_ignores_list_order(self) -> None:
+        """Champion resolution must key off status, never off which
+        expert happens to be listed/passed first (Codex review
+        2026-07-13 on model#53, finding 3)."""
+        manifest = build_default_manifest()
+        manifest.experts = list(reversed(manifest.experts))
+        assert manifest.experts[0]["name"] != "xgb"
+        assert resolve_champion_name(manifest) == "xgb"
+
+    def test_raises_when_no_primary_live_expert(self) -> None:
+        manifest = build_default_manifest()
+        for expert in manifest.experts:
+            expert["status"] = "shadow_demoted"
+        with pytest.raises(ValueError, match="primary_live"):
+            resolve_champion_name(manifest)
+
+    def test_raises_when_multiple_primary_live_experts(self) -> None:
+        manifest = build_default_manifest()
+        for expert in manifest.experts:
+            expert["status"] = "primary_live"
+        with pytest.raises(ValueError, match="primary_live"):
+            resolve_champion_name(manifest)
+
+
+class TestNestedWfHarnessStatus:
+    """Round 5, finding 2: default manifests must declare the nested-WF
+    harness NOT built, and that status must be part of the fingerprint
+    so it can't be silently flipped after the manifest is frozen."""
+
+    def test_default_manifest_declares_not_built(self) -> None:
+        manifest = build_default_manifest()
+        assert manifest.nested_wf_harness_status == NESTED_WF_HARNESS_NOT_BUILT
+
+    def test_status_is_part_of_the_fingerprint(self) -> None:
+        m1 = build_default_manifest()
+        m2 = build_default_manifest()
+        m2.nested_wf_harness_status = NESTED_WF_HARNESS_APPLIED
+        assert m1.compute_fingerprint() != m2.compute_fingerprint()

@@ -30,8 +30,10 @@ from admissibility_ledger import (
     build_calendar_evidence,
     build_complementarity_report,
     build_exchange_session_calendar,
+    admitted_score_digests,
     build_ledger,
     extract_metadata_from_score,
+    load_and_verify_ledger,
     load_score_file,
     main,
     validate_expert_date,
@@ -948,8 +950,8 @@ class TestDigestValidation:
         )
         assert record.admitted is False
 
-    def test_label_ref_without_locator_rejects(self) -> None:
-        """label_artifact_ref must be sha256:<64hex>@<locator>, not bare digest."""
+    def test_label_ref_without_locator_admitted(self) -> None:
+        """Bare digest without @locator is valid — locator is optional audit trail."""
         meta = _good_meta()
         meta["label_artifact_ref"] = "sha256:" + "ef567890ab123456" * 4  # no @locator
         expert = ExpertSpec(name="xgb", score_dir=Path("."))
@@ -957,9 +959,7 @@ class TestDigestValidation:
             expert, "2026-01-15", meta, UNIVERSE,
             decision_timestamp=DT_TS_JAN15,
         )
-        assert record.admitted is False
-        assert any("label_artifact_ref" in r and "syntax" in r
-                    for r in record.rejection_reasons)
+        assert record.admitted is True
 
     def test_label_ref_with_locator_admitted(self) -> None:
         meta = _good_meta()
@@ -997,7 +997,7 @@ class TestDigestValidation:
 
     def test_label_ref_regex(self) -> None:
         assert LABEL_REF_RE.match(VALID_LABEL_REF)
-        assert not LABEL_REF_RE.match("sha256:" + "aa" * 32)  # no @locator
+        assert LABEL_REF_RE.match("sha256:" + "aa" * 32)  # bare digest, locator optional
         assert not LABEL_REF_RE.match("sha256:short@path")  # too short
         assert LABEL_REF_RE.match("sha256:" + "aa" * 32 + "@s3://bucket/key")
 
@@ -1449,6 +1449,74 @@ class TestWriteLedger:
         assert data["experts"] == ["xgb"]
         assert data["summary"]["total_records"] == 1
         assert data["ledger_fingerprint"].startswith("sha256:")
+
+
+class TestLoadAndVerifyLedger:
+    def _built_ledger(self) -> AdmissibilityLedger:
+        experts = [ExpertSpec(name="xgb", score_dir=Path("."))]
+        dates = ["2026-01-15"]
+
+        def loader(expert: ExpertSpec, dt: str) -> dict[str, Any]:
+            return _good_meta(dt)
+
+        return build_ledger(
+            experts, dates, UNIVERSE, score_loader=loader,
+            decision_schedule=US_EQUITY_CLOSE,
+            complementarity_assessment="PLAUSIBLE",
+        )
+
+    def test_roundtrip(self, tmp_path: Path) -> None:
+        ledger = self._built_ledger()
+        output_path = write_ledger(ledger, tmp_path)
+        loaded = load_and_verify_ledger(output_path)
+        assert loaded.ledger_fingerprint == ledger.ledger_fingerprint
+        assert loaded.records == ledger.records
+
+    def test_detects_tampering(self, tmp_path: Path) -> None:
+        ledger = self._built_ledger()
+        output_path = write_ledger(ledger, tmp_path)
+
+        data = json.loads(output_path.read_text())
+        data["records"][0]["admitted"] = False
+        output_path.write_text(json.dumps(data))
+
+        with pytest.raises(ValueError, match="fingerprint mismatch"):
+            load_and_verify_ledger(output_path)
+
+    def test_rejects_missing_fingerprint(self, tmp_path: Path) -> None:
+        ledger = self._built_ledger()
+        output_path = write_ledger(ledger, tmp_path)
+
+        data = json.loads(output_path.read_text())
+        data["ledger_fingerprint"] = ""
+        output_path.write_text(json.dumps(data))
+
+        with pytest.raises(ValueError, match="fingerprint mismatch"):
+            load_and_verify_ledger(output_path)
+
+
+class TestAdmittedScoreDigests:
+    def test_includes_only_admitted_records(self) -> None:
+        experts = [ExpertSpec(name="xgb", score_dir=Path("."))]
+        dates = ["2026-01-15", "2026-01-16"]
+
+        def loader(expert: ExpertSpec, dt: str) -> dict[str, Any]:
+            if dt == "2026-01-16":
+                return {}  # everything missing -- rejected
+            return _good_meta(dt)
+
+        ledger = build_ledger(
+            experts, dates, UNIVERSE, score_loader=loader,
+            decision_schedule=US_EQUITY_CLOSE,
+            complementarity_assessment="PLAUSIBLE",
+        )
+        digests = admitted_score_digests(ledger)
+        assert set(digests.keys()) == {("xgb", "2026-01-15")}
+        assert digests[("xgb", "2026-01-15")] == VALID_SCORE_DIGEST
+
+    def test_empty_ledger_yields_empty_map(self) -> None:
+        ledger = AdmissibilityLedger()
+        assert admitted_score_digests(ledger) == {}
 
 
 class TestLoadScoreFile:
