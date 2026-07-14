@@ -1,6 +1,6 @@
 # Phase A Discovery Runner
 
-**Date:** 2026-07-12 (last updated 2026-07-13, round 9 review)
+**Date:** 2026-07-12 (last updated 2026-07-13, round 14 review)
 **PR:** model#53
 **Goal:** G4 — multi-model ensemble
 
@@ -14,7 +14,7 @@ mapping, with a Newey-West HAC paired test for statistical significance.
 
 - `experiments/ensemble_phase0/phase_a_runner.py` — runner implementation
 - `experiments/ensemble_phase0/experiment_manifest.py` — manifest builder
-- `tests/test_phase_a_runner.py` — 105 tests covering all components
+- `tests/test_phase_a_runner.py` — 146 tests covering all components
 - `tests/test_experiment_manifest.py` — 15 tests for the manifest loader
 
 ## Components
@@ -29,28 +29,59 @@ mapping, with a Newey-West HAC paired test for statistical significance.
 6. **Go/no-go verdict** — L1_BEATS_CHAMPION / CHAMPION_RETAINED / INCONCLUSIVE
    / EXPLORATORY_ONLY
 
-## Round 9 changes (rebalance cadence + one_sided)
+## Review round summary
 
-1. **Rebalance cadence (option 2):** changed manifest `rebalance_cadence`
-   from `"daily"` to `"block_rebalance"` and merged the dual evaluation
-   (daily descriptive + block-spaced test) into a single block-rebalance
-   evaluation. All reported metrics (delta_ic, delta_return, delta_sharpe,
-   and the primary test's delta_net_return_test) now come from the same
-   block-rebalance evaluation, so the estimand is unambiguous. Intermediate
-   daily selections are never computed — costs are charged only at rebalance
-   points.
+### Round 9 (rebalance cadence + one_sided)
 
-2. **`statistical_test.one_sided` validation:** the runner now validates
-   that the manifest's `statistical_test.one_sided` field is `True`,
-   matching the implemented one-sided Newey-West paired t-test
-   (H1: mean(L1) > mean(champion)). A missing or False value is rejected.
+1. Merged daily+block evaluation into single block-rebalance estimand.
+2. Validated `statistical_test.one_sided == True`.
+3. Adversarial regression test proving intermediate daily scores do not
+   affect block-rebalance test statistics.
 
-3. **Adversarial regression test:** proves that intermediate daily scores
-   (between block endpoints) do not affect the primary test result. Two
-   expert sets with identical block-date scores but different intermediate
-   scores produce identical primary test statistics (t-stat, p-value,
-   verdict), confirming the block-rebalance policy is correctly
-   implemented.
+### Round 10 (session-index spacing + estimand versioning)
+
+1. Spacing measured in session-index positions (not calendar days).
+2. Embargo fields persisted on result for auditability.
+3. Estimand policy versioning (`block_rebalance_paired` vs champion's
+   `daily` production policy), with caveat in verdict_detail on mismatch.
+
+### Round 11 (frozen session calendar + positive embargo + versioning)
+
+1. Spacing measured against a frozen, manifest-bound session calendar
+   (SHA-256 digest-verified). Missing sessions in loaded data preserve
+   real calendar-index gaps instead of compressing them.
+2. `embargo_sessions` must be positive (zero/negative rejected).
+3. Block-rebalance is a separately versioned experiment
+   (`experiment_version` required, non-empty).
+4. Champion policy artifact: required, digest-verified against manifest.
+
+### Round 12 (fail-closed calendar + verified champion policy)
+
+1. Session calendar: required CLI arg, sorted/unique, digest-verified,
+   unknown evaluation dates raise hard errors.
+2. Champion policy artifact: required, file must exist, digest must match
+   manifest. Typed schema validation (champion_name, top_n,
+   rebalance_cadence checked against manifest).
+
+### Round 13 (return-date coverage + typed policy schema)
+
+1. Return-date coverage: every required prediction date (intersection of
+   admitted expert dates and session calendar) must be present in the
+   returns file. Missing dates fail closed (no silent calendar shrinkage).
+2. Champion policy required fields: `champion_name`, `top_n`,
+   `rebalance_cadence`, `cost_model`, `score_normalization`.
+
+### Round 14 (champion policy schema + e2e return coverage test)
+
+1. `validate_champion_policy()` now enforces `cost_model` and
+   `score_normalization` schema: `cost_model` must be a dict with
+   `base_cost_bps` matching `manifest.cost_assumptions.base_cost_bps`;
+   `score_normalization` method must match
+   `manifest.score_normalization.method`. Mismatch tests for both.
+2. Missing-return-date test replaced with a full e2e fixture: shortened
+   returns file with re-fingerprinted ledger/manifest, asserting
+   `main()` returns 1 specifically because a required prediction date is
+   absent (not because of a digest mismatch).
 
 ## Prerequisites for execution
 
