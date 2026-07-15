@@ -1,4 +1,4 @@
-"""F-7 round 4: verified workflow-classification -> manifest provenance
+"""F-7 round 4/5: verified workflow-classification -> manifest provenance
 (PatchTST twin of ``tests/gbdt/test_workflow_class_provenance.py`` -- see
 that file's module docstring for the full Codex-review rationale).
 
@@ -6,7 +6,11 @@ that file's module docstring for the full Codex-review rationale).
 hardcoded ``provenance = {"kind": "none"}`` regardless of whether the
 invocation was genuine canonical training or a registered experiment writing
 to a fresh path. This file proves the adversarial scenario Codex asked for
-against the PatchTST producer specifically.
+against the PatchTST producer specifically -- including the round-5 P0
+canonical-side bypass (``test_canonical_declaration_over_registered_experiment_marker_is_rejected``
+below): a caller cannot relabel a real, registered experiment run as
+``workflow_class="canonical"`` and get an unverified ``{"kind": "none"}``
+pass through this producer either.
 """
 from __future__ import annotations
 
@@ -180,3 +184,45 @@ def test_canonical_workflow_class_still_succeeds_with_none_provenance(tmp_path: 
     assert result.ok is True
     assert ctx.artifact_manifest is not None
     assert ctx.artifact_manifest["provenance"] == {"kind": "none"}
+
+
+def test_canonical_declaration_over_registered_experiment_marker_is_rejected(tmp_path: Path) -> None:
+    """THE round-5 adversarial integration test Codex's P0 review asked for,
+    against the PatchTST producer -- see the GBDT twin
+    (``tests/gbdt/test_workflow_class_provenance.py``) for the full Codex
+    quote and rationale. Mirrors
+    ``test_registered_experiment_at_fresh_path_is_never_none`` above exactly,
+    except the caller declares ``workflow_class=WORKFLOW_CLASS_CANONICAL``
+    (the dishonest value) for a directory that is, in verifiable, on-disk
+    fact, a registered experiment run.
+    """
+    output_dir = tmp_path / "fresh_experiment_run_lying_as_canonical"
+    assert not output_dir.exists(), "path must be genuinely fresh for this test to be meaningful"
+
+    registry_index_path = tmp_path / "manifest_registry_index.json"
+    experiment_id = "exp-patchtst-adversarial-canonical-lie-2026-07-14"
+    manifest_digest = "sha256:patchtst-adversarial-canonical-lie-digest"
+    _write_registry_index(registry_index_path, experiment_id=experiment_id, manifest_digest=manifest_digest)
+
+    write_experiment_classification(
+        output_dir,
+        experiment_id=experiment_id,
+        manifest_path="irrelevant/for/this/test.json",
+        manifest_digest=manifest_digest,
+        config_digest="sha256:config-digest",
+    )
+
+    ctx = PatchTstTrainingContext(
+        dataset_manifest=_dataset_manifest(),
+        model_config={
+            "architecture": "hf_patchtst",
+            "experiment_registry_index_path": str(registry_index_path),
+        },
+        output_dir=output_dir,
+        workflow_class=WORKFLOW_CLASS_CANONICAL,
+    )
+
+    with pytest.raises(ValueError, match="REGISTERED EXPERIMENT run"):
+        PatchTstTrainingPipeline(_loader, _trainer, _validator).run(ctx)
+
+    assert ctx.artifact_manifest is None

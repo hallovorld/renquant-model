@@ -90,13 +90,51 @@ literal bug Codex flagged (hardcoded regardless of context):
   ``"none"``. See ``tests/gbdt/test_workflow_class_provenance.py`` /
   ``tests/patchtst/test_workflow_class_provenance.py``.
 
+## Round 5 fix: the canonical-side bypass (Codex P0, 2026-07-14)
+
+Round 4 (above) closed the gap for an honest ``workflow_class="experiment"``
+caller, but Codex's round-5 review found the exact caller-controlled bypass
+still open on the OTHER side of the same ``if``:
+
+    "workflow_class='canonical' remains the exact caller-controlled bypass.
+    build_verified_provenance() returns {'kind':'none'} immediately for that
+    value, with no verification. [...] Add the required negative integration
+    test: create a real registered experiment at a fresh output path, give it
+    workflow_class='canonical' instead of the honest value, and prove the
+    system does not accept it as canonical/none."
+
+i.e. nothing stopped a caller from taking a directory that IS a real,
+registered experiment run (real ``_experiment_classification.json`` marker,
+real ``INDEX.json``/registry entry) and simply passing the string
+``"canonical"`` instead of ``"experiment"`` -- ``build_verified_provenance``
+would return ``{"kind": "none"}`` without even looking at ``output_dir``.
+
+The fix, :func:`_reject_canonical_over_experiment_marker`, closes this the
+same way ``renquant_artifacts.experiment_registry._verify_none_provenance``
+already closes the analogous gap for a ``kind="none"`` manifest declaration
+(same module, read its docstring): before honoring
+``workflow_class=WORKFLOW_CLASS_CANONICAL``, independently check ``output_dir``
+for a real, on-disk ``_experiment_classification.json`` marker and, if one is
+found, reuse the SAME shared enforcement function the experiment path already
+depends on -- ``renquant_artifacts.experiment_registry.reject_exploratory_promotion``
+-- to reject the "canonical" claim outright, rather than hand-rolling a
+fourth copy of "does a marker exist" logic (the same triple-impl lesson this
+module's own header already cites). This is a NEGATIVE-only check ("this is
+not a known experiment") -- see ``tests/gbdt/test_workflow_class_provenance.py::
+test_canonical_declaration_over_registered_experiment_marker_is_rejected`` (and
+its PatchTST twin) for the exact adversarial scenario Codex described, proven
+end to end against the real, non-mocked producer.
+
 ## Honestly-disclosed residual limitation (canonical side)
 
-``workflow_class=WORKFLOW_CLASS_CANONICAL`` still results in the bare,
-self-declared ``provenance = {"kind": "none"}`` -- there is currently NO
-existing "canonical production run" non-forgeable evidence mechanism anywhere
-in this multirepo to independently verify it against. This was investigated,
-not assumed:
+Once the negative check above passes (no experiment marker found at
+``output_dir``), ``workflow_class=WORKFLOW_CLASS_CANONICAL`` still results in
+the bare, self-declared ``provenance = {"kind": "none"}`` -- there is
+currently NO existing "canonical production run" non-forgeable POSITIVE
+evidence mechanism anywhere in this multirepo (a signed attestation, a
+canonical producer identity, immutable WF-gate evidence bound at manifest-
+build time) to independently verify a genuine canonical claim against. This
+was investigated, not assumed:
 
 * No environment variable, config flag, or CLI switch already distinguishes
   "canonical production training" from "research/experimental" in
@@ -118,13 +156,17 @@ manifest fields already carry (``code_commit``, ``config_fingerprint``), and
 matches the honesty standard the round-3 fix set for its own opaque
 ``store://``/``object://`` URI residual limit (see
 ``renquant_artifacts.experiment_registry._verify_none_provenance``'s
-docstring). This PR closes the literal "hardcoded regardless of context" bug
-and makes the canonical declaration an explicit, auditable, per-call-site act
-rather than an unconditional default -- it does NOT achieve full
-cryptographic non-forgeability for the canonical side. A future PR wanting
-that needs a NEW mechanism (e.g. a signed attestation bound at training time
-from a specific, restricted canonical entrypoint) that does not exist
-anywhere in this codebase today.
+docstring). Round 4 closed the literal "hardcoded regardless of context" bug
+and made the canonical declaration an explicit, auditable, per-call-site act
+rather than an unconditional default; round 5 (this fix) additionally closes
+the negative case Codex demanded proof of -- a caller cannot claim
+``"canonical"`` for a directory that is ALREADY a real, registered experiment
+run. Neither round achieves full cryptographic non-forgeability for the
+POSITIVE canonical case (proving an artifact genuinely IS a canonical
+production run, as opposed to merely proving it is NOT a known experiment). A
+future PR wanting that needs a NEW mechanism (e.g. a signed attestation bound
+at training time from a specific, restricted canonical entrypoint) that does
+not exist anywhere in this codebase today.
 """
 from __future__ import annotations
 
@@ -133,16 +175,17 @@ from pathlib import Path
 from typing import Any
 
 # NOTE: renquant_artifacts.experiment_registry is imported LAZILY, inside
-# _verified_experiment_provenance() below, not at module top level. It only
-# exists on the (as of this PR, unmerged) renquant-artifacts#24 branch --
-# main does not have it yet. A top-level import here would make a bare
-# ``import renquant_model_gbdt`` / ``import renquant_model_patchtst`` raise
-# ModuleNotFoundError in any environment still pinned to renquant-artifacts
-# main, i.e. break EVERY canonical-path caller too, not just experiment-path
-# ones. Deferring the import until the experiment path actually runs matches
-# this repo's existing convention for optional/not-yet-universal
-# dependencies (see the deferred, lint-suppressed imports throughout
-# ``renquant_model_patchtst`` for torch/transformers).
+# _verified_experiment_provenance() and _reject_canonical_over_experiment_marker()
+# below, not at module top level. It only exists on the (as of this PR,
+# unmerged) renquant-artifacts#24 branch -- main does not have it yet. A
+# top-level import here would make a bare ``import renquant_model_gbdt`` /
+# ``import renquant_model_patchtst`` raise ModuleNotFoundError in any
+# environment still pinned to renquant-artifacts main, i.e. break EVERY
+# canonical-path caller too, not just experiment-path ones. Deferring the
+# import until the relevant path actually runs matches this repo's existing
+# convention for optional/not-yet-universal dependencies (see the deferred,
+# lint-suppressed imports throughout ``renquant_model_patchtst`` for
+# torch/transformers).
 
 #: An artifact built by a genuine, non-experiment, canonical production
 #: training invocation. Results in ``provenance = {"kind": "none"}`` -- see
@@ -168,11 +211,15 @@ def build_verified_provenance(
     """Build a manifest's ``provenance`` record from an explicit, verified
     workflow-classification signal -- never a hardcoded default.
 
-    Raises ``ValueError`` if ``workflow_class`` is not a recognized value, or
-    if ``workflow_class=WORKFLOW_CLASS_EXPERIMENT`` cannot be independently
-    verified against the real experiment-registry machinery (missing registry
-    index reference, missing on-disk classification marker, or a marker whose
-    digest is not actually registered).
+    Raises ``ValueError`` if ``workflow_class`` is not a recognized value, if
+    ``workflow_class=WORKFLOW_CLASS_CANONICAL`` is declared for an
+    ``output_dir`` that a real, on-disk experiment-registry marker proves is
+    ALREADY a registered experiment run (round 5, Codex P0 -- see this
+    module's docstring), or if ``workflow_class=WORKFLOW_CLASS_EXPERIMENT``
+    cannot be independently verified against the real experiment-registry
+    machinery (missing registry index reference, missing on-disk
+    classification marker, or a marker whose digest is not actually
+    registered).
     """
     if workflow_class not in WORKFLOW_CLASSES:
         raise ValueError(
@@ -184,8 +231,78 @@ def build_verified_provenance(
             "bypass the gate must prevent')"
         )
     if workflow_class == WORKFLOW_CLASS_CANONICAL:
+        _reject_canonical_over_experiment_marker(output_dir, model_config)
         return {"kind": "none"}
     return _verified_experiment_provenance(output_dir, model_config)
+
+
+def _reject_canonical_over_experiment_marker(
+    output_dir: Path | str, model_config: dict[str, Any],
+) -> None:
+    """Reject ``workflow_class=WORKFLOW_CLASS_CANONICAL`` when ``output_dir``
+    is provably ALREADY a registered experiment run.
+
+    Round 5, Codex P0 (quoted in full in this module's docstring):
+    ``workflow_class="canonical"`` used to return ``{"kind": "none"}``
+    immediately, with zero regard for ``output_dir`` -- the exact
+    caller-controlled bypass Codex asked to be closed. This is the
+    negative-only counterpart to :func:`_verified_experiment_provenance`:
+    it does not (and cannot, absent a non-forgeable "genuine canonical run"
+    attestation -- see the module docstring's honestly-disclosed residual
+    limitation) prove ``output_dir`` truly IS a canonical production run. It
+    DOES prove ``output_dir`` is NOT a directory a registered-experiment
+    harness has already claimed via a real, on-disk
+    ``_experiment_classification.json`` marker
+    (``renquant_artifacts.experiment_registry.CLASSIFICATION_FILENAME``)
+    written by ``write_experiment_classification()`` -- reusing, rather than
+    re-implementing, the SAME shared enforcement function
+    (``reject_exploratory_promotion``) the experiment path and
+    ``renquant_artifacts.experiment_registry._verify_none_provenance`` (the
+    existing "kind=none" bypass check this mirrors) already depend on.
+    """
+    # Deferred import -- see the module-level NOTE above.
+    from renquant_artifacts.experiment_registry import (  # noqa: PLC0415
+        CLASSIFICATION_FILENAME,
+        reject_exploratory_promotion,
+    )
+
+    marker_path = Path(output_dir) / CLASSIFICATION_FILENAME
+    if not marker_path.exists():
+        # No marker at this exact path -- nothing on disk contradicts the
+        # "canonical" claim. This is the same residual limit as the "none"
+        # path's own on-disk check: an opaque/not-yet-created output_dir
+        # gives this check nothing to inspect, so it passes (see the
+        # module's honestly-disclosed residual limitation).
+        return
+    try:
+        registry_index_path = model_config.get("experiment_registry_index_path")
+        reject_exploratory_promotion(
+            output_dir, registry_index_path=registry_index_path,
+        )
+    except ValueError as exc:
+        raise ValueError(
+            f"workflow_class='canonical' declared for output_dir="
+            f"{output_dir!r}, but a real experiment-registry classification "
+            f"marker ({marker_path}) already exists there -- this directory "
+            "is a REGISTERED EXPERIMENT run, not a canonical production run "
+            "(Codex review 2026-07-14: 'workflow_class=\"canonical\" "
+            "remains the exact caller-controlled bypass ... prove the "
+            "system does not accept it as canonical/none'). A caller cannot "
+            "relabel a known experiment as canonical by changing the "
+            "workflow_class string."
+        ) from exc
+    # reject_exploratory_promotion did not raise: the marker exists but does
+    # not itself prove exploratory/registered origin (e.g. a legacy/hand-
+    # edited marker with no self-reported EXPLORATORY_ONLY classification
+    # and no registry_index_path to cross-check against). Fail closed rather
+    # than silently trusting an ambiguous marker either way.
+    raise ValueError(
+        f"workflow_class='canonical' declared for output_dir={output_dir!r}, "
+        f"but an experiment-registry classification marker ({marker_path}) "
+        "exists there whose provenance could not be resolved either way -- "
+        "ambiguous provenance at a path carrying a real classification "
+        "marker is rejected, not accepted, for a canonical claim"
+    )
 
 
 def _verified_experiment_provenance(

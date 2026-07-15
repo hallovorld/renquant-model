@@ -24,6 +24,19 @@ still gets ``kind="none"`` -- lives in ``test_training_pipeline.py`` (it
 already asserted this for the round-3 fix; F-7 round 4 only changed HOW that
 "none" is derived, from a hardcoded default to an explicit
 ``workflow_class=WORKFLOW_CLASS_CANONICAL`` declaration).
+
+## Round 5: the canonical-side bypass (Codex P0, 2026-07-14)
+
+``test_canonical_declaration_over_registered_experiment_marker_is_rejected``
+below proves the round-5 P0 Codex flagged on this same PR: ``workflow_class=
+"canonical"`` used to return ``{"kind": "none"}`` unconditionally, with ZERO
+regard for ``output_dir`` -- so a caller could take a directory that IS a
+real, registered experiment run and simply pass ``"canonical"`` instead of
+the honest ``"experiment"`` value to get an unverified pass. This is the
+literal negative integration test Codex demanded: "create a real registered
+experiment at a fresh output path, give it workflow_class='canonical'
+instead of the honest value, and prove the system does not accept it as
+canonical/none."
 """
 from __future__ import annotations
 
@@ -33,6 +46,7 @@ from pathlib import Path
 import pytest
 
 from renquant_model_gbdt import (
+    WORKFLOW_CLASS_CANONICAL,
     WORKFLOW_CLASS_EXPERIMENT,
     PanelGbdtTrainingPipeline,
     TrainingContext,
@@ -270,3 +284,108 @@ def test_registered_experiment_at_fresh_path_is_never_none(tmp_path: Path) -> No
     assert ctx.artifact_manifest["provenance"] != {"kind": "none"}
     assert ctx.artifact_manifest["provenance"]["dir"] == str(output_dir)
     assert ctx.artifact_manifest["provenance"]["registry_index_path"] == str(registry_index_path)
+
+
+# ---------------------------------------------------------------------------
+# Round 5: the canonical-side bypass Codex's P0 review demanded proof of
+# ---------------------------------------------------------------------------
+
+
+def test_canonical_declaration_over_registered_experiment_marker_is_rejected(tmp_path: Path) -> None:
+    """THE round-5 adversarial integration test Codex's P0 review asked for.
+
+    Quoted in full (also in ``workflow_provenance``'s module docstring):
+
+        "workflow_class='canonical' remains the exact caller-controlled
+        bypass. build_verified_provenance() returns {'kind':'none'}
+        immediately for that value, with no verification. [...] Add the
+        required negative integration test: create a real registered
+        experiment at a fresh output path, give it workflow_class='canonical'
+        instead of the honest value, and prove the system does not accept it
+        as canonical/none."
+
+    This mirrors ``test_registered_experiment_at_fresh_path_is_never_none``
+    above EXACTLY -- same fresh path, same real
+    ``write_experiment_classification()`` call, same real registry index --
+    except the caller now declares ``workflow_class=WORKFLOW_CLASS_CANONICAL``
+    (the dishonest value) instead of ``WORKFLOW_CLASS_EXPERIMENT`` (the
+    honest one). If this producer accepted that at face value it would
+    return ``provenance={"kind": "none"}`` for a directory that is, in
+    verifiable, on-disk fact, a registered experiment run -- exactly the
+    bypass Codex described. It must instead be rejected, and the
+    ``artifact_manifest`` must never be populated with a false "none".
+    """
+    output_dir = tmp_path / "fresh_experiment_run_lying_as_canonical"
+    assert not output_dir.exists(), "path must be genuinely fresh for this test to be meaningful"
+
+    registry_index_path = tmp_path / "manifest_registry_index.json"
+    experiment_id = "exp-adversarial-canonical-lie-2026-07-14"
+    manifest_digest = "sha256:adversarial-canonical-lie-digest"
+    _write_registry_index(registry_index_path, experiment_id=experiment_id, manifest_digest=manifest_digest)
+
+    # A real registered-experiment harness writes its classification marker
+    # BEFORE any reusable output is produced, at this same fresh path -- this
+    # run IS, in verifiable fact, a registered experiment.
+    write_experiment_classification(
+        output_dir,
+        experiment_id=experiment_id,
+        manifest_path="irrelevant/for/this/test.json",
+        manifest_digest=manifest_digest,
+        config_digest="sha256:config-digest",
+    )
+
+    # The dishonest declaration: same output_dir, same registry, but the
+    # caller now claims WORKFLOW_CLASS_CANONICAL instead of the honest
+    # WORKFLOW_CLASS_EXPERIMENT.
+    ctx = TrainingContext(
+        dataset_manifest=_dataset_manifest(),
+        model_config={
+            "strategy": "renquant_104",
+            "experiment_registry_index_path": str(registry_index_path),
+        },
+        output_dir=output_dir,
+        workflow_class=WORKFLOW_CLASS_CANONICAL,
+    )
+
+    with pytest.raises(ValueError, match="REGISTERED EXPERIMENT run"):
+        PanelGbdtTrainingPipeline(_loader, _trainer, _validator).run(ctx)
+
+    # The false "canonical/none" classification must never have been
+    # accepted -- the manifest build itself must have aborted before
+    # ctx.artifact_manifest was ever populated.
+    assert ctx.artifact_manifest is None
+
+
+def test_canonical_declaration_over_experiment_marker_is_rejected_even_without_registry_index(
+    tmp_path: Path,
+) -> None:
+    """The canonical-side rejection must not depend on the caller happening
+    to also supply ``experiment_registry_index_path`` -- a marker that
+    self-reports ``EXPLORATORY_ONLY`` is enough on its own (mirrors
+    ``reject_exploratory_promotion``'s legacy-caller fallback, the same
+    function ``renquant_artifacts.experiment_registry._verify_none_provenance``
+    already relies on for the analogous ``kind="none"`` manifest-level
+    check).
+    """
+    output_dir = tmp_path / "fresh_experiment_run_no_registry_ref"
+    assert not output_dir.exists(), "path must be genuinely fresh for this test to be meaningful"
+
+    write_experiment_classification(
+        output_dir,
+        experiment_id="exp-adversarial-no-registry-ref",
+        manifest_path="irrelevant/for/this/test.json",
+        manifest_digest="sha256:no-registry-ref-digest",
+        config_digest="sha256:config-digest",
+    )
+
+    ctx = TrainingContext(
+        dataset_manifest=_dataset_manifest(),
+        model_config={"strategy": "renquant_104"},  # no experiment_registry_index_path at all
+        output_dir=output_dir,
+        workflow_class=WORKFLOW_CLASS_CANONICAL,
+    )
+
+    with pytest.raises(ValueError, match="REGISTERED EXPERIMENT run"):
+        PanelGbdtTrainingPipeline(_loader, _trainer, _validator).run(ctx)
+
+    assert ctx.artifact_manifest is None
