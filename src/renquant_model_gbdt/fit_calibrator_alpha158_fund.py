@@ -59,6 +59,28 @@ def _artifact_fingerprint(path: Path, payload: dict) -> str:
     )
 
 
+def _declared_fingerprint_schema_version(payload: dict) -> int | None:
+    """Return the scorer's declared identity schema without inferring one.
+
+    A content digest is insufficient to select a comparison route: the runtime
+    intentionally rejects a declared-v1 scorer paired with an undeclared
+    legacy calibrator.  Preserve legacy artifacts as legacy, while propagating
+    an explicit schema declaration to the calibration artifact.
+    """
+    raw = payload.get("fingerprint_schema_version")
+    if raw is None:
+        return None
+    if isinstance(raw, bool):
+        raise ValueError("fingerprint_schema_version must be a positive integer")
+    try:
+        value = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("fingerprint_schema_version must be a positive integer") from exc
+    if value < 1 or str(value) != str(raw).strip():
+        raise ValueError("fingerprint_schema_version must be a positive integer")
+    return value
+
+
 def _infer_raw_er_label(label_col: str) -> str:
     if label_col.endswith("_raw"):
         return label_col
@@ -212,6 +234,7 @@ def fit_alpha158_fund_calibrator(
     art = json.loads(scorer_artifact.read_text())
     feat_cols = list(art["feature_cols"])
     fingerprint = _artifact_fingerprint(scorer_artifact, art)
+    fingerprint_schema_version = _declared_fingerprint_schema_version(art)
     label_col = art.get("label_col", DEFAULT_LABEL)
     lookahead_days = _infer_label_lookahead_days(label_col)
 
@@ -270,6 +293,8 @@ def fit_alpha158_fund_calibrator(
     metadata["scorer_artifact"] = str(scorer_artifact)
     metadata["scorer_artifact_fingerprint"] = fingerprint
     metadata["scorer_model_content_fingerprint"] = fingerprint
+    if fingerprint_schema_version is not None:
+        metadata["scorer_fingerprint_schema_version"] = fingerprint_schema_version
     metadata.update(_score_metric_metadata(label_ics=label_ics, er_ics=er_ics, data_start=data_start, data_end=data_end))
     metadata["model_label_col"] = label_col
     metadata["expected_return_label_col"] = chosen_er_label
