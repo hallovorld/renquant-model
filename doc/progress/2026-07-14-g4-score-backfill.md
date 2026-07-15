@@ -201,3 +201,27 @@ Full suite: `821 passed, 2 skipped` (run via the RenQuant venv against the
 sibling `renquant-common`/`renquant-base-data`/`renquant-artifacts`/
 `renquant-pipeline` checkouts, matching `make test`'s CI wiring) -- no
 regressions outside this module.
+
+## Round 4 (2026-07-14): CLI fail-closed default (codex re-review P1)
+
+Codex re-review on `eae4430` identified one remaining delivery blocker:
+`main()` exits 0 unconditionally after `run_backfill()`, even when
+`ledger_admitted == 0`. This makes automation treat a wholly rejected batch
+as successful Phase-A input production.
+
+Changes:
+1. `main()` returns exit code 2 when canonical ledger admits zero records
+   (fail-closed default).
+2. New `--diagnostic-only` flag preserves exit 0 for intentional
+   rejected-evidence reports (provenance-gap diagnostics).
+3. `main()` accepts optional `argv` parameter for CLI integration testing.
+4. Four new `TestCLIExitCode` tests: default non-zero on 0-admitted,
+   zero with `--diagnostic-only`, non-zero for missing DB, non-zero for
+   invalid score column.
+
+This is a provenance-gap diagnostic tool, not a Phase-A backfill that
+unblocks L1 or supports ensemble verdicts. Unblocking G4 DATA-BOUND
+requires the producer-side pipeline/model contract to persist training
+cutoff and model fingerprint at score-write time.
+
+Full test suite: 29 passed in `tests/test_backfill_scores.py`.

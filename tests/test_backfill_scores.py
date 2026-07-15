@@ -33,6 +33,7 @@ from experiments.ensemble_phase0.backfill_scores import (
     build_score_payload,
     extract_daily_scores,
     extract_forward_returns,
+    main,
     run_backfill,
     select_asof_runs,
     validate_score_column,
@@ -496,3 +497,61 @@ class TestRunBackfillDefersAdmissionToCanonicalValidator:
         )
         assert manifest.universe_size == 4
         assert manifest.universe_source == f"file:{universe_file}"
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# CLI exit-code behavior (Codex re-review P1)
+# ─────────────────────────────────────────────────────────────────────────
+
+
+class TestCLIExitCode:
+    def test_exits_nonzero_when_zero_admitted_default(self, tmp_path):
+        """Default CLI must return non-zero when the canonical ledger
+        admits zero records -- a wholly rejected batch is not successful
+        Phase-A input production."""
+        db = tmp_path / "runs.db"
+        _create_test_db(db)
+        out = tmp_path / "output"
+        rc = main([
+            "--runs-db", str(db),
+            "--output-dir", str(out),
+            "--expert-name", "xgb",
+            "--start-date", "2024-01-02",
+            "--end-date", "2024-01-04",
+        ])
+        assert rc == 2
+
+    def test_exits_zero_with_diagnostic_only_even_when_zero_admitted(self, tmp_path):
+        """--diagnostic-only preserves exit 0 for intentional
+        rejected-evidence reports."""
+        db = tmp_path / "runs.db"
+        _create_test_db(db)
+        out = tmp_path / "output"
+        rc = main([
+            "--runs-db", str(db),
+            "--output-dir", str(out),
+            "--expert-name", "xgb",
+            "--start-date", "2024-01-02",
+            "--end-date", "2024-01-04",
+            "--diagnostic-only",
+        ])
+        assert rc == 0
+
+    def test_exits_nonzero_for_missing_db(self, tmp_path):
+        rc = main([
+            "--runs-db", str(tmp_path / "nonexistent.db"),
+            "--output-dir", str(tmp_path / "output"),
+            "--expert-name", "xgb",
+        ])
+        assert rc == 1
+
+    def test_exits_nonzero_for_invalid_score_column(self, tmp_path):
+        db = tmp_path / "runs.db"
+        _create_test_db(db)
+        rc = main([
+            "--runs-db", str(db),
+            "--output-dir", str(tmp_path / "output"),
+            "--expert-name", "xgb",
+            "--score-column", "malicious; DROP TABLE x--",
+        ])
+        assert rc == 1

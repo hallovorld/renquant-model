@@ -837,7 +837,7 @@ def run_backfill(
     return manifest
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Extract historical panel scores from runs.alpaca.db for Phase A ensemble experiments",
     )
@@ -866,7 +866,16 @@ def main() -> int:
         "--label-horizon-days", type=int, default=60,
         help="Minimum label horizon in calendar days (default: 60)",
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--diagnostic-only", action="store_true",
+        help=(
+            "Exit 0 even when the canonical validator admits zero records. "
+            "Use for intentional rejected-evidence reports where 0-admitted "
+            "is expected (e.g. provenance-gap diagnostics). Without this "
+            "flag, 0-admitted is treated as a failure (exit 2)."
+        ),
+    )
+    args = parser.parse_args(argv)
 
     if not args.runs_db.exists():
         print(f"ERROR: runs DB not found: {args.runs_db}", file=sys.stderr)
@@ -882,7 +891,7 @@ def main() -> int:
         print(f"ERROR: universe file not found: {args.universe_file}", file=sys.stderr)
         return 1
 
-    run_backfill(
+    manifest = run_backfill(
         runs_db=args.runs_db,
         output_dir=args.output_dir,
         expert_name=args.expert_name,
@@ -892,6 +901,16 @@ def main() -> int:
         universe_file=args.universe_file,
         label_horizon_days=args.label_horizon_days,
     )
+
+    if manifest.ledger_admitted == 0 and not args.diagnostic_only:
+        print(
+            f"ERROR: canonical validator admitted 0/{manifest.ledger_rejected} records. "
+            f"No Phase-A-eligible evidence was produced. "
+            f"Use --diagnostic-only to exit 0 for intentional rejected-evidence reports.",
+            file=sys.stderr,
+        )
+        return 2
+
     return 0
 
 
