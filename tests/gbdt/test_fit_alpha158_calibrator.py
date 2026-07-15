@@ -62,6 +62,7 @@ def _write_panel_and_artifact(tmp_path: Path) -> tuple[Path, Path, Path]:
         "feature_stds": [1.0, 1.0],
         "feature_norm_kind": ["identity", "identity"],
         "label_col": "fwd_60d_excess",
+        "fingerprint_schema_version": 1,
         "booster_raw_json": bytes(booster.save_raw(raw_format="json")).decode("utf-8"),
     }
     artifact_path = tmp_path / "panel-ltr.alpha158_fund.json"
@@ -84,10 +85,27 @@ def test_fit_alpha158_fund_calibrator_writes_auditable_artifact(tmp_path: Path) 
     meta = payload["metadata"]
     assert payload["kind"] == "global_panel_calibration"
     assert meta["scorer_artifact_fingerprint"].startswith("sha256:")
+    assert meta["scorer_fingerprint_schema_version"] == 1
     assert meta["expected_return_label_col"] == "fwd_60d_excess_raw"
     assert meta["expected_return_label_contract"] == "raw_return_units_required"
     assert meta["scorer_ic_scope"] == "calibrator_fit_window"
     assert meta["n_rows"] >= 100
+
+
+def test_fit_alpha158_fund_calibrator_keeps_legacy_scorer_undeclared(tmp_path: Path) -> None:
+    _panel_path, _raw_path, artifact_path = _write_panel_and_artifact(tmp_path)
+    artifact = json.loads(artifact_path.read_text())
+    artifact.pop("fingerprint_schema_version")
+    artifact_path.write_text(json.dumps(artifact))
+
+    result = fit_alpha158_fund_calibrator(
+        data_dir=tmp_path,
+        scorer_artifact=artifact_path,
+        out_path=tmp_path / "legacy-calibrator.json",
+        min_rows=100,
+    )
+
+    assert "scorer_fingerprint_schema_version" not in json.loads(result.read_text())["metadata"]
 
 
 def test_fit_alpha158_fund_calibrator_requires_raw_er_label(tmp_path: Path) -> None:
