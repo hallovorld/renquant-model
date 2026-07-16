@@ -85,3 +85,35 @@ pin#483) cannot make it admissible retroactively.
 - No Phase A comparison was run; no L1-vs-champion claim of any kind exists.
 - The schema/wiring work merged today remains necessary for every future
   path — it is the forward-evidence foundation, just not sufficient.
+
+## CORRECTION (2026-07-16, same day — verified against runs.alpaca_shadow.db)
+
+The blocker-chain item ① above ("PatchTST per-date score persistence does
+not exist") is **WRONG**. This audit only queried the PROD arm DB
+(`data/runs.alpaca.db`). The daily shadow e2e (`daily_104.sh` Step 4, since
+2026-05-19) runs the full pipeline a second time with the shadow scorer and
+persists per-date scores to the isolated `data/runs.alpaca_shadow.db`
+through the same runner/persistence path. Verified counts (read-only,
+`mode=ro&immutable=1`, independently reproduced):
+
+| Shadow DB evidence | Value |
+|---|---|
+| Distinct live-run dates | 40 (2026-05-19 → 2026-07-15) |
+| `active_scorer=hf_patchtst` dates | **15** (2026-06-22 →, continuous per-session since 06-25) |
+| `active_scorer=panel_ltr_xgboost` dates | 11 (pre-swap window) |
+
+Corrected blocker chain:
+1. ~~PatchTST per-date persistence wiring~~ — ALREADY EXISTS (shadow DB).
+   The real gap was provenance: the shadow arm's panel artifact is a
+   PatchTST `.pt` checkpoint (non-JSON), so the umbrella#482 JSON extraction
+   yields NULL forever. FIXED by RenQuant#484 (active-scorer runtime
+   metadata fallback, merged 2026-07-16).
+2. PatchTST PIT parity ledger (§5.1) — still missing (unchanged).
+3. Evidence volume vs the frozen ~560-session design — still the binding
+   constraint (unchanged), but BOTH experts now accrue per-session forward
+   (XGB in prod DB post pin-sync; PatchTST in shadow DB since 06-25).
+4. Phase A tooling must read the SHADOW DB for the PatchTST expert —
+   `backfill_scores.py` currently assumes a single DB (new work item).
+
+The headline verdict (Phase A BLOCKED on evidence volume) is unchanged;
+the actionable path is materially better than stated above.
