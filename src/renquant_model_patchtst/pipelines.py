@@ -131,12 +131,22 @@ class BuildPatchTstArtifactManifestTask(Task):
             # independently verifies an "experiment" declaration against the
             # real experiment-registry marker + immutable registration index
             # rather than trusting it -- see that module's docstring for the
-            # full contract and its honestly-disclosed residual limitation
-            # on the canonical side.
+            # full contract. F-7 round 6 (renquant-model#55, step 2/4)
+            # additionally closes the canonical-side POSITIVE gap -- see the
+            # identical note in
+            # renquant_model_gbdt.pipelines.BuildArtifactManifestTask and
+            # workflow_provenance's module docstring for the full contract
+            # and remaining honestly-disclosed residual limitation.
             "provenance": build_verified_provenance(
                 ctx.workflow_class,
                 output_dir=ctx.output_dir,
                 model_config=ctx.model_config,
+                # F-7 round 6 (renquant-model#55, step 2/4): the trained
+                # checkpoint's own content fingerprint, threaded through from
+                # the SAME value this manifest's own "fingerprint" field
+                # already uses -- see the identical note in
+                # renquant_model_gbdt.pipelines.BuildArtifactManifestTask.
+                artifact_digest=ctx.checkpoint_artifact["fingerprint"],
             ),
         }
         # Stash the manifest BEFORE the promotion-boundary validate call --

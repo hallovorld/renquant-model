@@ -53,7 +53,7 @@ def test_summary_to_checkpoint_shape():
     assert ck["input_feature_cols"] == ["a", "b", "c"]
 
 
-def test_pipeline_runs_with_adapter_checkpoint(tmp_path: Path):
+def test_pipeline_runs_with_adapter_checkpoint(tmp_path: Path, canonical_run_intent_fixture):
     ck = summary_to_checkpoint(_SUMMARY, {"seq_len": 32, "embargo_days": 60})
 
     def stub_trainer(frame, config, out_dir):
@@ -62,7 +62,13 @@ def test_pipeline_runs_with_adapter_checkpoint(tmp_path: Path):
     pipeline = build_training_pipeline(loader=lambda m: m, trainer=stub_trainer,
                                        validator=sanity_validator)
     ctx = PatchTstTrainingContext(
-        dataset_manifest=_manifest(), model_config={"architecture": "hf_patchtst"},
+        dataset_manifest=_manifest(),
+        model_config={
+            "architecture": "hf_patchtst",
+            # F-7 round 6 (renquant-model#55, step 2/4): canonical now
+            # requires a real, independently-verifiable run_intent.json.
+            "canonical_run_intent_path": str(canonical_run_intent_fixture.run_intent_path),
+        },
         output_dir=tmp_path / "out",
         workflow_class=WORKFLOW_CLASS_CANONICAL,
     )

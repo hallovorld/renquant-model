@@ -125,48 +125,92 @@ test_canonical_declaration_over_registered_experiment_marker_is_rejected`` (and
 its PatchTST twin) for the exact adversarial scenario Codex described, proven
 end to end against the real, non-mocked producer.
 
+## Round 6: positive canonical verification (F-7 step 2/4, renquant-model#55)
+
+Round 5 (above) closed the NEGATIVE case (a caller cannot relabel a known
+experiment as "canonical"), but honestly disclosed that the POSITIVE case --
+proving an artifact genuinely IS a canonical production run, not merely that
+it is not a known experiment -- had no verification mechanism at all:
+``workflow_class=WORKFLOW_CLASS_CANONICAL`` still fell through to the bare,
+self-declared ``provenance = {"kind": "none"}``.
+
+This is now closed using the trust anchor
+:mod:`renquant_artifacts.canonical_registry` (renquant-artifacts#24, F-7 step
+1/4) built for exactly this purpose: a canonical run-intent record
+(``run_intent.json``), written atomically by a narrow, code-reviewed
+producer entrypoint in ``renquant-orchestrator`` BEFORE training starts (step
+3/4 of this chain -- NOT written by this repo, which only consumes/verifies
+it), whose own evidence (code pins for the 3 canonical subrepos, a producer
+allowlist) is independently re-verifiable against the actual environment.
+
+``workflow_class=WORKFLOW_CLASS_CANONICAL`` now additionally requires, and
+verifies, two more things before returning a provenance record:
+
+1. ``artifact_digest`` -- the trained artifact's own content fingerprint --
+   is now a REQUIRED parameter of :func:`build_verified_provenance`. It
+   cannot be computed inside this module (the artifact file may not be fully
+   written yet at the time this function runs); the caller (``BuildArtifactManifestTask``
+   / ``BuildPatchTstArtifactManifestTask`` in ``pipelines.py``) threads it
+   through from the SAME ``fingerprint`` value the manifest itself already
+   uses -- one fingerprint computation, not two independently derived ones
+   (the same triple-impl lesson this module's header already cites).
+2. ``model_config["canonical_run_intent_path"]`` -- the path to the
+   ``run_intent.json`` record the orchestrator wrote before training started.
+   This module verifies it against the actual environment via
+   :func:`renquant_artifacts.canonical_registry.verify_canonical_run_intent`
+   (code pins for ``renquant-strategy-104``/``renquant-pipeline``/
+   ``renquant-model`` re-checked against the real current checkouts, plus the
+   producer allowlist) and raises ``ValueError`` with the full error list on
+   any failure -- a bare declaration with no verifiable record is rejected,
+   not trusted, mirroring the same standard the experiment path already
+   holds itself to.
+
+Only once both checks pass does this return the real
+``provenance = {"kind": "canonical", "run_intent_path": ..., "run_intent_digest":
+..., "artifact_digest": ...}`` record via
+:func:`renquant_artifacts.canonical_registry.build_canonical_provenance_reference`
+-- never a caller-supplied dict taken on faith, and never the old bare
+``{"kind": "none"}``.
+
+### Deriving ``repo_root`` for the code-pin check
+
+:func:`renquant_artifacts.canonical_registry.verify_canonical_run_intent`
+needs a ``repo_root`` to locate ``subrepos.lock.json`` (this repo has no
+independent notion of the umbrella repo root -- it only knows
+``output_dir``/``model_config``). Rather than inventing a THIRD required
+``model_config`` key for this, this module reuses
+:data:`renquant_artifacts.canonical_registry.MAX_REPO_ROOT_SEARCH_LEVELS` --
+a bound that module's own docstring already documents as existing "when
+auto-deriving a repo_root for a supplemental local verification" -- to walk
+bounded-upward from ``canonical_run_intent_path`` looking for
+``subrepos.lock.json``, exactly the idiom
+``renquant_artifacts.experiment_registry._find_repo_root_with_subrepos_lock``
+already uses internally for its own best-effort canonical re-check. That
+helper is private to a module this PR does not touch (renquant-artifacts#24
+already landed and was independently verified), so it cannot be imported
+directly; :func:`_derive_canonical_repo_root` below is a narrow, documented,
+intentional duplicate of that same bounded-walk shape rather than a
+divergent reimplementation -- see that function's docstring.
+
 ## Honestly-disclosed residual limitation (canonical side)
 
-Once the negative check above passes (no experiment marker found at
-``output_dir``), ``workflow_class=WORKFLOW_CLASS_CANONICAL`` still results in
-the bare, self-declared ``provenance = {"kind": "none"}`` -- there is
-currently NO existing "canonical production run" non-forgeable POSITIVE
-evidence mechanism anywhere in this multirepo (a signed attestation, a
-canonical producer identity, immutable WF-gate evidence bound at manifest-
-build time) to independently verify a genuine canonical claim against. This
-was investigated, not assumed:
-
-* No environment variable, config flag, or CLI switch already distinguishes
-  "canonical production training" from "research/experimental" in
-  ``renquant_model_gbdt`` / ``renquant_model_patchtst`` today.
-* ``renquant-orchestrator``'s ``run_bundle.json`` (``PersistDailyRunBundleTask``
-  in ``daily.py``) is the closest existing "non-forgeable run identity"
-  concept in this multirepo, but it is built AFTER the artifact manifest
-  already exists, using the manifest as one of its own input fields --
-  it cannot be the identity bound INTO the manifest at manifest-build time
-  without a circular dependency (the run bundle doesn't exist yet when
-  ``BuildArtifactManifestTask`` runs).
-* ``experiments/ensemble_phase0/admissibility_ledger.py`` and
-  ``experiment_manifest.py`` build real per-run evidence ledgers, but those
-  are scoped to that one ensemble feature, not a repo-wide
-  "canonical-vs-experiment" contract this task could bind to generically.
-
-This is the SAME residual-trust status this codebase's other self-declared
-manifest fields already carry (``code_commit``, ``config_fingerprint``), and
+The POSITIVE gap flagged through round 5 is now closed: a genuine canonical
+claim is independently verified against a real run-intent record's code pins
+and producer identity, not merely self-declared. What remains self-declared,
+same status as this codebase's other self-declared manifest fields
+(``code_commit``, ``config_fingerprint``): the run-intent record's own
+content fields (``strategy_manifest_fingerprint``, ``data_manifest_fingerprint``,
+``strategy_config_digest``, ``model_config_digest``, ``calendar_universe_digest``,
+``as_of``) are trusted as written by the orchestrator producer, not
+independently recomputed here -- verification covers code identity (pins +
+producer allowlist) and the binding to THIS artifact
+(``artifact_digest == manifest["fingerprint"]``, enforced downstream in
+:func:`renquant_artifacts.experiment_registry.verify_artifact_provenance`),
+not a full re-derivation of every declared digest from source data. This
 matches the honesty standard the round-3 fix set for its own opaque
 ``store://``/``object://`` URI residual limit (see
 ``renquant_artifacts.experiment_registry._verify_none_provenance``'s
-docstring). Round 4 closed the literal "hardcoded regardless of context" bug
-and made the canonical declaration an explicit, auditable, per-call-site act
-rather than an unconditional default; round 5 (this fix) additionally closes
-the negative case Codex demanded proof of -- a caller cannot claim
-``"canonical"`` for a directory that is ALREADY a real, registered experiment
-run. Neither round achieves full cryptographic non-forgeability for the
-POSITIVE canonical case (proving an artifact genuinely IS a canonical
-production run, as opposed to merely proving it is NOT a known experiment). A
-future PR wanting that needs a NEW mechanism (e.g. a signed attestation bound
-at training time from a specific, restricted canonical entrypoint) that does
-not exist anywhere in this codebase today.
+docstring).
 """
 from __future__ import annotations
 
@@ -174,10 +218,11 @@ import json
 from pathlib import Path
 from typing import Any
 
-# NOTE: renquant_artifacts.experiment_registry is imported LAZILY, inside
-# _verified_experiment_provenance() and _reject_canonical_over_experiment_marker()
-# below, not at module top level. It only exists on the (as of this PR,
-# unmerged) renquant-artifacts#24 branch -- main does not have it yet. A
+# NOTE: renquant_artifacts.experiment_registry / renquant_artifacts.canonical_registry
+# are imported LAZILY, inside _verified_experiment_provenance(),
+# _reject_canonical_over_experiment_marker(), and _verified_canonical_provenance()
+# below, not at module top level. They only exist on the (as of this PR,
+# unmerged) renquant-artifacts#24 branch -- main does not have them yet. A
 # top-level import here would make a bare ``import renquant_model_gbdt`` /
 # ``import renquant_model_patchtst`` raise ModuleNotFoundError in any
 # environment still pinned to renquant-artifacts main, i.e. break EVERY
@@ -188,9 +233,12 @@ from typing import Any
 # torch/transformers).
 
 #: An artifact built by a genuine, non-experiment, canonical production
-#: training invocation. Results in ``provenance = {"kind": "none"}`` -- see
-#: this module's docstring for the honestly-disclosed residual limitation
-#: (self-declared, not independently verified).
+#: training invocation. Independently verified (round 6) against a real
+#: run-intent record's code pins + producer allowlist, and bound to this
+#: artifact's own content digest, before ``provenance = {"kind": "canonical",
+#: ...}`` is built -- see :func:`build_verified_provenance` and this module's
+#: docstring for the full contract and its honestly-disclosed residual
+#: limitation.
 WORKFLOW_CLASS_CANONICAL = "canonical"
 
 #: An artifact built as part of a registered exploratory/experiment run.
@@ -207,15 +255,25 @@ def build_verified_provenance(
     *,
     output_dir: Path | str,
     model_config: dict[str, Any],
+    artifact_digest: str | None = None,
 ) -> dict[str, Any]:
     """Build a manifest's ``provenance`` record from an explicit, verified
     workflow-classification signal -- never a hardcoded default.
+
+    ``artifact_digest`` is the trained artifact's own content fingerprint
+    (the SAME value the caller already computes for the manifest's own
+    ``fingerprint`` field -- see ``pipelines.py``'s ``BuildArtifactManifestTask``
+    / ``BuildPatchTstArtifactManifestTask``). It is required (round 6) when
+    ``workflow_class=WORKFLOW_CLASS_CANONICAL``; unused otherwise.
 
     Raises ``ValueError`` if ``workflow_class`` is not a recognized value, if
     ``workflow_class=WORKFLOW_CLASS_CANONICAL`` is declared for an
     ``output_dir`` that a real, on-disk experiment-registry marker proves is
     ALREADY a registered experiment run (round 5, Codex P0 -- see this
-    module's docstring), or if ``workflow_class=WORKFLOW_CLASS_EXPERIMENT``
+    module's docstring), if a canonical declaration is missing
+    ``artifact_digest`` or ``model_config["canonical_run_intent_path"]``, if
+    that run-intent record fails independent verification (round 6 -- see
+    this module's docstring), or if ``workflow_class=WORKFLOW_CLASS_EXPERIMENT``
     cannot be independently verified against the real experiment-registry
     machinery (missing registry index reference, missing on-disk
     classification marker, or a marker whose digest is not actually
@@ -232,7 +290,7 @@ def build_verified_provenance(
         )
     if workflow_class == WORKFLOW_CLASS_CANONICAL:
         _reject_canonical_over_experiment_marker(output_dir, model_config)
-        return {"kind": "none"}
+        return _verified_canonical_provenance(model_config, artifact_digest)
     return _verified_experiment_provenance(output_dir, model_config)
 
 
@@ -302,6 +360,94 @@ def _reject_canonical_over_experiment_marker(
         "exists there whose provenance could not be resolved either way -- "
         "ambiguous provenance at a path carrying a real classification "
         "marker is rejected, not accepted, for a canonical claim"
+    )
+
+
+def _derive_canonical_repo_root(run_intent_path: Path) -> Path:
+    """Bounded upward walk from ``run_intent_path`` looking for
+    ``subrepos.lock.json``, to auto-derive the ``repo_root``
+    :func:`renquant_artifacts.canonical_registry.verify_canonical_run_intent`
+    needs for its code-pin checks.
+
+    This repo has no independent notion of the umbrella repo root -- it only
+    knows ``output_dir``/``model_config`` -- so rather than inventing a THIRD
+    required ``model_config`` key on top of ``canonical_run_intent_path`` and
+    ``artifact_digest``, this reuses
+    :data:`renquant_artifacts.canonical_registry.MAX_REPO_ROOT_SEARCH_LEVELS`,
+    a bound that module's own docstring already documents as existing "when
+    auto-deriving a repo_root for a supplemental local verification".
+
+    This is a narrow, DOCUMENTED duplicate of the identical bounded-walk shape
+    ``renquant_artifacts.experiment_registry._find_repo_root_with_subrepos_lock``
+    already implements for its own (private, module-internal) best-effort
+    canonical re-check -- not a divergent reimplementation. It cannot be
+    imported directly: it is private to a module renquant-artifacts#24
+    already landed and was independently verified, which this PR does not
+    touch. If no ``subrepos.lock.json`` is found within the bound, this
+    returns ``run_intent_path``'s immediate parent directory anyway, so
+    :func:`renquant_artifacts.canonical_registry.verify_canonical_run_intent`'s
+    own "subrepos.lock.json not found" error (rather than a second,
+    differently worded error invented here) is what surfaces to the caller --
+    this function itself never silently swallows the not-found case.
+    """
+    # Deferred import -- see the module-level NOTE above.
+    from renquant_artifacts import canonical_registry  # noqa: PLC0415
+
+    start = run_intent_path.resolve().parent
+    current = start
+    for _ in range(canonical_registry.MAX_REPO_ROOT_SEARCH_LEVELS):
+        if (current / "subrepos.lock.json").exists():
+            return current
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+    return start
+
+
+def _verified_canonical_provenance(
+    model_config: dict[str, Any], artifact_digest: str | None,
+) -> dict[str, Any]:
+    """Round 6: independently verify a ``workflow_class=WORKFLOW_CLASS_CANONICAL``
+    declaration against a real canonical run-intent record, rather than
+    returning the old bare, self-declared ``{"kind": "none"}`` -- see this
+    module's docstring for the full rationale.
+    """
+    # Deferred import -- see the module-level NOTE above.
+    from renquant_artifacts import canonical_registry  # noqa: PLC0415
+
+    if not artifact_digest:
+        raise ValueError(
+            "workflow_class='canonical' requires artifact_digest (the "
+            "trained artifact's own content fingerprint, e.g. "
+            "ctx.model_artifact['fingerprint']) so the provenance record is "
+            "bound to THIS artifact rather than merely asserted -- see "
+            "build_verified_provenance's artifact_digest parameter"
+        )
+    run_intent_path = model_config.get("canonical_run_intent_path")
+    if not run_intent_path:
+        raise ValueError(
+            "workflow_class='canonical' requires "
+            "model_config['canonical_run_intent_path'] -- the path to the "
+            "run_intent.json record the orchestrator must write BEFORE "
+            "training starts (renquant_artifacts.canonical_registry."
+            "write_canonical_run_intent) -- so the canonical claim can be "
+            "independently verified, not merely trusted. This repo does not "
+            "write that record itself, it only consumes/verifies it."
+        )
+    run_intent_path = Path(run_intent_path)
+    repo_root = _derive_canonical_repo_root(run_intent_path)
+    errors = canonical_registry.verify_canonical_run_intent(
+        run_intent_path, repo_root=repo_root,
+    )
+    if errors:
+        raise ValueError(
+            f"workflow_class='canonical' declared but the run-intent record "
+            f"at {run_intent_path} failed verification against the actual "
+            f"environment: {errors}"
+        )
+    return canonical_registry.build_canonical_provenance_reference(
+        run_intent_path, artifact_digest,
     )
 
 

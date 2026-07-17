@@ -168,24 +168,6 @@ def test_registered_experiment_at_fresh_path_is_never_none(tmp_path: Path) -> No
     assert ctx.artifact_manifest["provenance"]["registry_index_path"] == str(registry_index_path)
 
 
-def test_canonical_workflow_class_still_succeeds_with_none_provenance(tmp_path: Path) -> None:
-    """Positive control: genuine canonical publication still succeeds and
-    still gets kind="none" through the PatchTST producer.
-    """
-    ctx = PatchTstTrainingContext(
-        dataset_manifest=_dataset_manifest(),
-        model_config={"architecture": "hf_patchtst"},
-        output_dir=tmp_path / "out",
-        workflow_class=WORKFLOW_CLASS_CANONICAL,
-    )
-
-    result = PatchTstTrainingPipeline(_loader, _trainer, _validator).run(ctx)
-
-    assert result.ok is True
-    assert ctx.artifact_manifest is not None
-    assert ctx.artifact_manifest["provenance"] == {"kind": "none"}
-
-
 def test_canonical_declaration_over_registered_experiment_marker_is_rejected(tmp_path: Path) -> None:
     """THE round-5 adversarial integration test Codex's P0 review asked for,
     against the PatchTST producer -- see the GBDT twin
@@ -223,6 +205,94 @@ def test_canonical_declaration_over_registered_experiment_marker_is_rejected(tmp
     )
 
     with pytest.raises(ValueError, match="REGISTERED EXPERIMENT run"):
+        PatchTstTrainingPipeline(_loader, _trainer, _validator).run(ctx)
+
+    assert ctx.artifact_manifest is None
+
+
+# ---------------------------------------------------------------------------
+# Round 6: positive canonical verification (F-7 step 2/4) -- PatchTST twin of
+# tests/gbdt/test_workflow_class_provenance.py's round-6 coverage. A genuine
+# canonical claim is now independently verified against a real run-intent
+# record, not returned as a bare, self-declared {"kind": "none"}.
+# ---------------------------------------------------------------------------
+
+
+def test_canonical_workflow_class_verified_against_real_run_intent_is_accepted(
+    tmp_path: Path, canonical_run_intent_fixture,
+) -> None:
+    """Round 6 positive control through the PatchTST producer -- see the
+    GBDT twin for the full rationale. A real, valid ``run_intent.json``
+    (``tests/conftest.py::canonical_run_intent_fixture``, real temp-git-repo
+    code pins for the 3 canonical subrepos) declared via
+    ``model_config['canonical_run_intent_path']``, plus a real
+    ``artifact_digest``, is independently verified and produces a genuine
+    ``provenance.kind='canonical'`` record -- accepted end-to-end by the
+    real, non-mocked promotion-boundary gate.
+    """
+    fx = canonical_run_intent_fixture
+    ctx = PatchTstTrainingContext(
+        dataset_manifest=_dataset_manifest(),
+        model_config={
+            "architecture": "hf_patchtst",
+            "canonical_run_intent_path": str(fx.run_intent_path),
+        },
+        output_dir=tmp_path / "out",
+        workflow_class=WORKFLOW_CLASS_CANONICAL,
+    )
+    result = PatchTstTrainingPipeline(_loader, _trainer, _validator).run(ctx)
+
+    assert result.ok is True
+    assert ctx.artifact_manifest is not None
+    provenance = ctx.artifact_manifest["provenance"]
+    assert provenance["kind"] == "canonical"
+    assert provenance != {"kind": "none"}
+    assert provenance["run_intent_path"] == str(fx.run_intent_path)
+    assert provenance["artifact_digest"] == ctx.artifact_manifest["fingerprint"]
+    assert "run_intent_digest" in provenance
+
+    # Explicit second check against the real, non-mocked registry-side gate.
+    experiment_registry.verify_artifact_provenance(ctx.artifact_manifest)
+
+
+def test_canonical_declaration_without_run_intent_path_is_rejected(tmp_path: Path) -> None:
+    """Round 6 negative control: ``workflow_class='canonical'`` with no
+    ``model_config['canonical_run_intent_path']`` must be rejected."""
+    ctx = PatchTstTrainingContext(
+        dataset_manifest=_dataset_manifest(),
+        model_config={"architecture": "hf_patchtst"},  # no canonical_run_intent_path
+        output_dir=tmp_path / "out",
+        workflow_class=WORKFLOW_CLASS_CANONICAL,
+    )
+
+    with pytest.raises(ValueError, match="canonical_run_intent_path"):
+        PatchTstTrainingPipeline(_loader, _trainer, _validator).run(ctx)
+
+    assert ctx.artifact_manifest is None
+
+
+def test_canonical_declaration_with_tampered_code_pin_is_rejected(
+    tmp_path: Path, canonical_run_intent_fixture,
+) -> None:
+    """Round 6 negative control: a ``run_intent.json`` whose code pin does
+    NOT match the actual checked-out commit must fail verification and
+    surface the underlying error list, not silently pass."""
+    fx = canonical_run_intent_fixture
+    raw = json.loads(fx.run_intent_path.read_text())
+    raw["code_pins"]["renquant-model"]["commit"] = "0" * 40
+    fx.run_intent_path.write_text(json.dumps(raw))
+
+    ctx = PatchTstTrainingContext(
+        dataset_manifest=_dataset_manifest(),
+        model_config={
+            "architecture": "hf_patchtst",
+            "canonical_run_intent_path": str(fx.run_intent_path),
+        },
+        output_dir=tmp_path / "out",
+        workflow_class=WORKFLOW_CLASS_CANONICAL,
+    )
+
+    with pytest.raises(ValueError, match="failed verification"):
         PatchTstTrainingPipeline(_loader, _trainer, _validator).run(ctx)
 
     assert ctx.artifact_manifest is None

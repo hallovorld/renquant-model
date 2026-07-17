@@ -114,7 +114,9 @@ def test_readiness_accepts_verdict_metadata_instead_of_sanity_triad() -> None:
     assert evidence["detail"]["kind"] == "verdict"
 
 
-def test_full_wf_pipeline_writes_readiness_report_to_manifest_metrics(tmp_path: Path) -> None:
+def test_full_wf_pipeline_writes_readiness_report_to_manifest_metrics(
+    tmp_path: Path, canonical_run_intent_fixture,
+) -> None:
     calls: list[str] = []
 
     def loader(manifest: dict):
@@ -131,7 +133,12 @@ def test_full_wf_pipeline_writes_readiness_report_to_manifest_metrics(tmp_path: 
 
     ctx = TrainingContext(
         dataset_manifest=_dataset_manifest(),
-        model_config=_config(),
+        model_config={
+            **_config(),
+            # F-7 round 6 (renquant-model#55, step 2/4): canonical now
+            # requires a real, independently-verifiable run_intent.json.
+            "canonical_run_intent_path": str(canonical_run_intent_fixture.run_intent_path),
+        },
         output_dir=tmp_path / "out",
         workflow_class=WORKFLOW_CLASS_CANONICAL,
     )

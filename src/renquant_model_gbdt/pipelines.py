@@ -150,14 +150,28 @@ class BuildArtifactManifestTask(Task):
             # independently verifies an "experiment" declaration against the
             # real experiment-registry marker + immutable registration index
             # rather than trusting it -- see that module's docstring for the
-            # full contract and its honestly-disclosed residual limitation
-            # on the canonical side (kind="none" remains self-declared;
-            # there is no non-forgeable "canonical production run" proof
-            # mechanism anywhere in this codebase yet to bind to).
+            # full contract. F-7 round 6 (renquant-model#55, step 2/4)
+            # additionally closes the canonical-side POSITIVE gap: a
+            # "canonical" declaration is now independently verified against a
+            # real run_intent.json (renquant_artifacts.canonical_registry),
+            # written by the orchestrator BEFORE training starts (F-7 step
+            # 3/4) -- see workflow_provenance's module docstring for the full
+            # contract and its remaining honestly-disclosed residual
+            # limitation.
             "provenance": build_verified_provenance(
                 ctx.workflow_class,
                 output_dir=ctx.output_dir,
                 model_config=ctx.model_config,
+                # F-7 round 6 (renquant-model#55, step 2/4): the trained
+                # artifact's own content fingerprint, threaded through from
+                # the SAME value this manifest's own "fingerprint" field
+                # already uses -- one fingerprint computation, not a second,
+                # independently derived one. Required for
+                # workflow_class=WORKFLOW_CLASS_CANONICAL so the provenance
+                # record can be bound to THIS artifact via
+                # renquant_artifacts.canonical_registry.build_canonical_provenance_reference;
+                # unused for the experiment path.
+                artifact_digest=ctx.model_artifact["fingerprint"],
             ),
         }
         for key in _RUNTIME_ARTIFACT_FIELDS:

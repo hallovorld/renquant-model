@@ -12,7 +12,9 @@ from renquant_model_gbdt import (
 )
 
 
-def test_training_pipeline_uses_common_task_job_pattern(tmp_path: Path) -> None:
+def test_training_pipeline_uses_common_task_job_pattern(
+    tmp_path: Path, canonical_run_intent_fixture,
+) -> None:
     calls: list[str] = []
 
     def loader(manifest: dict):
@@ -57,7 +59,11 @@ def test_training_pipeline_uses_common_task_job_pattern(tmp_path: Path) -> None:
             "uri": "object://renquant-data/alpha158_fund_fixture.parquet",
             "asset_class": "equity",
         },
-        model_config={"objective": "rank:pairwise", "strategy": "renquant_104"},
+        model_config={
+            "objective": "rank:pairwise",
+            "strategy": "renquant_104",
+            "canonical_run_intent_path": str(canonical_run_intent_fixture.run_intent_path),
+        },
         output_dir=tmp_path / "out",
         workflow_class=WORKFLOW_CLASS_CANONICAL,
     )
@@ -77,15 +83,18 @@ def test_training_pipeline_uses_common_task_job_pattern(tmp_path: Path) -> None:
     # round 3): provenance is no longer hardcoded -- it is derived from the
     # caller's explicit, required workflow_class declaration.
     # workflow_class=WORKFLOW_CLASS_CANONICAL is this test's positive control:
-    # genuine canonical publication still succeeds and still gets kind="none".
-    # validate_artifact_manifest inside BuildArtifactManifestTask already
-    # proves this validates against the real (non-mocked) F-7 contract,
-    # including the round-3 kind="none" re-verification against this
-    # manifest's own local_artifact_path. The adversarial counterpart --
-    # workflow_class=WORKFLOW_CLASS_EXPERIMENT at a fresh path correctly
-    # getting kind="experiment", never "none" -- lives in
+    # genuine canonical publication still succeeds -- F-7 round 6
+    # (renquant-model#55, step 2/4) additionally requires and independently
+    # verifies a real run_intent.json (canonical_run_intent_fixture, see
+    # tests/conftest.py) rather than returning the old bare, self-declared
+    # kind="none". validate_artifact_manifest inside BuildArtifactManifestTask
+    # already proves this validates against the real (non-mocked) F-7
+    # contract. The adversarial counterpart -- workflow_class=
+    # WORKFLOW_CLASS_EXPERIMENT at a fresh path correctly getting
+    # kind="experiment", never "none" -- lives in
     # test_workflow_class_provenance.py.
-    assert ctx.artifact_manifest["provenance"] == {"kind": "none"}
+    assert ctx.artifact_manifest["provenance"]["kind"] == "canonical"
+    assert ctx.artifact_manifest["provenance"]["artifact_digest"] == ctx.artifact_manifest["fingerprint"]
     assert ctx.metrics_record["oos_mean_ic"] == pytest.approx(0.031)
     assert ctx.metrics_record["panel_contract_ok"] is True
 

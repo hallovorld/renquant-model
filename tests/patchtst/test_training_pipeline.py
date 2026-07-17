@@ -11,7 +11,9 @@ from renquant_model_patchtst import (
 )
 
 
-def test_patchtst_training_pipeline_runs_sanity_stage(tmp_path: Path) -> None:
+def test_patchtst_training_pipeline_runs_sanity_stage(
+    tmp_path: Path, canonical_run_intent_fixture,
+) -> None:
     calls: list[str] = []
 
     def loader(manifest: dict):
@@ -58,7 +60,10 @@ def test_patchtst_training_pipeline_runs_sanity_stage(tmp_path: Path) -> None:
             "lookahead_days": 60,
             "split_policy": "purged-walk-forward",
         },
-        model_config={"architecture": "hf_patchtst"},
+        model_config={
+            "architecture": "hf_patchtst",
+            "canonical_run_intent_path": str(canonical_run_intent_fixture.run_intent_path),
+        },
         output_dir=tmp_path / "out",
         workflow_class=WORKFLOW_CLASS_CANONICAL,
     )
@@ -76,11 +81,15 @@ def test_patchtst_training_pipeline_runs_sanity_stage(tmp_path: Path) -> None:
     # round 3): provenance is no longer hardcoded -- workflow_class is now a
     # required, explicit declaration. This is the positive control: genuine
     # canonical publication (workflow_class=WORKFLOW_CLASS_CANONICAL) still
-    # succeeds and still gets kind="none". The adversarial counterpart --
-    # workflow_class=WORKFLOW_CLASS_EXPERIMENT at a fresh path correctly
-    # getting kind="experiment", never "none" -- lives in
+    # succeeds -- F-7 round 6 (renquant-model#55, step 2/4) additionally
+    # requires and independently verifies a real run_intent.json
+    # (canonical_run_intent_fixture, see tests/conftest.py) rather than
+    # returning the old bare, self-declared kind="none". The adversarial
+    # counterpart -- workflow_class=WORKFLOW_CLASS_EXPERIMENT at a fresh path
+    # correctly getting kind="experiment", never "none" -- lives in
     # test_workflow_class_provenance.py.
-    assert ctx.artifact_manifest["provenance"] == {"kind": "none"}
+    assert ctx.artifact_manifest["provenance"]["kind"] == "canonical"
+    assert ctx.artifact_manifest["provenance"]["artifact_digest"] == ctx.artifact_manifest["fingerprint"]
 
 
 def test_patchtst_training_pipeline_requires_split_and_label_contract(tmp_path: Path) -> None:
