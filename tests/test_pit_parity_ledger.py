@@ -1,134 +1,204 @@
-"""Tests for the PIT input-parity ledger (fail-closed, per-dimension)."""
+"""Tests for the MODEL-ONLY PIT input-parity comparator (v4 §2/§5 step 3).
+
+The prod-vs-shadow ``runs.alpaca.db`` bundle scan, the private
+``select_asof_runs`` import, AND the model → orchestrator store/admission
+imports are ALL retired. Parity is now computed by a portable, data-contract
+function over PLAIN decision-record mappings (as the umbrella integration
+harness loads them from the canonical G4 evidence store). These tests build
+those mappings directly — no orchestrator import, no store, tmp fixtures only.
+"""
 from __future__ import annotations
 
-import json
-import sqlite3
 from pathlib import Path
 
-from experiments.ensemble_phase0.backfill_scores import RunSelection
+from renquant_pipeline.decision_schedule import ARM_CHAMPION, ARM_L1
+
+from experiments.ensemble_phase0 import pit_parity_ledger as pit
 from experiments.ensemble_phase0.pit_parity_ledger import (
-    DEFAULT_MAX_SKEW_SECONDS,
-    compare_session,
+    ContractIntegrity,
+    build_parity_ledger,
+    compare_input_parity,
+    write_parity_ledger,
 )
 
-SESSION = "2026-07-15"
+CAL_ID = "XNYS/v1"
+PS_ID = "alpaca_sip/v1"
+SESSION = "2026-08-05"
+NXT = "2026-08-06"
+WATERMARK = f"{SESSION}T19:00:00+00:00"
+
+_MODULE_SRC = Path(pit.__file__).read_text(encoding="utf-8")
 
 
-def _mk_db(tmp_path: Path, name: str, run_id: str, bundle: dict | None,
-           raw_json: str | None = None) -> Path:
-    db = tmp_path / name
-    conn = sqlite3.connect(str(db))
-    conn.execute("CREATE TABLE pipeline_runs (run_id TEXT, run_bundle_json TEXT)")
-    payload = raw_json if raw_json is not None else (
-        json.dumps(bundle) if bundle is not None else None)
-    conn.execute("INSERT INTO pipeline_runs VALUES (?, ?)", (run_id, payload))
-    conn.commit()
-    conn.close()
-    return db
+def _manifest(digest: str = "sha256:" + "d" * 64, mev: str = WATERMARK) -> dict:
+    return {"universe": {"digest": digest, "max_event_time": mev}}
 
 
-def _bundle(**over) -> dict:
-    base = {
-        "schema_version": "v3",
-        "data_max_dates": {"AAPL": "2026-07-15", "MSFT": "2026-07-15"},
-        "regime_evidence": {"final_regime": "BULL_CALM"},
-        "watchlist_hash": "wh", "watchlist_size": 2, "config_hash": "ch",
-        "commit_path_fingerprint": "cpf",
+def _record(
+    arm: str,
+    *,
+    manifest: "dict | None" = None,
+    calendar_id: str = CAL_ID,
+    price_source_id: str = PS_ID,
+    watermark: str = WATERMARK,
+    scheduled_for: str = NXT,
+    schema_version: int = 1,
+    artifact: str = "a",
+) -> dict:
+    """A plain qualifying decision-record mapping (the comparator's data
+    contract) — exactly the fields the canonical job persists, hand-built."""
+    return {
+        "schema_version": schema_version,
+        "execution_mode": "shadow",
+        "arm": arm,
+        "decision_session": SESSION,
+        "declared_input_watermark": watermark,
+        "input_manifest": manifest if manifest is not None else _manifest(),
+        "artifact_digests": {arm: "sha256:" + artifact * 64},
+        "config_digest": "sha256:" + "c" * 64,
+        "calendar_id": calendar_id,
+        "price_source_id": price_source_id,
+        "scores": {"AAPL": 0.1},
+        "orders": [],
+        "orders_scheduled_for": scheduled_for,
+        "run_bundle_timestamp": f"{SESSION}T21:00:00+00:00",
+        "job_id": f"job-{arm}",
     }
-    base.update(over)
-    return base
 
 
-def _sel(run_id: str, created: str = "2026-07-15T19:00:00+00:00") -> RunSelection:
-    return RunSelection(run_id=run_id, run_date=SESSION, created_at_utc=created)
+def _pair(manifest: "dict | None" = None) -> list:
+    """The two frozen arms sharing ONE input manifest (parity by design),
+    differing only in the scorer artifact (informational)."""
+    m = manifest if manifest is not None else _manifest()
+    return [_record(ARM_L1, manifest=m, artifact="a"),
+            _record(ARM_CHAMPION, manifest=m, artifact="b")]
 
 
-_DB_SEQ = iter(range(10_000))
+def _ok() -> ContractIntegrity:
+    return ContractIntegrity(ok=True, reason_codes=[])
 
 
-def _verdict(tmp_path, prod_bundle, shadow_bundle, *, prod_raw=None,
-             shadow_raw=None, prod_sel=True, shadow_sel=True,
-             shadow_created="2026-07-15T19:30:00+00:00", skew=DEFAULT_MAX_SKEW_SECONDS):
-    seq = next(_DB_SEQ)  # unique filenames — a test may build several pairs
-    prod_db = _mk_db(tmp_path, f"p{seq}.db", "p1", prod_bundle, prod_raw)
-    shadow_db = _mk_db(tmp_path, f"s{seq}.db", "s1", shadow_bundle, shadow_raw)
-    return compare_session(
-        SESSION,
-        _sel("p1") if prod_sel else None,
-        _sel("s1", shadow_created) if shadow_sel else None,
-        prod_db=prod_db, shadow_db=shadow_db, max_skew_seconds=skew,
-    )
+class TestRetirement:
+    def test_no_private_asof_db_scan_or_orchestrator(self):
+        # Retired symbols/imports are not defined on the module.
+        for name in ("select_asof_runs", "RunSelection", "AsOfExclusion",
+                     "sqlite3", "compare_session_parity", "G4EvidenceStore",
+                     "admit_g4_session", "recompute_watermark_from_store",
+                     "resolve_session_window"):
+            assert not hasattr(pit, name), name
+
+    def test_module_source_never_imports_orchestrator(self):
+        # Strong guard against reintroducing the reverse cross-repo edge:
+        # the model-only comparator must never IMPORT renquant_orchestrator.
+        # (Docstring prose may name it when explaining the boundary; an
+        # actual import statement is what we forbid.)
+        assert "from renquant_orchestrator" not in _MODULE_SRC
+        assert "import renquant_orchestrator" not in _MODULE_SRC
+        assert "sqlite3" not in _MODULE_SRC  # the retired runs.alpaca.db path
 
 
 class TestParityVerdicts:
-
-    def test_full_match_is_parity(self, tmp_path):
-        v = _verdict(tmp_path, _bundle(), _bundle())
-        assert v.verdict == "parity" and not v.reasons
-
-    def test_missing_shadow_run_fails_closed(self, tmp_path):
-        v = _verdict(tmp_path, _bundle(), _bundle(), shadow_sel=False)
-        assert v.verdict == "not_parity"
-        assert any("missing_shadow_run" in r for r in v.reasons)
-
-    def test_unparseable_bundle_fails_closed(self, tmp_path):
-        v = _verdict(tmp_path, _bundle(), None, shadow_raw="{not json")
-        assert v.verdict == "not_parity"
-        assert any("missing_shadow_bundle" in r for r in v.reasons)
-
-    def test_missing_field_fails_closed(self, tmp_path):
-        b = _bundle(); del b["regime_evidence"]
-        v = _verdict(tmp_path, _bundle(), b)
-        assert v.verdict == "not_parity"
-        assert any("missing_shadow_fields" in r and "regime_evidence" in r
-                   for r in v.reasons)
-
-    def test_watermark_mismatch(self, tmp_path):
-        v = _verdict(tmp_path, _bundle(),
-                     _bundle(data_max_dates={"AAPL": "2026-07-14",
-                                             "MSFT": "2026-07-15"}))
-        assert v.verdict == "not_parity"
-        assert any("watermark_mismatch_on_1_tickers" in r for r in v.reasons)
-
-    def test_shadow_extra_ticker_breaks_subset(self, tmp_path):
-        v = _verdict(tmp_path, _bundle(),
-                     _bundle(data_max_dates={"AAPL": "2026-07-15",
-                                             "MSFT": "2026-07-15",
-                                             "ZZZ": "2026-07-15"}))
-        assert v.verdict == "not_parity"
-        assert "shadow_universe_not_subset_of_prod" in v.reasons
-
-    def test_shadow_subset_is_ok(self, tmp_path):
-        v = _verdict(tmp_path, _bundle(),
-                     _bundle(data_max_dates={"AAPL": "2026-07-15"}))
+    def test_canonical_pair_is_parity(self):
+        v = compare_input_parity(_pair(), session_date=SESSION, contract_integrity=_ok())
         assert v.verdict == "parity"
+        assert not v.reasons
+        assert v.contract_evaluated is True
 
-    def test_regime_mismatch(self, tmp_path):
-        v = _verdict(tmp_path, _bundle(),
-                     _bundle(regime_evidence={"final_regime": "BEAR"}))
-        assert v.verdict == "not_parity"
-        assert "regime_mismatch_or_missing" in v.reasons
-
-    def test_schema_version_mismatch(self, tmp_path):
-        v = _verdict(tmp_path, _bundle(), _bundle(schema_version="v2"))
-        assert v.verdict == "not_parity"
-        assert "bundle_schema_mismatch" in v.reasons
-
-    def test_skew_tolerance_boundary(self, tmp_path):
-        # exactly at tolerance passes; one second over fails
-        at = _verdict(tmp_path, _bundle(), _bundle(),
-                      shadow_created="2026-07-15T20:00:00+00:00", skew=3600)
-        assert at.verdict == "parity"
-        over = _verdict(tmp_path, _bundle(), _bundle(),
-                        shadow_created="2026-07-15T20:00:01+00:00", skew=3600)
-        assert over.verdict == "not_parity"
-        assert any("decision_skew" in r for r in over.reasons)
-
-    def test_scorer_difference_never_enters_verdict(self, tmp_path):
-        # config_hash / watchlist_hash / commit fingerprint differ (the
-        # experimental variable) — parity must still hold.
-        v = _verdict(tmp_path, _bundle(),
-                     _bundle(config_hash="OTHER", watchlist_hash="OTHER",
-                             commit_path_fingerprint="OTHER"))
+    def test_scorer_artifact_difference_stays_parity(self):
+        # l1 and champion carry DIFFERENT artifact digests by design; the
+        # shared input manifest still makes them parity.
+        v = compare_input_parity(_pair(), session_date=SESSION, contract_integrity=_ok())
         assert v.verdict == "parity"
-        assert v.informational["config_hash"]["shadow"] == "OTHER"
+        assert v.informational["artifact_digests_equal"] is False
+
+    def test_contract_not_evaluated_still_reports_input_parity(self):
+        # A model-only run (no contract result supplied) computes INPUT parity
+        # only and is honest that the contract/watermark gate is the umbrella's.
+        v = compare_input_parity(_pair(), session_date=SESSION)
+        assert v.verdict == "parity"
+        assert v.contract_evaluated is False
+        dim = next(d for d in v.dimensions if d.dimension == "contract_integrity")
+        assert dim.match is False and "not_evaluated" in dim.detail
+
+    def test_contract_failure_is_not_parity(self):
+        v = compare_input_parity(
+            _pair(), session_date=SESSION,
+            contract_integrity=ContractIntegrity(ok=False, reason_codes=["watermark_after_close"]),
+        )
+        assert v.verdict == "not_parity"
+        assert "contract:watermark_after_close" in v.reasons
+
+    def test_input_manifest_divergence_is_not_parity(self):
+        records = [
+            _record(ARM_L1, manifest=_manifest(digest="sha256:" + "1" * 64), artifact="a"),
+            _record(ARM_CHAMPION, manifest=_manifest(digest="sha256:" + "2" * 64), artifact="b"),
+        ]
+        v = compare_input_parity(records, session_date=SESSION, contract_integrity=_ok())
+        assert v.verdict == "not_parity"
+        assert "input_manifest_divergence" in v.reasons
+
+    def test_declared_watermark_mismatch_is_not_parity(self):
+        records = [
+            _record(ARM_L1, watermark=f"{SESSION}T19:00:00+00:00"),
+            _record(ARM_CHAMPION, watermark=f"{SESSION}T19:05:00+00:00"),
+        ]
+        v = compare_input_parity(records, session_date=SESSION, contract_integrity=_ok())
+        assert v.verdict == "not_parity"
+        assert "declared_watermark_mismatch" in v.reasons
+
+    def test_frozen_id_mismatch_is_not_parity(self):
+        records = [_record(ARM_L1, calendar_id=CAL_ID),
+                   _record(ARM_CHAMPION, calendar_id="OTHER/v1")]
+        v = compare_input_parity(records, session_date=SESSION, contract_integrity=_ok())
+        assert v.verdict == "not_parity"
+        assert "calendar_id_mismatch" in v.reasons
+
+    def test_schema_and_schedule_mismatch_is_not_parity(self):
+        records = [_record(ARM_L1, schema_version=1, scheduled_for=NXT),
+                   _record(ARM_CHAMPION, schema_version=2, scheduled_for="2026-08-07")]
+        v = compare_input_parity(records, session_date=SESSION, contract_integrity=_ok())
+        assert v.verdict == "not_parity"
+        assert "schema_version_mismatch" in v.reasons
+        assert "schedule_target_mismatch" in v.reasons
+
+    def test_missing_arm_is_not_parity(self):
+        v = compare_input_parity([_record(ARM_L1)], session_date=SESSION, contract_integrity=_ok())
+        assert v.verdict == "not_parity"
+        assert any("missing_qualifying_arm" in r for r in v.reasons)
+
+    def test_missing_session_is_not_parity(self):
+        v = compare_input_parity([], session_date=SESSION, contract_integrity=_ok())
+        assert v.verdict == "not_parity"
+        assert any("missing_session" in r for r in v.reasons)
+
+    def test_failure_and_unreadable_records_are_skipped(self):
+        # A failure/unreadable record for an arm does not qualify -> missing arm.
+        records = [
+            _record(ARM_L1),
+            {"arm": ARM_CHAMPION, "failure": {"kind": "arm_failed"}},
+            {"__unreadable__": "corrupt"},
+        ]
+        v = compare_input_parity(records, session_date=SESSION, contract_integrity=_ok())
+        assert v.verdict == "not_parity"
+        assert any("missing_qualifying_arm" in r for r in v.reasons)
+        assert v.arm_job_ids[ARM_L1] == f"job-{ARM_L1}"
+
+
+class TestLedger:
+    def test_build_and_write_ledger(self, tmp_path):
+        records_by_session = {SESSION: _pair()}
+        contract_by_session = {SESSION: _ok()}
+        verdicts = build_parity_ledger(
+            records_by_session, contract_by_session=contract_by_session)
+        assert len(verdicts) == 1 and verdicts[0].verdict == "parity"
+
+        out = tmp_path / "out"
+        path = write_parity_ledger(verdicts, out)
+        assert path.exists()
+        lines = [ln for ln in path.read_text().splitlines() if ln.strip()]
+        assert len(lines) == 1
+
+    def test_ledger_without_contract_map(self, tmp_path):
+        verdicts = build_parity_ledger({SESSION: _pair()})
+        assert verdicts[0].verdict == "parity"
+        assert verdicts[0].contract_evaluated is False

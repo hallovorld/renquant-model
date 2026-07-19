@@ -27,6 +27,14 @@ jobs:
         with:
           repository: hallovorld/renquant-pipeline
           path: renquant-pipeline
+      # renquant-orchestrator is deliberately NOT checked out here: the
+      # model factory does not depend on the orchestrator, and adding a
+      # model -> orchestrator edge would reverse the repo-boundary contract
+      # (the orchestrator already depends on the model). The canonical G4
+      # evidence store + admission ledger live in renquant-orchestrator and
+      # are consumed by the UMBRELLA integration harness (RenQuant), not by
+      # any model-repo module. What stays in the model is the portable,
+      # data-contract-only PIT input-parity comparator.
       - uses: actions/setup-python@v5
         with:
           python-version: "3.10"

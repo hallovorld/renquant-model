@@ -1,83 +1,100 @@
-"""PIT input-parity ledger: prod vs shadow at the same decision instant.
+"""PIT input-parity comparator — MODEL-ONLY, declared-data-contract (v4 §2/§5 step 3).
 
-Design §5.1 (doc/research/2026-07-12-ensemble-combination-experiment.md)
-admits the PatchTST shadow arm as an ensemble expert ONLY with evidence
-that its INPUTS were point-in-time equivalent to prod's at the same
-decision instant. This module produces that evidence: one fail-closed
-parity verdict per session, from the two runs' persisted run bundles,
-read-only.
+v4 §2: "The PIT parity ledger is NOT schedule-agnostic: it must be rerun
+against these exact watermark, universe-membership, artifact-selection, and
+execution fields. Its report is an input to admission, not a substitute for
+it." This module owns the *model-domain* half of that report: given the two
+frozen arms' decision records for one session, is their PIT **input** set
+identical across the dimensions that must match by design?
 
-RESEARCH-ONLY. Reads ``runs.alpaca.db`` (prod arm) and
-``runs.alpaca_shadow.db`` (shadow arm) with ``mode=ro&immutable=1``;
-writes ONLY under ``experiments/ensemble_phase0/output/pit_parity/``.
+REPO-BOUNDARY SPLIT (why this module imports NO orchestrator).
+``renquant-orchestrator`` already depends on ``renquant-model``; a
+model → orchestrator import would reverse the boundary contract. So the
+canonical G4 evidence store (``renquant_orchestrator.g4_shadow_job.
+G4EvidenceStore``), the admission ledger (``renquant_orchestrator.
+g4_admission.admit_g4_session``), the byte-level watermark hook, and the
+``renquant_pipeline.decision_schedule.validate_session_records`` contract
+gate are ALL executed by the **umbrella integration harness** (``RenQuant``),
+which holds the exact model/pipeline/orchestrator/artifacts pins plus the
+canonical store. The umbrella loads the two arms' records from the store,
+runs the contract-integrity gate, and passes the results here as PLAIN DATA.
 
-Compared-dimension set (verdict-bearing) — chosen from the fields the
-run bundles actually persist, restricted to INPUTS (the two arms differ
-in scorer artifacts BY DESIGN; scorer identity must never enter the
-parity verdict):
+This module therefore never reads the store, never runs admission, and
+imports only stdlib + the pipeline arm-name constants (``renquant-pipeline``
+is a lower-level contract both the model experiments and the orchestrator
+consume — it is not the reverse edge being removed).
 
-* ``data_layer_universe`` — the shadow bundle's ``data_max_dates`` key
-  set must be a subset of prod's. The data layer is the real input
-  surface; the config-level ``watchlist_hash`` intentionally differs
-  between arms (the shadow config swaps the panel artifact and may trail
-  watchlist growth), so universe parity is defined at the data layer,
-  with the config-level hash reported informationally.
-* ``data_watermarks`` — per-ticker ``data_max_dates`` equality over the
-  shadow∩prod intersection. Any differing ticker watermark ⇒ the arms
-  did not see the same data ⇒ not parity.
-* ``regime_evidence`` — the finalized regime label must match. Regime is
-  a pure function of shared inputs; divergence is evidence the inputs
-  (or their alignment) differed even if watermarks agree.
-* ``decision_skew`` — both runs must already satisfy the as-of contract
-  (committed before that session's close cutoff; enforced by
-  ``backfill_scores.select_asof_runs``), and the commit-time skew between
-  the two selected runs must be ≤ ``max_skew_seconds`` (default 6h:
-  the daily wrapper runs the shadow arm minutes after prod within the
-  same post-close window; both consume close-anchored daily bars, so
-  same-session co-processing — not tick-level simultaneity — is the
-  equivalence the daily-bar design actually requires).
-* ``bundle_schema`` — equal ``schema_version`` on both bundles, so the
-  fields being compared mean the same thing.
-* Presence: a missing run on either side, an unparseable bundle, or a
-  missing verdict-bearing field ⇒ ``not_parity`` with named reasons.
+DECLARED DATA CONTRACT
+----------------------
+``compare_input_parity`` accepts, for ONE decision session:
 
-Excluded from the verdict (with reasons), reported informationally:
+* ``records``: an iterable of decision-record **mappings** (plain dicts,
+  JSON-shaped) — exactly the records the canonical job persisted, as the
+  umbrella loaded them from the store. Each qualifying (non-failure,
+  non-unreadable) record must carry ``arm`` plus the input-bearing keys
+  ``input_manifest`` (``{name -> {digest, max_event_time}}``),
+  ``declared_input_watermark``, ``calendar_id``, ``price_source_id``,
+  ``orders_scheduled_for``, ``schema_version``, and ``job_id``; the
+  informational-only keys ``artifact_digests`` / ``config_digest`` /
+  ``run_bundle_timestamp`` are reported but never verdict-bearing.
+* ``contract_integrity`` (OPTIONAL): the umbrella's pre-computed
+  ``validate_session_records`` outcome as a plain :class:`ContractIntegrity`
+  (``ok`` + ``reason_codes``). When supplied and not ``ok`` the verdict is
+  ``not_parity`` with ``contract:<code>`` reasons; when omitted the
+  comparator evaluates INPUT-field parity only and marks the contract
+  dimension ``not_evaluated`` (honest that a model-only run did not run the
+  contract/watermark gate — that gate is the umbrella's responsibility).
 
-* ``artifact_hashes`` / ``config_hash`` / ``artifact_paths`` — embed the
-  scorer choice, i.e. the experimental variable itself.
-* ``commit_path_fingerprint`` / ``env`` — code identity, not input
-  identity; informative for forensics only.
-* ``pipeline_flags`` — decision OUTCOMES, not inputs.
+Output is a :class:`ParityVerdict` (plain dataclass, JSON-serialisable).
+No orchestrator/store/pipeline-runtime type ever enters the input or output.
+
+Verdict-bearing dimensions (INPUTS only — the arms differ in scorer artifact
+BY DESIGN, so scorer identity must never enter the verdict): ``input_manifest``
+(digest-equality = v4 §3 "same manifested information set" at the strongest
+resolution — the content-addressed digests, not a bundle summary),
+``declared_watermark``, frozen ``calendar_id`` / ``price_source_id``,
+``schedule_target`` (equal ``orders_scheduled_for`` = open(T+1)), and
+``schema_version``. Excluded from the verdict (reported informationally):
+``artifact_digests`` / ``config_digest`` (embed the scorer choice — the
+experimental variable), ``scores`` / ``orders`` (decision OUTCOMES, not
+inputs), and ``run_bundle_timestamp``.
+
+RETIRED (v4 §5, "no private cross-repo as-of helper survives anywhere"): the
+old close-anchored ``select_asof_runs`` import, the ``RunSelection`` type,
+and the twin ``runs.alpaca.db`` / ``runs.alpaca_shadow.db`` bundle scan. No
+database code path exists here.
+
+RESEARCH-ONLY: the optional CLI reads plain-JSON record exports from a
+caller-chosen path and writes a report under a caller-chosen output dir —
+never a production path, never a store.
 """
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
-import sqlite3
+import sys
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping, Sequence
 
-from experiments.ensemble_phase0.admissibility_ledger import (
-    US_EQUITY_CLOSE,
-    DecisionSchedule,
-    SessionCalendar,
-    build_exchange_session_calendar,
-)
-from experiments.ensemble_phase0.backfill_scores import (
-    RunSelection,
-    select_asof_runs,
-)
+from renquant_pipeline.decision_schedule import ARM_CHAMPION, ARM_L1
 
-LEDGER_SCHEMA_VERSION = "pit_parity_ledger.v1"
-DEFAULT_MAX_SKEW_SECONDS = 6 * 3600
+LEDGER_SCHEMA_VERSION = "pit_parity_ledger.v3_model_only"
 DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parent / "output" / "pit_parity"
 
-PROD_DB = Path("/Users/renhao/git/github/RenQuant/data/runs.alpaca.db")
-SHADOW_DB = Path("/Users/renhao/git/github/RenQuant/data/runs.alpaca_shadow.db")
+#: The two frozen registered arms (v4 §3). Parity is defined between them.
+PARITY_ARMS: tuple[str, ...] = (ARM_L1, ARM_CHAMPION)
 
-_VERDICT_FIELDS = ("data_max_dates", "regime_evidence", "schema_version")
+#: Record keys whose cross-arm equality IS the input-parity verdict.
+INPUT_PARITY_DIMENSIONS: tuple[tuple[str, str, str], ...] = (
+    ("input_manifest", "input_manifest", "input_manifest_divergence"),
+    ("declared_watermark", "declared_input_watermark", "declared_watermark_mismatch"),
+    ("frozen_calendar_id", "calendar_id", "calendar_id_mismatch"),
+    ("frozen_price_source_id", "price_source_id", "price_source_id_mismatch"),
+    ("schedule_target", "orders_scheduled_for", "schedule_target_mismatch"),
+    ("schema_version", "schema_version", "schema_version_mismatch"),
+)
 
 
 @dataclass
@@ -88,156 +105,132 @@ class DimensionResult:
 
 
 @dataclass
+class ContractIntegrity:
+    """The umbrella's pre-computed ``validate_session_records`` outcome,
+    passed to the comparator as plain data (no pipeline/orchestrator type).
+
+    ``ok`` is the session-level contract verdict; ``reason_codes`` are the
+    contract reason codes (empty when ``ok``). Construct it in the umbrella
+    harness from the ``SessionVerdict`` and hand it in — this keeps the
+    contract/watermark gate on the umbrella side of the boundary while the
+    model comparator still folds the result into a single verdict."""
+
+    ok: bool
+    reason_codes: list[str] = field(default_factory=list)
+
+
+@dataclass
 class ParityVerdict:
     session_date: str
     verdict: str  # "parity" | "not_parity"
     reasons: list[str] = field(default_factory=list)
     dimensions: list[DimensionResult] = field(default_factory=list)
-    prod_run_id: str | None = None
-    shadow_run_id: str | None = None
+    arm_job_ids: dict[str, Any] = field(default_factory=dict)
     informational: dict[str, Any] = field(default_factory=dict)
+    contract_evaluated: bool = False
     ledger_schema_version: str = LEDGER_SCHEMA_VERSION
 
     def to_json(self) -> str:
-        d = asdict(self)
-        return json.dumps(d, sort_keys=True)
+        return json.dumps(asdict(self), sort_keys=True)
 
 
-def _load_bundle(db_path: Path, run_id: str) -> dict | None:
-    conn = sqlite3.connect(f"file:{db_path}?mode=ro&immutable=1", uri=True)
-    try:
-        row = conn.execute(
-            "SELECT run_bundle_json FROM pipeline_runs WHERE run_id = ?",
-            (run_id,),
-        ).fetchone()
-    finally:
-        conn.close()
-    if not row or not row[0]:
-        return None
-    try:
-        bundle = json.loads(row[0])
-    except (TypeError, ValueError):
-        return None
-    return bundle if isinstance(bundle, dict) else None
+def qualifying_records_by_arm(
+    records: Sequence[Mapping[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """First qualifying (non-failure, non-unreadable) record per arm.
+
+    Pure data helper: ``records`` are plain decision-record mappings (as the
+    umbrella loaded them from the canonical store). Retries are byte-identical
+    by the store's contract, so the first is representative; the umbrella's
+    ``validate_session_records`` run independently flags any divergent retry
+    and is surfaced via :class:`ContractIntegrity`."""
+    by_arm: dict[str, dict[str, Any]] = {}
+    for record in records:
+        if not isinstance(record, Mapping):
+            continue
+        if "__unreadable__" in record or isinstance(record.get("failure"), Mapping):
+            continue
+        arm = str(record.get("arm"))
+        by_arm.setdefault(arm, dict(record))
+    return by_arm
 
 
-def _missing_fields(bundle: dict) -> list[str]:
-    missing = []
-    for f in _VERDICT_FIELDS:
-        v = bundle.get(f)
-        if v is None or (f == "data_max_dates" and not isinstance(v, dict)):
-            missing.append(f)
-    return missing
-
-
-def _regime_label(bundle: dict) -> str | None:
-    ev = bundle.get("regime_evidence")
-    if not isinstance(ev, dict):
-        return None
-    for key in ("final_regime", "regime"):
-        v = ev.get(key)
-        if isinstance(v, str) and v:
-            return v
-    return None
-
-
-def compare_session(
-    session_date: str,
-    prod_sel: RunSelection | None,
-    shadow_sel: RunSelection | None,
+def compare_input_parity(
+    records: Sequence[Mapping[str, Any]],
     *,
-    prod_db: Path = PROD_DB,
-    shadow_db: Path = SHADOW_DB,
-    max_skew_seconds: int = DEFAULT_MAX_SKEW_SECONDS,
+    session_date: str,
+    expected_arms: Sequence[str] = PARITY_ARMS,
+    contract_integrity: "ContractIntegrity | None" = None,
 ) -> ParityVerdict:
-    """Produce the fail-closed parity verdict for one session."""
+    """Fail-closed PIT input-parity verdict for ONE session's records.
+
+    See the module docstring for the full declared data contract. ``records``
+    is a plain iterable of decision-record mappings; ``contract_integrity`` is
+    the umbrella's optional pre-computed contract gate result. Never raises on
+    a data outcome — a malformed/absent input yields ``not_parity`` with an
+    explanatory reason, never an exception."""
     v = ParityVerdict(session_date=session_date, verdict="not_parity")
 
-    if prod_sel is None or shadow_sel is None:
-        side = "prod" if prod_sel is None else "shadow"
-        v.reasons.append(f"missing_{side}_run: no as-of-eligible live run")
-        return v
-    v.prod_run_id, v.shadow_run_id = prod_sel.run_id, shadow_sel.run_id
-
-    prod_b = _load_bundle(prod_db, prod_sel.run_id)
-    shadow_b = _load_bundle(shadow_db, shadow_sel.run_id)
-    if prod_b is None or shadow_b is None:
-        side = "prod" if prod_b is None else "shadow"
-        v.reasons.append(f"missing_{side}_bundle: run_bundle_json absent/unparseable")
+    materialized = list(records)
+    if not materialized:
+        v.reasons.append("missing_session: no records supplied for this session")
         return v
 
-    for side, b in (("prod", prod_b), ("shadow", shadow_b)):
-        miss = _missing_fields(b)
-        if miss:
-            v.reasons.append(f"missing_{side}_fields: {','.join(miss)}")
-    if v.reasons:
+    # Contract-integrity dimension (computed by the umbrella; folded in here).
+    if contract_integrity is not None:
+        contract_ok = bool(contract_integrity.ok)
+        v.contract_evaluated = True
+        v.dimensions.append(
+            DimensionResult(
+                "contract_integrity",
+                contract_ok,
+                "" if contract_ok else f"reason_codes={list(contract_integrity.reason_codes)}",
+            )
+        )
+        if not contract_ok:
+            v.reasons.extend(f"contract:{c}" for c in contract_integrity.reason_codes)
+    else:
+        v.contract_evaluated = False
+        v.dimensions.append(
+            DimensionResult(
+                "contract_integrity",
+                False,
+                "not_evaluated: the contract/watermark gate is run by the "
+                "umbrella integration harness, not the model-only comparator",
+            )
+        )
+
+    by_arm = qualifying_records_by_arm(materialized)
+    v.arm_job_ids = {arm: by_arm.get(arm, {}).get("job_id") for arm in expected_arms}
+
+    missing = [arm for arm in expected_arms if arm not in by_arm]
+    if missing:
+        # Cannot compute cross-arm dimensions without both arms; verdict
+        # stays "not_parity" (the dataclass default).
+        v.reasons.append(f"missing_qualifying_arm: {missing}")
         return v
 
-    # bundle_schema
-    sv_p, sv_s = prod_b.get("schema_version"), shadow_b.get("schema_version")
-    ok = sv_p == sv_s
-    v.dimensions.append(DimensionResult(
-        "bundle_schema", ok, "" if ok else f"prod={sv_p!r} shadow={sv_s!r}"))
-    if not ok:
-        v.reasons.append("bundle_schema_mismatch")
+    a_arm, b_arm = expected_arms[0], expected_arms[1]
+    a, b = by_arm[a_arm], by_arm[b_arm]
 
-    # data-layer universe (shadow ⊆ prod)
-    dmd_p: dict = prod_b["data_max_dates"]
-    dmd_s: dict = shadow_b["data_max_dates"]
-    extra_in_shadow = sorted(set(dmd_s) - set(dmd_p))
-    ok = not extra_in_shadow
-    v.dimensions.append(DimensionResult(
-        "data_layer_universe", ok,
-        "" if ok else f"shadow-only tickers: {extra_in_shadow[:10]}"
-                      f"{'…' if len(extra_in_shadow) > 10 else ''}"))
-    if not ok:
-        v.reasons.append("shadow_universe_not_subset_of_prod")
-
-    # per-ticker watermarks over the intersection
-    inter = sorted(set(dmd_p) & set(dmd_s))
-    diffs = [(t, dmd_p[t], dmd_s[t]) for t in inter if dmd_p[t] != dmd_s[t]]
-    ok = not diffs
-    v.dimensions.append(DimensionResult(
-        "data_watermarks", ok,
-        f"intersection={len(inter)}" if ok else
-        f"intersection={len(inter)}, differing={diffs[:5]}"
-        f"{'…' if len(diffs) > 5 else ''}"))
-    if not ok:
-        v.reasons.append(f"watermark_mismatch_on_{len(diffs)}_tickers")
-
-    # regime evidence
-    r_p, r_s = _regime_label(prod_b), _regime_label(shadow_b)
-    ok = r_p is not None and r_p == r_s
-    v.dimensions.append(DimensionResult(
-        "regime_evidence", ok, "" if ok else f"prod={r_p!r} shadow={r_s!r}"))
-    if not ok:
-        v.reasons.append("regime_mismatch_or_missing")
-
-    # decision skew (both already pre-cutoff via as-of selection)
-    try:
-        t_p = datetime.fromisoformat(prod_sel.created_at_utc)
-        t_s = datetime.fromisoformat(shadow_sel.created_at_utc)
-        skew = abs((t_s - t_p).total_seconds())
-        ok = skew <= max_skew_seconds
-        v.dimensions.append(DimensionResult(
-            "decision_skew", ok,
-            f"skew_seconds={int(skew)} tolerance={max_skew_seconds}"))
+    for dim_name, record_key, reason in INPUT_PARITY_DIMENSIONS:
+        va, vb = a.get(record_key), b.get(record_key)
+        ok = va == vb
+        v.dimensions.append(
+            DimensionResult(dim_name, ok, "" if ok else f"{a_arm}={va!r} {b_arm}={vb!r}")
+        )
         if not ok:
-            v.reasons.append(f"decision_skew_{int(skew)}s_exceeds_tolerance")
-    except (TypeError, ValueError):
-        v.dimensions.append(DimensionResult("decision_skew", False, "unparseable created_at"))
-        v.reasons.append("decision_skew_unparseable")
+            v.reasons.append(reason)
 
-    # informational (never verdict-bearing)
+    # Informational — NEVER verdict-bearing (the scorer choice is the
+    # experimental variable; decision outcomes are not inputs).
     v.informational = {
-        "watchlist_hash": {"prod": prod_b.get("watchlist_hash"),
-                           "shadow": shadow_b.get("watchlist_hash")},
-        "watchlist_size": {"prod": prod_b.get("watchlist_size"),
-                           "shadow": shadow_b.get("watchlist_size")},
-        "config_hash": {"prod": prod_b.get("config_hash"),
-                        "shadow": shadow_b.get("config_hash")},
-        "commit_path_fingerprint_equal":
-            prod_b.get("commit_path_fingerprint") == shadow_b.get("commit_path_fingerprint"),
+        "artifact_digests": {a_arm: a.get("artifact_digests"),
+                             b_arm: b.get("artifact_digests")},
+        "config_digest": {a_arm: a.get("config_digest"), b_arm: b.get("config_digest")},
+        "artifact_digests_equal": a.get("artifact_digests") == b.get("artifact_digests"),
+        "run_bundle_timestamp": {a_arm: a.get("run_bundle_timestamp"),
+                                 b_arm: b.get("run_bundle_timestamp")},
     }
 
     if not v.reasons:
@@ -246,39 +239,37 @@ def compare_session(
 
 
 def build_parity_ledger(
+    records_by_session: Mapping[str, Sequence[Mapping[str, Any]]],
     *,
-    start_date: str,
-    end_date: str,
-    prod_db: Path = PROD_DB,
-    shadow_db: Path = SHADOW_DB,
-    calendar: SessionCalendar | None = None,
-    schedule: DecisionSchedule = US_EQUITY_CLOSE,
-    max_skew_seconds: int = DEFAULT_MAX_SKEW_SECONDS,
+    contract_by_session: "Mapping[str, ContractIntegrity] | None" = None,
+    expected_arms: Sequence[str] = PARITY_ARMS,
 ) -> list[ParityVerdict]:
-    calendar = calendar or build_exchange_session_calendar(start_date, end_date)
-    prod_sel, prod_excl = select_asof_runs(
-        prod_db, start_date=start_date, end_date=end_date,
-        calendar=calendar, schedule=schedule)
-    shadow_sel, shadow_excl = select_asof_runs(
-        shadow_db, start_date=start_date, end_date=end_date,
-        calendar=calendar, schedule=schedule)
+    """PIT input-parity verdicts for an EXPLICIT, pre-loaded session map.
 
-    sessions = sorted(set(prod_sel) | set(shadow_sel)
-                      | {e.run_date for e in prod_excl}
-                      | {e.run_date for e in shadow_excl})
-    return [
-        compare_session(
-            d, prod_sel.get(d), shadow_sel.get(d),
-            prod_db=prod_db, shadow_db=shadow_db,
-            max_skew_seconds=max_skew_seconds)
-        for d in sessions
-    ]
+    ``records_by_session`` maps ``decision_session -> [record mappings]`` — the
+    umbrella loads these from the canonical store (per an explicit, forward-only
+    session list; no DB scan, no as-of selection) and hands them in as plain
+    data. ``contract_by_session`` optionally supplies each session's
+    :class:`ContractIntegrity` from the umbrella's contract gate."""
+    contract_by_session = contract_by_session or {}
+    verdicts: list[ParityVerdict] = []
+    for session in records_by_session:
+        verdicts.append(
+            compare_input_parity(
+                records_by_session[session],
+                session_date=session,
+                expected_arms=expected_arms,
+                contract_integrity=contract_by_session.get(session),
+            )
+        )
+    return verdicts
 
 
-def write_parity_ledger(verdicts: list[ParityVerdict],
-                        output_dir: Path = DEFAULT_OUTPUT_DIR) -> Path:
+def write_parity_ledger(
+    verdicts: list[ParityVerdict], output_dir: Path = DEFAULT_OUTPUT_DIR
+) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     path = output_dir / f"pit_parity_{stamp}.jsonl"
     with path.open("w", encoding="utf-8") as fh:
         for v in verdicts:
@@ -286,19 +277,64 @@ def write_parity_ledger(verdicts: list[ParityVerdict],
     return path
 
 
-def main(argv: list[str] | None = None) -> int:
+# ---------------------------------------------------------------------------
+# Optional model-only CLI — reads plain-JSON record exports (never a store).
+# ---------------------------------------------------------------------------
+
+def _load_records_json(path: Path) -> "dict[str, list[dict[str, Any]]]":
+    """Load ``{session -> [record, ...]}`` from a plain-JSON export."""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("--records-json must be an object mapping session -> [records]")
+    out: dict[str, list[dict[str, Any]]] = {}
+    for session, recs in data.items():
+        dt.date.fromisoformat(session)  # caller error on malformed date
+        if not isinstance(recs, list):
+            raise ValueError(f"session {session!r} must map to a list of record objects")
+        out[session] = [r for r in recs if isinstance(r, dict)]
+    return out
+
+
+def _load_contract_json(path: "Path | None") -> "dict[str, ContractIntegrity]":
+    if path is None:
+        return {}
+    data = json.loads(path.read_text(encoding="utf-8"))
+    out: dict[str, ContractIntegrity] = {}
+    for session, res in (data or {}).items():
+        out[session] = ContractIntegrity(
+            ok=bool(res.get("ok")),
+            reason_codes=list(res.get("reason_codes", [])),
+        )
+    return out
+
+
+def main(argv: "list[str] | None" = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--start", default="2026-06-22")
-    ap.add_argument("--end", required=True)
-    ap.add_argument("--date", help="single-date incremental mode")
-    ap.add_argument("--max-skew-seconds", type=int, default=DEFAULT_MAX_SKEW_SECONDS)
+    ap.add_argument("--records-json", required=True, type=Path,
+                    help="Plain-JSON export {session: [decision-record objects]} "
+                         "(the umbrella loads these from the canonical store).")
+    ap.add_argument("--contract-json", type=Path, default=None,
+                    help="Optional plain-JSON {session: {ok, reason_codes}} from "
+                         "the umbrella's validate_session_records run.")
     ap.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     args = ap.parse_args(argv)
 
-    start = args.date or args.start
-    end = args.date or args.end
+    if not args.records_json.exists():
+        print(f"ERROR: records json not found: {args.records_json}", file=sys.stderr)
+        return 1
+    if args.contract_json is not None and not args.contract_json.exists():
+        print(f"ERROR: contract json not found: {args.contract_json}", file=sys.stderr)
+        return 1
+
+    records_by_session = _load_records_json(args.records_json)
+    contract_by_session = _load_contract_json(args.contract_json)
+    if not records_by_session:
+        print("ERROR: no sessions in --records-json", file=sys.stderr)
+        return 1
+
     verdicts = build_parity_ledger(
-        start_date=start, end_date=end, max_skew_seconds=args.max_skew_seconds)
+        records_by_session, contract_by_session=contract_by_session
+    )
     path = write_parity_ledger(verdicts, args.output_dir)
     n_par = sum(1 for v in verdicts if v.verdict == "parity")
     print(f"pit_parity: {n_par}/{len(verdicts)} sessions parity -> {path}")
