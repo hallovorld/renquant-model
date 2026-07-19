@@ -1,123 +1,107 @@
-# G4 v4 §5 step 3 — score backfill + PIT parity re-homed onto the merged contracts
+# G4 v4 §5 step 3 — PIT input-parity re-homed as a model-only comparator; forward consumer moved to the umbrella
 
-STATUS: delivered (tooling + tests). Phase 0 stays BLOCKED; no capital
-deployment, no schedule change, no scheduled job. Author: hallovorld.
-Reviewer: haorensjtu-dev.
+STATUS: revised after codex CHANGES_REQUESTED (blocking architecture
+defect: model → orchestrator reverse cross-repo edge). Phase 0 stays
+BLOCKED; no capital deployment, no schedule change, no scheduled job.
+Author: hallovorld. Reviewer: haorensjtu-dev.
 
 ## Crux finding (report this first)
 
-Under the merged v4 amendment's §4 data hygiene, **the score "backfill"
-has NO inferential role left.** The terminal/inferential series comprises
-ONLY sessions admitted AFTER the activation commit, produced by the
-canonical shadow job (orchestrator step 2) running FORWARD ("No backfill
-of pilot, pre-freeze, or inter-stage sessions into the terminal series
-under any circumstance"). The old `backfill_scores.py` did exactly the
-prohibited thing: it scanned the close-anchored `runs.alpaca.db` history
-and manufactured a candidate series from PRE-FREEZE sessions (whose 15–20
-accrued shadow sessions are additionally disqualified by prior analytical
-exposure, model#58/#59). Its private close-anchored as-of helper
-`select_asof_runs` is precisely what v4 §5 subsumes into the
-pipeline-owned decision-schedule API ("no private cross-repo as-of helper
-survives anywhere").
+The first cut of this PR added a **model → orchestrator reverse cross-repo
+edge**: `experiments/ensemble_phase0/{backfill_scores,pit_parity_ledger}.py`
+imported `renquant_orchestrator.g4_shadow_job.G4EvidenceStore` /
+`g4_admission.admit_g4_session`, the CI checked out renquant-orchestrator,
+and pytest's `pythonpath` added `../renquant-orchestrator/src`.
+`renquant-orchestrator` ALREADY depends on `renquant-model`, so this
+reverses the boundary contract and makes the model test environment depend
+on an (at the time) unmerged orchestrator API. Codex blocked it; this
+revision removes the edge entirely.
 
-**Decision: the tool becomes a read-only FORWARD CONSUMER of the canonical
-G4 evidence store + a fail-closed series assembler.** The `runs.alpaca.db`
-scan, `select_asof_runs`, `RunSelection`, `--score-column`, per-date
-candidate-evidence JSON, and local ledger build are RETIRED IN FULL —
-there is no database code path at all, so a legacy row is *structurally*
-incapable of feeding the inferential series. Diagnostic coverage of the
-burned pre-freeze sessions is out of scope (v4 §4 already disqualifies
-them; model#58/#59 already produced the descriptive read; re-reading them
-would only re-manufacture the burned exposure).
+The underlying data-hygiene finding is unchanged and correct: under v4 §4
+the terminal/inferential series comprises ONLY sessions admitted FORWARD
+after the activation commit ("No backfill of pilot, pre-freeze, or
+inter-stage sessions into the terminal series under any circumstance"), so
+the old close-anchored `runs.alpaca.db` as-of scan (`select_asof_runs` /
+`RunSelection` / the DB path) stays RETIRED IN FULL. What changed is
+*where* the forward consumer lives.
 
-## What changed
+## Repo-boundary split (the fix)
 
-- `experiments/ensemble_phase0/backfill_scores.py` — rewritten as the G4
-  forward series consumer. CONSUMES step-1 `renquant_pipeline.
-  decision_schedule` (`validate_arm_record` / `validate_session_records` /
-  `SessionWindow` / `job_identity`, pipeline#209) and step-2
-  `renquant_orchestrator.g4_shadow_job.G4EvidenceStore` +
-  `g4_admission.admit_g4_session` (orch#551). `admit_g4_session(...,
-  persist=False)` gives the authoritative read-only verdict (nothing is
-  written to the store — admission EXECUTION stays the orchestrator's per
-  §5). Enrollment into the inferential series requires ALL THREE gates:
-  1. **canonical-store provenance** — a missing/forged/tampered/divergent
-     record or a watermark after close makes admission `admissible=False`
-     ⇒ `REFUSED`;
-  2. **registration binding** — the step-2 `series_eligible` flag (True
-     only when the frozen calendar-id + price-source-id are supplied and
-     match); this tool READS it, never mints it;
-  3. **post-activation data hygiene** — the model-side gate this tool
-     adds: `decision_session` strictly AFTER the frozen `activation_session`
-     (v4 §4). A pre-freeze / pre-activation or unregistered session is
-     demoted to `DIAGNOSTIC_ONLY` (discussable, never enrolled).
-  `INFERENTIAL_SERIES_CANDIDATE` is reachable ONLY through all three; a
-  closing structural invariant (`SeriesIntegrityError`) re-checks the
-  enrolled set fail-closed.
-- `experiments/ensemble_phase0/pit_parity_ledger.py` — rewritten. Parity
-  is now between the two frozen arms (l1 / champion) of ONE canonical
-  store, not prod-vs-shadow `runs.alpaca.db` bundles selected by commit
-  order. Verdict-bearing dimensions are INPUTS only (`input_manifest`
-  digest-equality = v4 §3 "same manifested information set",
-  `declared_watermark`, frozen `calendar_id`/`price_source_id`,
-  `schedule_target`, `schema_version`), gated by
-  `validate_session_records` with the BYTE-LEVEL watermark hook
-  (`recompute_watermark_from_store`). Scorer/artifact digests differ by
-  design ⇒ informational, never verdict-bearing. The old `decision_skew`
-  dimension is GONE: both arms are produced in one canonical job run from
-  one input set, so cross-arm commit skew is not an input-parity signal.
-  `select_asof_runs` import + `RunSelection` + both DB scans retired.
-- `tests/test_backfill_scores.py`, `tests/test_pit_parity_ledger.py` —
-  rewritten as the v4 §6 adversarial acceptance set (below), using
-  synthetic canonical-store fixtures built by the real step-2 job
-  (`run_g4_shadow_session`) — no invented historical data.
-- `pyproject.toml` — pytest `pythonpath` gains `../renquant-orchestrator/src`
-  so the (research-only) ensemble consumer can import the step-2 store +
-  admission ledger. Both step-2 modules are import-light (stdlib + a lazy
-  `renquant_common.market_calendar`); nothing in the model factory itself
-  depends on the orchestrator.
+Per RFC §5 and the codex review, the work splits cleanly along the
+boundary:
+
+- **renquant-model keeps the portable, model-only PIT input-parity
+  comparator** — `pit_parity_ledger.py`. It defines what "the two frozen
+  arms consumed identical PIT inputs" MEANS (a model-domain concept) and
+  operates on PLAIN decision-record mappings with a declared data contract
+  (see the module docstring). It imports NO orchestrator type, never reads
+  the store, never runs admission.
+- **The umbrella (`RenQuant`) owns the pinned integration harness** that
+  resolves the canonical store, runs admission/registration eligibility,
+  applies the forward-only enrollment rule, and feeds the loaded record
+  pairs into the model comparator. Design note (part B, spec only):
+  `doc/design/2026-07-18-g4-step3-umbrella-forward-consumer.md` in this
+  branch's scratch + posted on this PR — NOT implemented here.
+
+## What changed in this repo
+
+- `experiments/ensemble_phase0/backfill_scores.py` — **DELETED** (with its
+  test). It was a pure orchestrator-integration consumer: its entire body
+  took a `G4EvidenceStore`, called `admit_g4_session`, and layered a
+  post-activation gate. There is no model-domain remainder to keep — the
+  forward-only enrollment/series-assembly logic is specified for the
+  umbrella harness in the part-B design note.
+- `experiments/ensemble_phase0/pit_parity_ledger.py` — **rewritten as a
+  model-only comparator.** `compare_input_parity(records, *, session_date,
+  expected_arms=PARITY_ARMS, contract_integrity=None)` takes plain
+  decision-record mappings and returns a `ParityVerdict`. Verdict-bearing
+  dimensions are INPUTS only (`input_manifest` digest-equality = v4 §3
+  "same manifested information set", `declared_watermark`, frozen
+  `calendar_id`/`price_source_id`, `schedule_target`, `schema_version`);
+  scorer/artifact digests differ by design ⇒ informational. The
+  contract-integrity/watermark gate (`validate_session_records` + the
+  byte-level `recompute_watermark_from_store` hook) is NOT run here — it is
+  the umbrella's job, and its result is passed in as a plain
+  `ContractIntegrity(ok, reason_codes)`. Only stdlib + the
+  `renquant_pipeline.decision_schedule` arm-name constants are imported
+  (pipeline is a lower-level contract, not the reverse edge).
+- `.github/workflows/ci.yml` — the `renquant-orchestrator` checkout step is
+  removed; the model CI no longer touches the orchestrator.
+- `pyproject.toml` — `../renquant-orchestrator/src` removed from the pytest
+  `pythonpath`.
+- `tests/test_pit_parity_ledger.py` — rewritten against plain-dict fixtures
+  (no orchestrator, no store); includes a guard test asserting the module
+  source never references `renquant_orchestrator` again.
+
+## Declared data contract (model ↔ umbrella interface)
+
+`compare_input_parity` consumes, for one decision session:
+- `records`: iterable of plain decision-record mappings (the fields the
+  canonical job persists: `arm`, `input_manifest`, `declared_input_watermark`,
+  `calendar_id`, `price_source_id`, `orders_scheduled_for`, `schema_version`,
+  `job_id`, and informational `artifact_digests`/`config_digest`/
+  `run_bundle_timestamp`). Failure/unreadable records are skipped.
+- `contract_integrity` (optional): the umbrella's `validate_session_records`
+  outcome as `ContractIntegrity(ok, reason_codes)`.
+
+Returns a JSON-serialisable `ParityVerdict`. No orchestrator/store/
+pipeline-runtime type crosses this boundary.
 
 ## Fail-closed shape (no capital-path gate introduced)
 
-This is research tooling; Phase 0 is BLOCKED and the canonical shadow job
-is not scheduled, so a forward run today enrolls ZERO sessions — the
-correct fail-closed state (no activation commit + no forward canonical
-sessions exist yet). The tool never writes a production path or the store;
-it reads the store and writes a report under a caller-chosen output dir.
+Research tooling only; Phase 0 is BLOCKED and the canonical shadow job is
+not scheduled. The comparator writes nothing but a report under a
+caller-chosen output dir; it never writes a production path or a store.
 
-## Tests (v4 §6 acceptance)
+## Tests
 
-`tests/test_backfill_scores.py` (all green): retirement of the as-of
-helper + DB path (attribute + import checks); forward canonical
-registration-bound post-activation session ENROLLED with series_eligible;
-pre-activation / equal-to-activation / no-activation-registered session
-REFUSED from the series (diagnostic-only); unregistered (no frozen ids) not
-series_eligible; forged non-canonical record REFUSED; missing session
-REFUSED; job-identity determinism (record job_id == recomputed identity;
-stable re-evaluation); no leakage (an input event-time AFTER close ⇒
-`watermark_after_close` ⇒ REFUSED; a pre-close input is clean); series
-assembly enrolls only candidates + the structural-invariant guard;
-report/CLI plumbing (the real-NYSE CLI path is `importorskip`-guarded and
-runs in CI).
+`tests/test_pit_parity_ledger.py`: retirement + no-orchestrator-import
+guards; canonical pair = parity; scorer-artifact difference stays parity;
+contract-not-evaluated still reports input parity (honest about the
+umbrella's gate); contract failure ⇒ not_parity; input-manifest divergence,
+watermark/frozen-id/schema/schedule mismatch, missing arm, missing session,
+and failure/unreadable skipping all fail closed; ledger build + write with
+and without a contract map. `backfill_scores` and its test are gone.
 
-`tests/test_pit_parity_ledger.py` (all green): retirement checks;
-canonical pair = parity; scorer-artifact difference stays parity;
-input-manifest divergence, missing arm, missing session, frozen-id
-mismatch, and watermark-after-close all fail closed; ledger build + write.
-
-Locally: 28 passed, 1 skipped (the pandas-gated real-NYSE CLI test) under
-a minimal py3.10 venv exercising the two files against merged-main
-pipeline#209 + orch#551 checkouts. NOTE: the exact-pinned 4-repo umbrella
-integration run (v4 §6(a)) is a later umbrella-stage item — NOT run here.
-
-## v4 ambiguity noted for the reviewer
-
-§5 says the model backfill "consumes that contract" (singular = the
-pipeline public API) while step 2 assigns the evidence store + admission
-execution to the orchestrator. This step therefore imports BOTH the
-pipeline contract and the orchestrator's store/admission reader (a
-backwards model→orchestrator edge, confined to `experiments/`, not the
-factory). The alternative — re-implementing the store reader + admission
-rule inside the model repo — would itself be a "private cross-repo helper"
-of the kind v4 forbids, so reuse of the owner's read-only surface
-(`persist=False`) was chosen. Flagging for confirmation.
+The exact-pinned 4-repo umbrella integration run (v4 §6(a)) is the part-B
+umbrella item — NOT run here.
