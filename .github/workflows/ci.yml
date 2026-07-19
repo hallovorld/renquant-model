@@ -27,6 +27,16 @@ jobs:
         with:
           repository: hallovorld/renquant-pipeline
           path: renquant-pipeline
+      # renquant-orchestrator is NOT a factory dependency; the ensemble
+      # Phase-0 G4 forward-consumer + PIT parity ledger (experiments/,
+      # research-only) import its import-light step-2 store/admission
+      # modules on the pytest ``pythonpath`` (v4 §5 step 3). Checkout-only
+      # (source on path) — deliberately NOT pip-installed, to avoid pulling
+      # the orchestrator's runtime dependency tree into the model CI.
+      - uses: actions/checkout@v4
+        with:
+          repository: hallovorld/renquant-orchestrator
+          path: renquant-orchestrator
       - uses: actions/setup-python@v5
         with:
           python-version: "3.10"

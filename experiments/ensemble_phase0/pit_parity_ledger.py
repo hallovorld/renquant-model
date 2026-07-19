@@ -1,83 +1,87 @@
-"""PIT input-parity ledger: prod vs shadow at the same decision instant.
+"""PIT input-parity ledger — v4 §2/§5 step 3, re-homed onto the canonical store.
 
-Design §5.1 (doc/research/2026-07-12-ensemble-combination-experiment.md)
-admits the PatchTST shadow arm as an ensemble expert ONLY with evidence
-that its INPUTS were point-in-time equivalent to prod's at the same
-decision instant. This module produces that evidence: one fail-closed
-parity verdict per session, from the two runs' persisted run bundles,
-read-only.
+v4 §2: "The PIT parity ledger is NOT schedule-agnostic: it must be rerun
+against these exact watermark, universe-membership, artifact-selection,
+and execution fields. Its report is an input to admission, not a
+substitute for it." This module produces that per-session parity report by
+CONSUMING the merged contracts, exact-pinned — never a private as-of scan:
 
-RESEARCH-ONLY. Reads ``runs.alpaca.db`` (prod arm) and
-``runs.alpaca_shadow.db`` (shadow arm) with ``mode=ro&immutable=1``;
-writes ONLY under ``experiments/ensemble_phase0/output/pit_parity/``.
+* step-1 ``renquant_pipeline.decision_schedule`` (validate_session_records,
+  SessionWindow, EXPECTED_ARMS — pipeline#209) for record integrity,
+  watermark recomputation, job identity, and pairing;
+* step-2 ``renquant_orchestrator.g4_shadow_job.G4EvidenceStore`` +
+  ``g4_admission.recompute_watermark_from_store`` (orch#551) as the
+  canonical, write-once, digest-named evidence source and the BYTE-LEVEL
+  watermark hook (v4 §2 r2: the declared watermark is not self-certifying).
 
-Compared-dimension set (verdict-bearing) — chosen from the fields the
-run bundles actually persist, restricted to INPUTS (the two arms differ
-in scorer artifacts BY DESIGN; scorer identity must never enter the
-parity verdict):
+RETIRED (v4 §5, "no private cross-repo as-of helper survives anywhere"):
+the old close-anchored ``select_asof_runs`` import, the ``RunSelection``
+type, and the twin ``runs.alpaca.db`` / ``runs.alpaca_shadow.db`` bundle
+scan. The two arms are no longer prod-vs-shadow pipeline runs selected by
+commit order; they are the frozen registered pair (``l1`` / ``champion``,
+v4 §3) whose immutable records live side-by-side in ONE canonical store.
 
-* ``data_layer_universe`` — the shadow bundle's ``data_max_dates`` key
-  set must be a subset of prod's. The data layer is the real input
-  surface; the config-level ``watchlist_hash`` intentionally differs
-  between arms (the shadow config swaps the panel artifact and may trail
-  watchlist growth), so universe parity is defined at the data layer,
-  with the config-level hash reported informationally.
-* ``data_watermarks`` — per-ticker ``data_max_dates`` equality over the
-  shadow∩prod intersection. Any differing ticker watermark ⇒ the arms
-  did not see the same data ⇒ not parity.
-* ``regime_evidence`` — the finalized regime label must match. Regime is
-  a pure function of shared inputs; divergence is evidence the inputs
-  (or their alignment) differed even if watermarks agree.
-* ``decision_skew`` — both runs must already satisfy the as-of contract
-  (committed before that session's close cutoff; enforced by
-  ``backfill_scores.select_asof_runs``), and the commit-time skew between
-  the two selected runs must be ≤ ``max_skew_seconds`` (default 6h:
-  the daily wrapper runs the shadow arm minutes after prod within the
-  same post-close window; both consume close-anchored daily bars, so
-  same-session co-processing — not tick-level simultaneity — is the
-  equivalence the daily-bar design actually requires).
-* ``bundle_schema`` — equal ``schema_version`` on both bundles, so the
-  fields being compared mean the same thing.
-* Presence: a missing run on either side, an unparseable bundle, or a
-  missing verdict-bearing field ⇒ ``not_parity`` with named reasons.
+Because the canonical job (``run_g4_shadow_session``) builds BOTH arms
+from a single manifested input set, input parity is largely by
+construction — but this ledger independently RE-VERIFIES it against the
+persisted bytes (its report is an input to admission, not a substitute),
+which is the exact-pinned check v4 §2 requires.
 
-Excluded from the verdict (with reasons), reported informationally:
+Verdict-bearing dimensions (INPUTS only — the arms differ in scorer
+artifact BY DESIGN, so scorer identity must never enter the verdict):
 
-* ``artifact_hashes`` / ``config_hash`` / ``artifact_paths`` — embed the
-  scorer choice, i.e. the experimental variable itself.
-* ``commit_path_fingerprint`` / ``env`` — code identity, not input
-  identity; informative for forensics only.
-* ``pipeline_flags`` — decision OUTCOMES, not inputs.
+* ``contract_integrity`` — ``validate_session_records`` passes for the
+  session (both arms present, schema/fields valid, declared watermark
+  ``<= close`` and equal to the BYTE-recomputed max event-time, one
+  canonical job identity per arm, orders scheduled for open(T+1)). Any
+  contract reason code ⇒ ``not_parity``.
+* ``input_manifest`` — the two arms' ``input_manifest`` must be IDENTICAL
+  (same input names → same ``{digest, max_event_time}``). This is the v4
+  §3 "same manifested information set" at the strongest resolution: the
+  content-addressed digests themselves, not a bundle summary.
+* ``declared_watermark`` — equal ``declared_input_watermark``.
+* ``frozen_identifiers`` — equal ``calendar_id`` and ``price_source_id``.
+* ``schedule_target`` — equal ``orders_scheduled_for`` (both = open(T+1)).
+* ``schema_version`` — equal record ``schema_version``.
+
+Excluded from the verdict (reported informationally): ``artifact_digests``
+/ ``config_digest`` (embed the scorer choice — the experimental variable),
+``scores`` / ``orders`` (decision OUTCOMES, not inputs), and
+``run_bundle_timestamp`` (evidence only per v4 §2 — the old
+``decision_skew`` dimension is GONE: both arms are produced in one
+canonical job run from one input set, so cross-arm commit skew is not a
+meaningful input-parity signal).
+
+RESEARCH-ONLY: reads the caller-chosen store root; writes ONLY under a
+caller-chosen output directory, never a production path, never the store.
 """
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
-import sqlite3
+import sys
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
-from experiments.ensemble_phase0.admissibility_ledger import (
-    US_EQUITY_CLOSE,
-    DecisionSchedule,
-    SessionCalendar,
-    build_exchange_session_calendar,
+from renquant_pipeline.decision_schedule import (
+    ARM_CHAMPION,
+    ARM_L1,
+    SessionWindow,
+    validate_session_records,
 )
-from experiments.ensemble_phase0.backfill_scores import (
-    RunSelection,
-    select_asof_runs,
+from renquant_orchestrator.g4_admission import recompute_watermark_from_store
+from renquant_orchestrator.g4_shadow_job import (
+    G4EvidenceStore,
+    resolve_session_window,
 )
 
-LEDGER_SCHEMA_VERSION = "pit_parity_ledger.v1"
-DEFAULT_MAX_SKEW_SECONDS = 6 * 3600
+LEDGER_SCHEMA_VERSION = "pit_parity_ledger.v2_canonical_store"
 DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parent / "output" / "pit_parity"
 
-PROD_DB = Path("/Users/renhao/git/github/RenQuant/data/runs.alpaca.db")
-SHADOW_DB = Path("/Users/renhao/git/github/RenQuant/data/runs.alpaca_shadow.db")
-
-_VERDICT_FIELDS = ("data_max_dates", "regime_evidence", "schema_version")
+#: The two frozen registered arms (v4 §3). Parity is defined between them.
+PARITY_ARMS: tuple[str, ...] = (ARM_L1, ARM_CHAMPION)
 
 
 @dataclass
@@ -93,151 +97,112 @@ class ParityVerdict:
     verdict: str  # "parity" | "not_parity"
     reasons: list[str] = field(default_factory=list)
     dimensions: list[DimensionResult] = field(default_factory=list)
-    prod_run_id: str | None = None
-    shadow_run_id: str | None = None
+    arm_job_ids: dict[str, Any] = field(default_factory=dict)
     informational: dict[str, Any] = field(default_factory=dict)
     ledger_schema_version: str = LEDGER_SCHEMA_VERSION
 
     def to_json(self) -> str:
-        d = asdict(self)
-        return json.dumps(d, sort_keys=True)
+        return json.dumps(asdict(self), sort_keys=True)
 
 
-def _load_bundle(db_path: Path, run_id: str) -> dict | None:
-    conn = sqlite3.connect(f"file:{db_path}?mode=ro&immutable=1", uri=True)
-    try:
-        row = conn.execute(
-            "SELECT run_bundle_json FROM pipeline_runs WHERE run_id = ?",
-            (run_id,),
-        ).fetchone()
-    finally:
-        conn.close()
-    if not row or not row[0]:
-        return None
-    try:
-        bundle = json.loads(row[0])
-    except (TypeError, ValueError):
-        return None
-    return bundle if isinstance(bundle, dict) else None
+def _qualifying_by_arm(
+    records: Sequence[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """First qualifying (non-failure, non-unreadable) record per arm.
+
+    Retries are byte-identical by contract, so the first is representative;
+    ``validate_session_records`` independently flags any divergent retry."""
+    by_arm: dict[str, dict[str, Any]] = {}
+    for record in records:
+        if "__unreadable__" in record or isinstance(record.get("failure"), dict):
+            continue
+        arm = str(record.get("arm"))
+        by_arm.setdefault(arm, record)
+    return by_arm
 
 
-def _missing_fields(bundle: dict) -> list[str]:
-    missing = []
-    for f in _VERDICT_FIELDS:
-        v = bundle.get(f)
-        if v is None or (f == "data_max_dates" and not isinstance(v, dict)):
-            missing.append(f)
-    return missing
-
-
-def _regime_label(bundle: dict) -> str | None:
-    ev = bundle.get("regime_evidence")
-    if not isinstance(ev, dict):
-        return None
-    for key in ("final_regime", "regime"):
-        v = ev.get(key)
-        if isinstance(v, str) and v:
-            return v
-    return None
-
-
-def compare_session(
-    session_date: str,
-    prod_sel: RunSelection | None,
-    shadow_sel: RunSelection | None,
+def compare_session_parity(
+    store: G4EvidenceStore,
+    decision_session: str,
     *,
-    prod_db: Path = PROD_DB,
-    shadow_db: Path = SHADOW_DB,
-    max_skew_seconds: int = DEFAULT_MAX_SKEW_SECONDS,
+    session_window: SessionWindow,
+    expected_calendar_id: "str | None" = None,
+    expected_price_source_id: "str | None" = None,
+    expected_arms: Sequence[str] = PARITY_ARMS,
 ) -> ParityVerdict:
-    """Produce the fail-closed parity verdict for one session."""
-    v = ParityVerdict(session_date=session_date, verdict="not_parity")
+    """Fail-closed PIT input-parity verdict for one canonical session."""
+    v = ParityVerdict(session_date=decision_session, verdict="not_parity")
 
-    if prod_sel is None or shadow_sel is None:
-        side = "prod" if prod_sel is None else "shadow"
-        v.reasons.append(f"missing_{side}_run: no as-of-eligible live run")
-        return v
-    v.prod_run_id, v.shadow_run_id = prod_sel.run_id, shadow_sel.run_id
-
-    prod_b = _load_bundle(prod_db, prod_sel.run_id)
-    shadow_b = _load_bundle(shadow_db, shadow_sel.run_id)
-    if prod_b is None or shadow_b is None:
-        side = "prod" if prod_b is None else "shadow"
-        v.reasons.append(f"missing_{side}_bundle: run_bundle_json absent/unparseable")
+    loaded = store.load_session_records(decision_session)
+    records = [rec for _path, rec in loaded]
+    if not records:
+        v.reasons.append("missing_session: no records under the canonical store")
         return v
 
-    for side, b in (("prod", prod_b), ("shadow", shadow_b)):
-        miss = _missing_fields(b)
-        if miss:
-            v.reasons.append(f"missing_{side}_fields: {','.join(miss)}")
-    if v.reasons:
+    # Contract integrity gate (byte-level watermark hook, exact-pinned ids).
+    session_verdict = validate_session_records(
+        records,
+        session_window=session_window,
+        expected_arms=tuple(expected_arms),
+        recompute_max_event_time=recompute_watermark_from_store(store),
+        expected_calendar_id=expected_calendar_id,
+        expected_price_source_id=expected_price_source_id,
+    )
+    contract_ok = bool(session_verdict.ok)
+    v.dimensions.append(
+        DimensionResult(
+            "contract_integrity",
+            contract_ok,
+            "" if contract_ok else f"reason_codes={list(session_verdict.reason_codes)}",
+        )
+    )
+    if not contract_ok:
+        v.reasons.extend(f"contract:{c}" for c in session_verdict.reason_codes)
+
+    by_arm = _qualifying_by_arm(records)
+    v.arm_job_ids = {arm: by_arm.get(arm, {}).get("job_id") for arm in expected_arms}
+
+    missing = [arm for arm in expected_arms if arm not in by_arm]
+    if missing:
+        # Cannot compute cross-arm dimensions without both arms; verdict
+        # stays "not_parity" (the dataclass default).
+        v.reasons.append(f"missing_qualifying_arm: {missing}")
         return v
 
-    # bundle_schema
-    sv_p, sv_s = prod_b.get("schema_version"), shadow_b.get("schema_version")
-    ok = sv_p == sv_s
-    v.dimensions.append(DimensionResult(
-        "bundle_schema", ok, "" if ok else f"prod={sv_p!r} shadow={sv_s!r}"))
-    if not ok:
-        v.reasons.append("bundle_schema_mismatch")
+    # Exactly the frozen pair for the pairwise comparison.
+    a_arm, b_arm = expected_arms[0], expected_arms[1]
+    a, b = by_arm[a_arm], by_arm[b_arm]
 
-    # data-layer universe (shadow ⊆ prod)
-    dmd_p: dict = prod_b["data_max_dates"]
-    dmd_s: dict = shadow_b["data_max_dates"]
-    extra_in_shadow = sorted(set(dmd_s) - set(dmd_p))
-    ok = not extra_in_shadow
-    v.dimensions.append(DimensionResult(
-        "data_layer_universe", ok,
-        "" if ok else f"shadow-only tickers: {extra_in_shadow[:10]}"
-                      f"{'…' if len(extra_in_shadow) > 10 else ''}"))
-    if not ok:
-        v.reasons.append("shadow_universe_not_subset_of_prod")
-
-    # per-ticker watermarks over the intersection
-    inter = sorted(set(dmd_p) & set(dmd_s))
-    diffs = [(t, dmd_p[t], dmd_s[t]) for t in inter if dmd_p[t] != dmd_s[t]]
-    ok = not diffs
-    v.dimensions.append(DimensionResult(
-        "data_watermarks", ok,
-        f"intersection={len(inter)}" if ok else
-        f"intersection={len(inter)}, differing={diffs[:5]}"
-        f"{'…' if len(diffs) > 5 else ''}"))
-    if not ok:
-        v.reasons.append(f"watermark_mismatch_on_{len(diffs)}_tickers")
-
-    # regime evidence
-    r_p, r_s = _regime_label(prod_b), _regime_label(shadow_b)
-    ok = r_p is not None and r_p == r_s
-    v.dimensions.append(DimensionResult(
-        "regime_evidence", ok, "" if ok else f"prod={r_p!r} shadow={r_s!r}"))
-    if not ok:
-        v.reasons.append("regime_mismatch_or_missing")
-
-    # decision skew (both already pre-cutoff via as-of selection)
-    try:
-        t_p = datetime.fromisoformat(prod_sel.created_at_utc)
-        t_s = datetime.fromisoformat(shadow_sel.created_at_utc)
-        skew = abs((t_s - t_p).total_seconds())
-        ok = skew <= max_skew_seconds
-        v.dimensions.append(DimensionResult(
-            "decision_skew", ok,
-            f"skew_seconds={int(skew)} tolerance={max_skew_seconds}"))
+    def _dim(name: str, va: Any, vb: Any, reason: str) -> None:
+        ok = va == vb
+        v.dimensions.append(
+            DimensionResult(name, ok, "" if ok else f"{a_arm}={va!r} {b_arm}={vb!r}")
+        )
         if not ok:
-            v.reasons.append(f"decision_skew_{int(skew)}s_exceeds_tolerance")
-    except (TypeError, ValueError):
-        v.dimensions.append(DimensionResult("decision_skew", False, "unparseable created_at"))
-        v.reasons.append("decision_skew_unparseable")
+            v.reasons.append(reason)
 
-    # informational (never verdict-bearing)
+    _dim("input_manifest", a.get("input_manifest"), b.get("input_manifest"),
+         "input_manifest_divergence")
+    _dim("declared_watermark", a.get("declared_input_watermark"),
+         b.get("declared_input_watermark"), "declared_watermark_mismatch")
+    _dim("frozen_calendar_id", a.get("calendar_id"), b.get("calendar_id"),
+         "calendar_id_mismatch")
+    _dim("frozen_price_source_id", a.get("price_source_id"), b.get("price_source_id"),
+         "price_source_id_mismatch")
+    _dim("schedule_target", a.get("orders_scheduled_for"),
+         b.get("orders_scheduled_for"), "schedule_target_mismatch")
+    _dim("schema_version", a.get("schema_version"), b.get("schema_version"),
+         "schema_version_mismatch")
+
+    # Informational — NEVER verdict-bearing (the scorer choice is the
+    # experimental variable; decision outcomes are not inputs).
     v.informational = {
-        "watchlist_hash": {"prod": prod_b.get("watchlist_hash"),
-                           "shadow": shadow_b.get("watchlist_hash")},
-        "watchlist_size": {"prod": prod_b.get("watchlist_size"),
-                           "shadow": shadow_b.get("watchlist_size")},
-        "config_hash": {"prod": prod_b.get("config_hash"),
-                        "shadow": shadow_b.get("config_hash")},
-        "commit_path_fingerprint_equal":
-            prod_b.get("commit_path_fingerprint") == shadow_b.get("commit_path_fingerprint"),
+        "artifact_digests": {a_arm: a.get("artifact_digests"),
+                             b_arm: b.get("artifact_digests")},
+        "config_digest": {a_arm: a.get("config_digest"), b_arm: b.get("config_digest")},
+        "artifact_digests_equal": a.get("artifact_digests") == b.get("artifact_digests"),
+        "run_bundle_timestamp": {a_arm: a.get("run_bundle_timestamp"),
+                                 b_arm: b.get("run_bundle_timestamp")},
     }
 
     if not v.reasons:
@@ -246,39 +211,38 @@ def compare_session(
 
 
 def build_parity_ledger(
+    store: G4EvidenceStore,
     *,
-    start_date: str,
-    end_date: str,
-    prod_db: Path = PROD_DB,
-    shadow_db: Path = SHADOW_DB,
-    calendar: SessionCalendar | None = None,
-    schedule: DecisionSchedule = US_EQUITY_CLOSE,
-    max_skew_seconds: int = DEFAULT_MAX_SKEW_SECONDS,
+    sessions: Sequence[str],
+    session_windows: "dict[str, SessionWindow] | None" = None,
+    calendar: Any | None = None,
+    expected_calendar_id: "str | None" = None,
+    expected_price_source_id: "str | None" = None,
 ) -> list[ParityVerdict]:
-    calendar = calendar or build_exchange_session_calendar(start_date, end_date)
-    prod_sel, prod_excl = select_asof_runs(
-        prod_db, start_date=start_date, end_date=end_date,
-        calendar=calendar, schedule=schedule)
-    shadow_sel, shadow_excl = select_asof_runs(
-        shadow_db, start_date=start_date, end_date=end_date,
-        calendar=calendar, schedule=schedule)
+    """PIT parity verdicts for an EXPLICIT session list (exact-pinned;
+    no DB scan, no as-of selection)."""
+    verdicts: list[ParityVerdict] = []
+    for session in sessions:
+        window = (session_windows or {}).get(session)
+        if window is None:
+            window = resolve_session_window(session, calendar=calendar)
+        verdicts.append(
+            compare_session_parity(
+                store,
+                session,
+                session_window=window,
+                expected_calendar_id=expected_calendar_id,
+                expected_price_source_id=expected_price_source_id,
+            )
+        )
+    return verdicts
 
-    sessions = sorted(set(prod_sel) | set(shadow_sel)
-                      | {e.run_date for e in prod_excl}
-                      | {e.run_date for e in shadow_excl})
-    return [
-        compare_session(
-            d, prod_sel.get(d), shadow_sel.get(d),
-            prod_db=prod_db, shadow_db=shadow_db,
-            max_skew_seconds=max_skew_seconds)
-        for d in sessions
-    ]
 
-
-def write_parity_ledger(verdicts: list[ParityVerdict],
-                        output_dir: Path = DEFAULT_OUTPUT_DIR) -> Path:
+def write_parity_ledger(
+    verdicts: list[ParityVerdict], output_dir: Path = DEFAULT_OUTPUT_DIR
+) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     path = output_dir / f"pit_parity_{stamp}.jsonl"
     with path.open("w", encoding="utf-8") as fh:
         for v in verdicts:
@@ -286,19 +250,55 @@ def write_parity_ledger(verdicts: list[ParityVerdict],
     return path
 
 
-def main(argv: list[str] | None = None) -> int:
+def _load_sessions(args: argparse.Namespace) -> list[str]:
+    sessions = list(args.session or [])
+    if args.sessions_file is not None:
+        sessions.extend(
+            line.strip()
+            for line in args.sessions_file.read_text().splitlines()
+            if line.strip() and not line.startswith("#")
+        )
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for s in sessions:
+        dt.date.fromisoformat(s)
+        if s not in seen:
+            seen.add(s)
+            ordered.append(s)
+    return ordered
+
+
+def main(argv: "list[str] | None" = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--start", default="2026-06-22")
-    ap.add_argument("--end", required=True)
-    ap.add_argument("--date", help="single-date incremental mode")
-    ap.add_argument("--max-skew-seconds", type=int, default=DEFAULT_MAX_SKEW_SECONDS)
+    ap.add_argument("--store-root", required=True, type=Path,
+                    help="Root of the canonical G4 evidence store (read-only).")
+    ap.add_argument("--session", action="append", default=[],
+                    help="A decision session to check (repeatable).")
+    ap.add_argument("--sessions-file", type=Path, default=None,
+                    help="File of decision sessions, one per line ('#' comments allowed).")
+    ap.add_argument("--calendar-id", default=None, help="Frozen calendar id to bind against.")
+    ap.add_argument("--price-source-id", default=None,
+                    help="Frozen price-source id to bind against.")
     ap.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     args = ap.parse_args(argv)
 
-    start = args.date or args.start
-    end = args.date or args.end
+    if not args.store_root.exists():
+        print(f"ERROR: store root not found: {args.store_root}", file=sys.stderr)
+        return 1
+    if args.sessions_file is not None and not args.sessions_file.exists():
+        print(f"ERROR: sessions file not found: {args.sessions_file}", file=sys.stderr)
+        return 1
+    sessions = _load_sessions(args)
+    if not sessions:
+        print("ERROR: no decision sessions given (--session / --sessions-file)", file=sys.stderr)
+        return 1
+
+    store = G4EvidenceStore(args.store_root)
     verdicts = build_parity_ledger(
-        start_date=start, end_date=end, max_skew_seconds=args.max_skew_seconds)
+        store, sessions=sessions, calendar=None,
+        expected_calendar_id=args.calendar_id,
+        expected_price_source_id=args.price_source_id,
+    )
     path = write_parity_ledger(verdicts, args.output_dir)
     n_par = sum(1 for v in verdicts if v.verdict == "parity")
     print(f"pit_parity: {n_par}/{len(verdicts)} sessions parity -> {path}")

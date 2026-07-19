@@ -66,5 +66,13 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 addopts = "--import-mode=importlib"
-pythonpath = ["src", "../renquant-common/src", "../renquant-base-data/src", "../renquant-artifacts/src", "../renquant-pipeline/src"]
+# ../renquant-orchestrator/src: the ensemble_phase0 G4 forward-consumer +
+# PIT parity ledger (experiments/, research-only) CONSUME the step-2
+# canonical evidence store + admission ledger (renquant_orchestrator.
+# g4_shadow_job / g4_admission, orch#551) on top of the step-1 pipeline
+# contract, per v4 §5 step 3. Both step-2 modules are import-light
+# (stdlib + a lazy renquant_common.market_calendar), so this only makes
+# them importable for the ensemble tests; nothing else in the factory
+# depends on the orchestrator.
+pythonpath = ["src", "../renquant-common/src", "../renquant-base-data/src", "../renquant-artifacts/src", "../renquant-pipeline/src", "../renquant-orchestrator/src"]
 testpaths = ["tests"]
