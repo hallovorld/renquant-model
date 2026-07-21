@@ -17,7 +17,13 @@ dependencies = [
   # HARD dependency of the renquant_model_crypto fee gate (D-C8b). No local
   # fallback exists by design (Codex review, model#43 r2): the crypto family
   # fails closed at import below this version.
-  "renquant-common>=0.12.0,<1.0",
+  # >=0.15.0: renquant_common.walk_forward_fold_selection (Codex review,
+  # model#64) — the canonical PIT fold-eligibility contract mirrored from
+  # WalkForwardModelLoader.entry_as_of (business-day lookahead +
+  # effective_train_cutoff_date). experiments/ensemble_phase0
+  # /walkforward_admissibility.py imports this instead of reimplementing the
+  # date arithmetic locally; below 0.15.0 this module does not exist.
+  "renquant-common>=0.15.0,<1.0",
   "renquant-base-data>=0.1.0",
   "renquant-artifacts>=0.1.0",
   "numpy>=1.26",
