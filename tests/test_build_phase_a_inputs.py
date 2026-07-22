@@ -216,6 +216,11 @@ def test_end_to_end_build_is_admitted_by_canonical_validator(tmp_path: Path):
              "trained_date": "2026-06-15"},
         ]
     }))
+    # Real, readable artifact so the fold resolves a genuine content digest
+    # (a fallback provenance-bound digest is now excluded, never written).
+    artifact = tmp_path / "artifacts" / "wf" / "2025-05-12" / "panel-ltr.json"
+    artifact.parent.mkdir(parents=True)
+    artifact.write_bytes(b'{"model": "content"}')
 
     out = tmp_path / "out"
     result = run_build(
@@ -226,6 +231,7 @@ def test_end_to_end_build_is_admitted_by_canonical_validator(tmp_path: Path):
         score_column="raw_panel",
         start_date="2025-09-01",
         end_date="2025-09-30",
+        artifact_base_dir=tmp_path,
         build_admissibility_ledger=True,
     )
 
@@ -245,3 +251,46 @@ def test_end_to_end_build_is_admitted_by_canonical_validator(tmp_path: Path):
     returns = (out / "returns.csv").read_text().splitlines()
     assert returns[0] == "date,ticker,fwd_return"
     assert len(returns) == 1 + len(dates) * len(tickers)
+
+
+def test_dates_with_unresolvable_artifact_are_excluded_not_stamped_with_fallback(
+    tmp_path: Path,
+):
+    """A fold whose artifact_uri does not resolve to a real file must never
+    reach a score file with the provenance-bound surrogate digest (Codex CR
+    on model#65: the canonical validator only checks digest syntax, so a
+    fallback digest would be silently admitted as if it were real).
+    """
+    dates = ["2025-09-15", "2025-09-16"]
+    tickers = ["AAA", "BBB", "CCC"]
+    sim_db = tmp_path / "sim_runs.db"
+    _make_sim_db(sim_db, dates, tickers)
+
+    manifest = tmp_path / "wf_manifest.json"
+    manifest.write_text(json.dumps({
+        "retrains": [
+            {"cutoff_date": "2025-05-12", "lookahead_days": 60,
+             "artifact_uri": "artifacts/wf/2025-05-12/panel-ltr.json",
+             "trained_date": "2026-06-15"},
+        ]
+    }))
+    # No artifact file written under tmp_path -> resolve_artifact_digest
+    # falls back to a provenance-bound (non-real) digest for every date.
+
+    out = tmp_path / "out"
+    with pytest.raises(ValueError, match="no admissible-vintage dates"):
+        run_build(
+            sim_db=sim_db,
+            manifest_file=manifest,
+            output_dir=out,
+            expert_name="xgb",
+            score_column="raw_panel",
+            start_date="2025-09-01",
+            end_date="2025-09-30",
+            artifact_base_dir=tmp_path,
+            build_admissibility_ledger=True,
+        )
+
+    # No score file was written for either date.
+    assert not (out / "xgb" / "2025-09-15.json").exists()
+    assert not (out / "xgb" / "2025-09-16.json").exists()
