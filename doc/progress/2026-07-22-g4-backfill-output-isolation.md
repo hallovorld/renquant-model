@@ -25,8 +25,21 @@ WHY/DIR:   The GOAL-4 Phase A evidence producer writes, per expert, a
            + `universe.txt` per expert, but still wrote the admissibility
            ledger + calendar evidence to the shared root, so a second
            expert's build still clobbered the first expert's ledger.
-EVIDENCE:  n/a (output-path isolation fix + unit tests, no model/data
-           performance claim). New regression test
+EVIDENCE:  artifact:      experiments/ensemble_phase0/build_phase_a_inputs.py
+                          (converter) + tests/test_build_phase_a_inputs.py
+           prod or exp:   experiment (`experiments/ensemble_phase0/`,
+                          output explicitly `EXPLORATORY_ONLY`, never fed
+                          into a champion/L1 promotion decision)
+           existing data: n/a — no model/data performance number is being
+                          claimed by this PR; it is a pure output-path
+                          isolation fix
+           best-known?:   n/a
+           scope:         "this is a converter output-path fix + unit
+                          tests, not a performance claim; correctness is
+                          proven by the byte-for-byte survival assertions
+                          in the regression test, not by any IC/Sharpe
+                          number"
+           New regression test
            `test_second_expert_build_does_not_clobber_first_experts_root_artifacts`
            builds xgb then patchtst into one `output_dir`, asserts xgb's
            ledger + calendar evidence survive byte-for-byte, both experts
@@ -34,12 +47,17 @@ EVIDENCE:  n/a (output-path isolation fix + unit tests, no model/data
            the shared root; fails on the pre-fix source, passes with the
            fix. Full ensemble suite:
            `tests/test_build_phase_a_inputs.py tests/test_phase_a_runner.py
-           tests/test_admissibility_ledger.py` -> 293 passed.
-NEXT:      **Codex's CHANGES_REQUESTED finding on this PR is NOT resolved
-           here** — surfaced explicitly, not silently skipped: this fix is
-           correctly scoped (output-path isolation only) but it stacks on
-           #65, whose Phase-A evidence contract is itself under
-           CHANGES_REQUESTED for reconstructing fold/artifact provenance
+           tests/test_admissibility_ledger.py` -> 294 passed (rebased onto
+           #65's updated head `5c9d354`, which adds one more test).
+           [VERIFIED]
+NEXT:      **Codex's CHANGES_REQUESTED finding on this PR is PARTIALLY
+           resolved by this update** — surfaced explicitly, not silently
+           skipped: this fix is correctly scoped (output-path isolation
+           only) and it is now rebased onto #65's `5c9d354`, which closed
+           #65's HIGH finding "reject missing/unavailable artifact identity
+           rather than emitting a synthetic digest". #65's Phase-A evidence
+           contract is STILL under CHANGES_REQUESTED for the larger,
+           still-open finding: reconstructing fold/artifact provenance
            post-hoc instead of consuming sim-time-persisted facts (see
            #65's progress doc `NEXT:`). Per Codex: this PR cannot merge
            atop a producer with that open provenance gap; rebase again
