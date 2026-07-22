@@ -294,3 +294,93 @@ def test_dates_with_unresolvable_artifact_are_excluded_not_stamped_with_fallback
     # No score file was written for either date.
     assert not (out / "xgb" / "2025-09-15.json").exists()
     assert not (out / "xgb" / "2025-09-16.json").exists()
+
+
+def test_second_expert_build_does_not_clobber_first_experts_root_artifacts(
+    tmp_path: Path,
+):
+    """Multi-expert output isolation regression.
+
+    Building a SECOND expert into the SAME ``output_dir`` must not destroy the
+    first expert's per-expert evidence. The admissibility ledger and its
+    calendar evidence are expert-specific; before the fix they were written to
+    the shared ``output_dir`` root (``output_dir/admissibility_ledger.json`` /
+    ``output_dir/calendar_evidence.json``), so a patchtst build clobbered the
+    xgb build's root artifacts. They must now live under ``output_dir/<expert>/``.
+    The forward-returns CSV is expert-independent label data and stays shared at
+    the root by design.
+    """
+    dates = ["2025-09-15", "2025-09-16"]
+    tickers = ["AAA", "BBB", "CCC"]
+    sim_db = tmp_path / "sim_runs.db"
+    _make_sim_db(sim_db, dates, tickers)
+
+    manifest = tmp_path / "wf_manifest.json"
+    manifest.write_text(json.dumps({
+        "retrains": [
+            {"cutoff_date": "2025-05-12", "lookahead_days": 60,
+             "artifact_uri": "artifacts/wf/2025-05-12/panel-ltr.json",
+             "trained_date": "2026-06-15"},
+        ]
+    }))
+    # Real, readable artifact so both experts' folds resolve a genuine
+    # content digest (a fallback provenance-bound digest is excluded, never
+    # written -- see test_dates_with_unresolvable_artifact_are_excluded_*).
+    artifact = tmp_path / "artifacts" / "wf" / "2025-05-12" / "panel-ltr.json"
+    artifact.parent.mkdir(parents=True)
+    artifact.write_bytes(b'{"model": "content"}')
+
+    out = tmp_path / "out"
+
+    def _build(expert: str):
+        return run_build(
+            sim_db=sim_db,
+            manifest_file=manifest,
+            output_dir=out,
+            expert_name=expert,
+            score_column="raw_panel",
+            start_date="2025-09-01",
+            end_date="2025-09-30",
+            artifact_base_dir=tmp_path,
+            build_admissibility_ledger=True,
+        )
+
+    # First expert.
+    result_xgb = _build("xgb")
+    assert result_xgb.ledger_admitted == 2
+    xgb_ledger = out / "xgb" / "admissibility_ledger.json"
+    xgb_cal = out / "xgb" / "calendar_evidence.json"
+    assert xgb_ledger.exists()
+    assert xgb_cal.exists()
+    # Manifest records the isolated per-expert ledger path.
+    assert result_xgb.ledger_path == str(xgb_ledger)
+    # Snapshot the first expert's evidence bytes to prove the second run
+    # leaves them untouched.
+    xgb_ledger_bytes = xgb_ledger.read_bytes()
+    xgb_cal_bytes = xgb_cal.read_bytes()
+
+    # Second expert into the SAME output_dir.
+    result_pt = _build("patchtst")
+    assert result_pt.ledger_admitted == 2
+
+    # 1) The first expert's per-expert evidence survived byte-for-byte.
+    assert xgb_ledger.read_bytes() == xgb_ledger_bytes, "xgb ledger was clobbered"
+    assert xgb_cal.read_bytes() == xgb_cal_bytes, "xgb calendar evidence was clobbered"
+
+    # 2) The second expert wrote its OWN isolated evidence.
+    assert (out / "patchtst" / "admissibility_ledger.json").exists()
+    assert (out / "patchtst" / "calendar_evidence.json").exists()
+
+    # 3) No expert-specific evidence leaked to the shared root (the pre-fix
+    #    clobber target). This assertion fails on the pre-fix code.
+    assert not (out / "admissibility_ledger.json").exists()
+    assert not (out / "calendar_evidence.json").exists()
+
+    # 4) Per-expert score dirs and build manifests coexist.
+    assert (out / "xgb" / "2025-09-15.json").exists()
+    assert (out / "patchtst" / "2025-09-15.json").exists()
+    assert (out / "build_manifest_xgb.json").exists()
+    assert (out / "build_manifest_patchtst.json").exists()
+
+    # 5) The forward-returns CSV is the single shared root artifact.
+    assert (out / "returns.csv").exists()

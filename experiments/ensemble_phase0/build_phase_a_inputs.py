@@ -502,6 +502,7 @@ class BuildManifest:
     ledger_admitted: int = 0
     ledger_rejected: int = 0
     ledger_fingerprint: str = ""
+    ledger_path: str = ""
 
 
 # =====================================================================
@@ -724,11 +725,24 @@ def run_build(
     # admissibility_ledger.build_ledger (the SAME loader/validator Phase A
     # uses). Reported counts are the validator's verdict.
     if build_admissibility_ledger:
-        expert_spec = ExpertSpec(name=expert_name, score_dir=output_dir / expert_name)
+        # Per-expert output isolation. The admissibility ledger and its
+        # calendar evidence are expert-specific evidence (built from THIS
+        # expert's per-date score dir). Writing them to the shared output_dir
+        # ROOT means a second expert's build to the same output_dir clobbers
+        # the first expert's ledger (both -> output_dir/admissibility_ledger.json
+        # and output_dir/calendar_evidence.json). Co-locate them under the
+        # per-expert score dir so multiple experts can target one output_dir
+        # without cross-expert clobber; the ledger's calendar-evidence locator
+        # (a bare filename) stays valid because both files sit in the same
+        # directory. The shared forward-returns CSV stays at the root -- it is
+        # expert-independent label data by design and is meant to be shared.
+        expert_output_dir = output_dir / expert_name
+        expert_output_dir.mkdir(parents=True, exist_ok=True)
+        expert_spec = ExpertSpec(name=expert_name, score_dir=expert_output_dir)
         cal_evidence = build_calendar_evidence(
             session_calendar, calendar_name="NYSE", query_range=(cal_start, cal_end),
         )
-        cal_evidence_path = write_calendar_evidence(cal_evidence, output_dir)
+        cal_evidence_path = write_calendar_evidence(cal_evidence, expert_output_dir)
 
         def _loader(expert: ExpertSpec, dt: str) -> dict[str, Any]:
             candidate = expert.score_dir / f"{dt}.json"
@@ -759,11 +773,12 @@ def run_build(
             require_realized_labels=True,
             label_horizon_days=label_horizon_days,
         )
-        write_ledger(ledger, output_dir)
+        ledger_path = write_ledger(ledger, expert_output_dir)
         stats = ledger.summary.get("per_expert", {}).get(expert_name, {})
         manifest.ledger_admitted = stats.get("admitted", 0)
         manifest.ledger_rejected = stats.get("rejected", 0)
         manifest.ledger_fingerprint = ledger.ledger_fingerprint
+        manifest.ledger_path = str(ledger_path)
         print(f"Canonical admissibility ledger: "
               f"{manifest.ledger_admitted} admitted / "
               f"{manifest.ledger_admitted + manifest.ledger_rejected} evaluated "
