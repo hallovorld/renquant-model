@@ -30,8 +30,11 @@ Point-in-time correctness (addresses Codex feedback on model#64):
 * ``training_cutoff`` is stamped as the selected fold's real ``cutoff_date``
   (never ``"MISSING"``). The model content fingerprint is the SHA-256 of the
   fold's resolved ``artifact_uri`` file when readable (a genuine content
-  digest), falling back to a deterministic provenance-bound digest, clearly
-  flagged, only when the artifact cannot be resolved on disk.
+  digest). When the artifact cannot be resolved on disk, the date is
+  EXCLUDED from output entirely -- a provenance-bound surrogate digest is
+  computed internally only to decide this exclusion; it is never written to
+  a score file, since the canonical validator checks digest SYNTAX only and
+  cannot otherwise distinguish a real digest from an unverified one.
 * A sim date before the first fold's effective cutoff has NO PIT-clean vintage
   and is EXCLUDED (leakage-correct), never stamped with a leaky model.
 
@@ -223,8 +226,14 @@ def resolve_artifact_digest(
     True. Otherwise it is a deterministic digest bound to the fold's immutable
     provenance (cutoff + artifact_uri + trained_date), clearly distinguishable
     via ``is_real_content_digest=False`` and the ``provenance_bound:`` locator.
-    The canonical validator only checks digest SYNTAX; honest labelling of
-    which case occurred is preserved in each score file's metadata.
+
+    The canonical validator only checks digest SYNTAX, so it cannot tell a
+    real digest from this fallback -- ``run_build`` therefore uses
+    ``is_real_content_digest`` to EXCLUDE any date whose selected fold
+    resolves to the fallback, rather than writing a score file the validator
+    would admit on unverified provenance. This function itself still returns
+    the fallback tuple (never raises) so callers can make that fail-closed
+    decision explicitly.
     """
     if artifact_base_dir is not None and fold.artifact_uri:
         candidate = artifact_base_dir / fold.artifact_uri
@@ -475,6 +484,8 @@ class BuildManifest:
     n_dates_with_scores: int
     n_dates_excluded_no_pit_fold: int
     excluded_no_pit_fold_dates: list[str]
+    n_dates_excluded_no_real_digest: int
+    excluded_no_real_digest_dates: list[str]
     n_dates_written: int
     n_folds: int
     universe_size: int
@@ -564,6 +575,34 @@ def run_build(
           f"({n_real} real content digest, "
           f"{len(fingerprint_by_fold) - n_real} provenance-bound fallback)")
 
+    # Fail-closed: a fold whose artifact does not resolve to a real content
+    # digest has no genuine model identity. Such dates are excluded from
+    # output entirely -- the provenance-bound fallback is a syntactically
+    # valid but unverified surrogate that the canonical validator cannot
+    # distinguish from a real digest, so it must never reach a score file
+    # (Codex CR on model#65: "reject missing/unavailable artifact identity
+    # rather than emitting a synthetic digest").
+    excluded_no_real_digest = sorted(
+        dt_str for dt_str, fold in fold_by_date.items()
+        if not fingerprint_by_fold[fold.cutoff_date][1]
+    )
+    for dt_str in excluded_no_real_digest:
+        del scores_by_date[dt_str]
+        del fold_by_date[dt_str]
+    if excluded_no_real_digest:
+        print(f"Excluded {len(excluded_no_real_digest)} date(s) whose selected "
+              f"fold's artifact could not be resolved to a real content digest "
+              f"(fail-closed, no provenance-bound fallback admitted): "
+              f"{excluded_no_real_digest[:5]}"
+              f"{'...' if len(excluded_no_real_digest) > 5 else ''}")
+
+    if not scores_by_date:
+        raise ValueError(
+            "no admissible-vintage dates: every PIT-clean date's selected "
+            "fold artifact failed to resolve to a real content digest "
+            "(fail-closed)"
+        )
+
     # Decision timestamps per date (holiday/early-close aware, SAME primitive
     # the validator uses -> guarantees feature==decision boundary admits).
     cal_start = (date.fromisoformat(min(scores_by_date)) - timedelta(days=7)).isoformat()
@@ -651,9 +690,13 @@ def run_build(
         label_column=label_column,
         start_date=start_date,
         end_date=end_date,
-        n_dates_with_scores=len(scores_by_date) + len(excluded_no_fold),
+        n_dates_with_scores=(
+            len(scores_by_date) + len(excluded_no_fold) + len(excluded_no_real_digest)
+        ),
         n_dates_excluded_no_pit_fold=len(excluded_no_fold),
         excluded_no_pit_fold_dates=excluded_no_fold,
+        n_dates_excluded_no_real_digest=len(excluded_no_real_digest),
+        excluded_no_real_digest_dates=excluded_no_real_digest,
         n_dates_written=len(digests),
         n_folds=len(folds),
         universe_size=len(universe_tickers),
@@ -799,6 +842,7 @@ def main(argv: list[str] | None = None) -> int:
         f"\nDONE: expert={manifest.expert_name} "
         f"wrote={manifest.n_dates_written} "
         f"excluded_no_fold={manifest.n_dates_excluded_no_pit_fold} "
+        f"excluded_no_real_digest={manifest.n_dates_excluded_no_real_digest} "
         f"admitted={manifest.ledger_admitted}"
     )
     return 0
