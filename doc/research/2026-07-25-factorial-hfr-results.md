@@ -40,8 +40,10 @@ interaction resolves — all resolved null):
   specialists do not pay on this panel, now confirmed inside the production
   harness with the production regime labeller.
 - The whole H×F×R space is flat at resolution ~±0.01-0.02 — reinforcing the
-  capacity memo's allocation: structural levers (objective change
-  [model#70 CONFIRMED], TC, participation gating) over H/F/R rearrangement.
+  capacity memo's allocation: structural levers (objective change — result
+  pending re-landing through an accepted evidence-carrying PR (model#70 is
+  closed unmerged as of 2026-07-25), TC, participation gating) over H/F/R
+  rearrangement.
 
 ## Run integrity
 
