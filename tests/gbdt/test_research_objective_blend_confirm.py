@@ -181,6 +181,10 @@ def test_serialized_bundle_carries_per_seed_series_not_just_the_average():
 
 
 # --- manifest: digests + pre-run-freeze timestamps ----------------------------
+def _fake_panel():
+    return pd.DataFrame({"date": pd.to_datetime(["2026-01-02", "2026-01-05", "2026-01-06"])})
+
+
 def test_build_manifest_digests_command_and_timestamps(tmp_path):
     from renquant_model_gbdt.panel_data import PANEL_FILE
 
@@ -191,20 +195,27 @@ def test_build_manifest_digests_command_and_timestamps(tmp_path):
     manifest = mod.build_manifest(
         data_dir=data_dir, argv=["research_objective_blend_confirm.py", "--out", "x.json"],
         run_started_at="2026-07-25T08:00:00+00:00",
-        run_finished_at="2026-07-25T09:00:00+00:00")
+        run_finished_at="2026-07-25T09:00:00+00:00", panel=_fake_panel())
 
     assert manifest["data_digest"] == "sha256:" + mod._sha256_file(data_dir / PANEL_FILE)
     assert manifest["prereg_digest"] == "sha256:" + mod._sha256_file(mod.PREREG_PATH)
     assert manifest["command"] == "research_objective_blend_confirm.py --out x.json"
     assert manifest["code_revision"]  # non-empty: a real SHA inside this repo's checkout
+    assert manifest["code_revision_parents"]  # non-empty: HEAD has >=1 parent in this repo
+    assert manifest["prereg_commit"]  # non-empty: the prereg file is committed in this repo
+    assert manifest["prereg_commit_is_ancestor_of_code_revision"] is True
     assert manifest["run_started_at"] == "2026-07-25T08:00:00+00:00"
     assert manifest["run_finished_at"] == "2026-07-25T09:00:00+00:00"
+    assert manifest["row_count"] == 3
+    assert manifest["date_range"] == ["2026-01-02", "2026-01-06"]
+    assert manifest["producing_script"]["repo"] == "renquant-base-data"
+    assert manifest["producing_script"]["path"] == mod._PANEL_BUILDER_SCRIPT
 
 
 def test_build_manifest_missing_data_file_reports_none_digest_not_a_crash(tmp_path):
     manifest = mod.build_manifest(
         data_dir=tmp_path / "nope", argv=["x"],
-        run_started_at="t0", run_finished_at="t1")
+        run_started_at="t0", run_finished_at="t1", panel=_fake_panel())
     assert manifest["data_digest"] is None
     # the prereg file itself is real (committed in this repo) -> always present
     assert manifest["prereg_digest"] is not None
