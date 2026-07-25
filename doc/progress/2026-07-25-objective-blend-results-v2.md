@@ -4,7 +4,8 @@ STATUS:    results PR for the merged model#68 prereg; supersedes closed model#70
            re-run + reclassified per model#73 review round 2 (both CHANGES_REQUESTED);
            memo numbers corrected to match the committed bundle per round 3 (BLOCKER);
            PR title/body synced to the memo's EXPLORATORY/PROVISIONAL classification
-           and withdrawn consequence per round 4 (MED)
+           and withdrawn consequence per round 4 (MED); required CI fixed per
+           round 5 (P1 — shallow-checkout parent lookup)
 WHAT:      results memo + REPLAYABLE evidence bundle
            (`doc/research/evidence/2026-07-25-objective-blend/confirmatory-bundle.json`),
            re-run from a checkout rebased onto merged main (924ed1b) with an
@@ -37,7 +38,20 @@ WHY/DIR:   model#70 was closed because its aggregate-only artifact could not rep
            by editing the PR title and body to state the run's technical
            CONFIRMED verdict separately from the PR's EXPLORATORY/PROVISIONAL
            standing, and to state the consequence is WITHDRAWN, matching the
-           memo exactly.
+           memo exactly. Round-5 review (APPROVED + a separate CHANGES_REQUESTED
+           on the same head) found the required CI job failing:
+           `test_build_manifest_digests_command_and_timestamps` asserted
+           `manifest["code_revision_parents"]` non-empty, but GitHub Actions
+           checks out the PR at depth 1 (`actions/checkout@v4` default), and
+           `_git_revision_parents`'s `git log -1 --format=%P` treats a shallow
+           clone's boundary commit as parentless for graph traversal, so it
+           returned `[]` in CI even though the branch has a real parent
+           locally — fixed by reading the parent SHA out of the raw commit
+           object (`git cat-file -p HEAD`, parsing the `parent ` header line)
+           instead, since that data is part of the object's own content and
+           is present regardless of clone depth. Verified by reproducing a
+           depth-1 clone of this exact branch locally: the test failed with
+           the original code and passed after the fix.
 EVIDENCE:
   artifact:      evidence/2026-07-25-objective-blend/confirmatory-bundle.json
   prod or exp:   EXPERIMENT, read-only; panel digest + prereg digest stamped in the

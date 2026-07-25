@@ -108,12 +108,21 @@ def _git_revision(repo_dir: Path) -> str:
 def _git_revision_parents(repo_dir: Path) -> list[str]:
     """Parent SHAs of `code_revision` (model#73 review BLOCKER 1): lets a
     reviewer confirm the run's checkout is the declared merge commit on
-    `main`, not an unmerged branch head mislabeled as main."""
+    `main`, not an unmerged branch head mislabeled as main.
+
+    Reads the raw commit object via `git cat-file -p HEAD` rather than a
+    graph-traversal command like `git log --format=%P`: on a shallow clone
+    (model#73 review round 5 — GitHub Actions checks out at depth 1) git
+    treats the fetched boundary commit as parentless for traversal, so
+    `%P` comes back empty even though the true parent SHA is part of the
+    commit object's own content and is present locally regardless of
+    clone depth."""
     try:
-        proc = subprocess.run(["git", "log", "-1", "--format=%P"], cwd=repo_dir,
+        proc = subprocess.run(["git", "cat-file", "-p", "HEAD"], cwd=repo_dir,
                               capture_output=True, text=True, check=True)
-        return proc.stdout.split()
-    except (OSError, subprocess.CalledProcessError):
+        return [line.split()[1] for line in proc.stdout.splitlines()
+                if line.startswith("parent ")]
+    except (OSError, subprocess.CalledProcessError, IndexError):
         return []
 
 
