@@ -3,7 +3,7 @@
 Theory frame (Grinold 1989; Daniel-Grinblatt-Titman-Wermers 1997):
 
     realized alpha = [ skill + characteristic premia ] x dispersion x capture
-                      ------ TEST 1 (DGTW) ------        TEST 2       TEST 3
+                      ------ TEST 1 (DGTW) ------        TEST 2
 
 TEST 1 — DGTW characteristic-matched benchmark. Each stock's benchmark is
   the mean fwd60 of its (vol x momentum x beta) cell that date, self-excluded.
@@ -15,15 +15,17 @@ TEST 2 — dispersion conditioning. Grinold: expected spread = IC x sigma_CS.
   dispersion of fwd60. If the 'episodes' are just high-dispersion states,
   the model's usefulness is PREDICTABLE from a live observable.
 
-TEST 3 — exit-stack counterfactual, measured not inferred. Apply the
-  PRODUCTION stop parameters (strategy_config.json, BULL_CALM regime — 72%
-  of days) to the real daily price paths of the actual top-10 picks.
-  Buy-and-hold-60d vs exit-stack capture. Excluded: 3-strike model
-  protection + panel exits (need model re-runs) => measured amputation is a
-  LOWER bound.
+A former TEST 3 (exit-stack counterfactual: production stop params applied
+to real price paths) has been REMOVED from this repo (model#69 review,
+BLOCKER 2): it read `RenQuant/backtesting/renquant_104/strategy_config.json`
+and production OHLCV paths directly, which is backtesting/execution-policy
+analysis, outside this repo's GBDT-score/model-analysis boundary. If
+pursued, it belongs in the repo/harness that owns backtesting execution
+policy, consuming a versioned contract-level input rather than reaching
+into that repo's tree.
 
 Inputs: cached real/placebo scores (this session), the panel's own STD60 /
-ROC60 / BETA60 columns, OHLCV closes, production strategy_config.json.
+ROC60 / BETA60 columns.
 
 REPRODUCIBILITY GAP: scores_real.parquet / scores_placebo.parquet are the
 per-row real vs matched-placebo model scores from the same production-recipe
@@ -43,15 +45,15 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-# Both overridable; S defaults to this file's own directory (repo-local) —
-# see the REPRODUCIBILITY GAP note above for what must be placed there.
-RQ = Path(os.environ.get("RQ_UMBRELLA_ROOT", "/Users/renhao/git/github/RenQuant"))
+# Overridable; both S and DD default to repo-local paths — see the
+# REPRODUCIBILITY GAP note above for what must be placed in S.
+DD = Path(os.environ.get("RQ_DATA_DIR", "/Users/renhao/git/github/RenQuant/data"))
 S = Path(os.environ.get("CAPACITY_MEMO_OUT", str(Path(__file__).resolve().parent)))
 TOP_N = 10
 
 R = pd.read_parquet(S / "scores_real.parquet")
 P = pd.read_parquet(S / "scores_placebo.parquet")
-pan = pd.read_parquet(RQ / "data/alpha158_291_fundamental_dataset.parquet",
+pan = pd.read_parquet(DD / "alpha158_291_fundamental_dataset.parquet",
                       columns=["ticker", "date", "STD60", "ROC60", "BETA60"])
 pan["date"] = pd.to_datetime(pan["date"])
 R = R.merge(pan, on=["ticker", "date"], how="left")
@@ -136,82 +138,10 @@ cur = J["disp"].iloc[-250:].mean()
 pct = 100 * (J["disp"] < cur).mean()
 print(f"  trailing-250d dispersion now at the {pct:.0f}th percentile of history", flush=True)
 
-# ════════════════════════ TEST 3 — exit stack ═══════════════════════
-print("\n" + "=" * 76, flush=True)
-print("TEST 3 — exit-stack counterfactual on real price paths (production params)", flush=True)
-print("=" * 76, flush=True)
-cfg = json.loads((RQ / "backtesting/renquant_104/strategy_config.json").read_text())
-rp = cfg["regime_params"]["BULL_CALM"]
-STOP = float(rp["stop_loss_pct"])
-TRIG = float(rp["trailing_stop_trigger_pct"])
-TRAIL = float(rp["trailing_stop_trail_pct"])
-print(f"  BULL_CALM params from strategy_config.json: stop_loss {STOP:.0%} · "
-      f"trailing trigger {TRIG:.0%} / trail {TRAIL:.0%}", flush=True)
-print("  (excluded: 3-strike model exits, panel exits, single-day-loss ⇒ the", flush=True)
-print("   measured amputation is a LOWER bound on the real stack's)", flush=True)
-
-closes = {}
-for t in R["ticker"].unique():
-    fp = RQ / "data/ohlcv" / t / "1d.parquet"
-    if fp.exists():
-        df = pd.read_parquet(fp)
-        df.index = pd.to_datetime(df.index if "date" not in df.columns else df["date"])
-        closes[t] = (df["close"] if "close" in df.columns else df["Close"]).sort_index()
-print(f"  price paths loaded: {len(closes)}", flush=True)
-
-all_dates = sorted(R["date"].unique())
-rebals = all_dates[::20]
-rows = []
-for d in rebals:
-    g = R[R["date"] == d]
-    if len(g) < 30:
-        continue
-    for t in g.nlargest(TOP_N, "score")["ticker"]:
-        px = closes.get(t)
-        if px is None or d not in px.index:
-            continue
-        i0 = px.index.get_loc(d)
-        path = px.iloc[i0:i0 + 61]
-        if len(path) < 10:
-            continue
-        entry = path.iloc[0]
-        bh = path.iloc[-1] / entry - 1
-        peak, exit_ret, reason = entry, None, "held_60d"
-        for j in range(1, len(path)):
-            p_ = path.iloc[j]
-            peak = max(peak, p_)
-            if p_ <= entry * (1 - STOP):
-                exit_ret, reason = p_ / entry - 1, "stop_loss"
-                break
-            if peak >= entry * (1 + TRIG) and p_ <= peak * (1 - TRAIL):
-                exit_ret, reason = p_ / entry - 1, "trailing"
-                break
-        if exit_ret is None:
-            exit_ret = bh
-        rows.append({"date": d, "ticker": t, "bh60": bh, "stack": exit_ret,
-                     "reason": reason, "big_winner": bh >= 0.5})
-E = pd.DataFrame(rows)
-print(f"\n  simulated positions: {len(E):,} over {E['date'].nunique()} rebalances", flush=True)
-print(f"  buy-and-hold 60d mean return : {E['bh60'].mean():+.4f}", flush=True)
-print(f"  exit-stack mean return       : {E['stack'].mean():+.4f}", flush=True)
-amp = E["bh60"].mean() - E["stack"].mean()
-print(f"  AMPUTATION                   : {amp:+.4f}/position/60d "
-      f"= {amp * 4.2:+.2%}/yr on the sleeve", flush=True)
-print(f"\n  exit reasons: {dict(E['reason'].value_counts())}", flush=True)
-bw = E[E["big_winner"]]
-print(f"\n  BIG WINNERS (bh60 ≥ +50%): {len(bw)} positions", flush=True)
-print(f"    stopped out before the run completed: "
-      f"{(bw['reason'] != 'held_60d').mean():.0%}", flush=True)
-print(f"    their bh60 mean {bw['bh60'].mean():+.2f} vs stack-captured "
-      f"{bw['stack'].mean():+.2f}  → tail capture ratio "
-      f"{bw['stack'].mean() / bw['bh60'].mean():.0%}", flush=True)
-lose = E[E["bh60"] <= -0.15]
-print(f"  BIG LOSERS (bh60 ≤ −15%): {len(lose)} — stack saved "
-      f"{(lose['bh60'].mean() - lose['stack'].mean()):+.4f}/position", flush=True)
+# TEST 3 (exit-stack counterfactual) removed — see module docstring.
 
 json.dump({"dgtw": {"raw": float(raw_sp.mean()), "dgtw": float(dgtw_sp.mean()),
                     "raw_w50": float(raw_w.mean()), "dgtw_w50": float(dgtw_w.mean())},
-           "dispersion_corr": float(J["clean_ic"].corr(J["disp"])),
-           "amputation_per_pos": float(amp)},
+           "dispersion_corr": float(J["clean_ic"].corr(J["disp"]))},
           open(S / "structural_decomposition_result.json", "w"), indent=2)
 print("\nSaved structural_decomposition_result.json", flush=True)

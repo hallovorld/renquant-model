@@ -1,6 +1,6 @@
 # Relocate capacity + power reconciliation memo from orchestrator#575
 
-STATUS:    in-progress
+STATUS:    in-progress; round-1-2 findings addressed below
 WHAT:      Relocates the capacity/power research memo
            (`doc/research/2026-07-24-capacity-and-power-reconciliation.md`,
            §1-7) and its committed evidence bundle
@@ -97,3 +97,41 @@ NEXT:      None from this relocation PR — the memo authorizes nothing;
            follow-ons live in `research/objective-blend-confirmatory` (this
            repo, #68) and `renquant-base-data#51` (PIT audit). Verdicts,
            when earned, register in this repo's `VERDICTS.md`.
+
+## Round 1-2 review findings addressed
+
+1. MED — `audit_my_experiment.py` still hardcoded 3 paths (2 reads of
+   `/Users/renhao/git/github/RenQuant/...`, 1 write to a stale
+   `/private/tmp/claude-502/...` scratch path) that the relocation's own
+   progress-doc claim said were fixed. Parameterized to the same
+   `RQ_DATA_DIR` / `CAPACITY_MEMO_OUT` env-overridable pattern as the other
+   4 evidence scripts.
+2. BLOCKER — §7's DGTW/dispersion/exit-stack conclusions were stated as
+   settled/certified findings while their inputs (`scores_real.parquet`,
+   `scores_placebo.parquet`) are not committed and have no producer script
+   in this repo (a real reproducibility gap, not fixable without re-running
+   an ad hoc GBDT scoring pass this fix cycle does not have the original
+   inputs for). Narrowed rather than fabricated a producer: §7's header now
+   states the gap up front, §7.1's "certified skill" language is downgraded
+   to "candidate, pending reproduction," and §7.2's flat "Recommendation:
+   the gate metric should be..." is downgraded to a conditional hypothesis.
+3. BLOCKER — §7.4's exit-stack counterfactual script
+   (`structural_decomposition.py`) read the umbrella's
+   `backtesting/renquant_104/strategy_config.json` and production OHLCV
+   directly — backtesting/execution-policy analysis outside this repo's
+   GBDT-score/model-analysis boundary. Removed (not narrowed) from both the
+   script and the memo, since the code cannot stay here at all under any
+   framing. `structural_decomposition_result.json`'s now-orphaned
+   `amputation_per_pos` key removed to match — TEST 1 (DGTW) and TEST 2
+   (dispersion), which stayed, are unaffected: their two output keys did
+   not change. §6.3's "stops amputate the tail" hypothesis, which the
+   removed §7.4 had claimed to falsify, is now flagged OPEN in §7.4's
+   replacement text rather than left standing as either confirmed or
+   falsified — the falsification claim is not reproducible in this repo
+   either.
+
+Tests: `../RenQuant/.venv/bin/python -m py_compile
+doc/research/evidence/2026-07-24-capacity-memo/audit_my_experiment.py
+doc/research/evidence/2026-07-24-capacity-memo/structural_decomposition.py`
+passed. No pytest suite references these evidence scripts (research
+artifacts, not production code).

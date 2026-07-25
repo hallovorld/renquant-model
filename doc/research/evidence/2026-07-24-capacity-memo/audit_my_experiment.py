@@ -8,7 +8,13 @@ Checks:
   5. Is POOLED APY 45.5% plausible?
 """
 import pandas as pd, numpy as np, os, json
+from pathlib import Path
 import warnings; warnings.filterwarnings('ignore')
+
+# Both overridable; SCRATCH defaults to this file's own directory (repo-local,
+# reproducible from a fresh clone) instead of an agent-session tmp path.
+DD = Path(os.environ.get("RQ_DATA_DIR", "/Users/renhao/git/github/RenQuant/data"))
+SCRATCH = Path(os.environ.get("CAPACITY_MEMO_OUT", str(Path(__file__).resolve().parent)))
 
 OUT = {}
 print("="*78)
@@ -17,7 +23,7 @@ print("="*78)
 
 # ── CHECK 1: look-ahead in regime classification ─────────────────────
 print("\n[1] LOOK-AHEAD IN REGIME CLASSIFICATION")
-ohlcv = "/Users/renhao/git/github/RenQuant/data/ohlcv"
+ohlcv = str(DD / "ohlcv")
 spy = pd.read_parquet(os.path.join(ohlcv, "SPY", "1d.parquet"))
 spy.index = pd.to_datetime(spy.index if 'date' not in spy.columns else spy['date'])
 c = spy['close'] if 'close' in spy.columns else spy['Close']
@@ -57,7 +63,7 @@ OUT['check2_embargo'] = {'embargo_used': 0, 'embargo_required': 20,
 
 # ── CHECK 3: survivorship bias ───────────────────────────────────────
 print("\n[3] SURVIVORSHIP BIAS")
-pan = pd.read_parquet("/Users/renhao/git/github/RenQuant/data/alpha158_291_fundamental_dataset_rawlabel.parquet")
+pan = pd.read_parquet(DD / "alpha158_291_fundamental_dataset_rawlabel.parquet")
 pan['date'] = pd.to_datetime(pan['date'])
 tick = sorted(pan['ticker'].unique())
 print(f"  Panel tickers: {len(tick)}")
@@ -145,5 +151,5 @@ OUT['check6_panel_ew'] = {'panel_ew_apy': float(ew_apy), 'spy_apy': float(sp_apy
                           'survivorship_premium': float(ew_apy - sp_apy)}
 
 print("\n" + "="*78)
-json.dump(OUT, open("/private/tmp/claude-502/-Users-renhao-git-github-renquant-orchestrator/428feb92-8ee7-4b4f-afed-1e4fa82ef367/scratchpad/audit_result.json","w"), indent=2, default=str)
-print("Saved audit_result.json")
+json.dump(OUT, open(SCRATCH / "audit_result.json", "w"), indent=2, default=str)
+print(f"Saved {SCRATCH / 'audit_result.json'}")
