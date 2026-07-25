@@ -165,3 +165,108 @@ def test_holm_family_has_exactly_seven_registered_tests():
     main_effects = [k for k in out if k.startswith("M")]
     assert len(interactions) == 3
     assert len(main_effects) == 4
+
+
+# --- review round 8, Finding 1: default fold count == the only validated anchor ------
+def test_default_fold_count_matches_the_only_validated_anchor():
+    """A primary-eligible run must not require an override. `--n-splits`
+    defaults to `N_SPLITS`, and the anchor gate in `main()` only clears at
+    `ANCHOR_SPLITS` — these must be the same value, or the documented
+    default silently produces an ineligible (or, before the fix, VOID)
+    bundle."""
+    assert mod.N_SPLITS == mod.ANCHOR_SPLITS
+
+
+# --- review round 8, Finding 2: 2x-block sensitivity on the 3 PRIMARY contrasts ------
+def test_primary_interactions_carry_2x_block_sensitivity():
+    """Prereg §5: 'Sensitivity re-run at 2x block is reported for every
+    primary contrast.' Scoped to I1/I2/I3 (labelled PRIMARY in §5) — the
+    SECONDARY M1-M3 main effects do not carry it."""
+    out = mod.run_interaction_tests(_null_cells())
+    for name in ("I1_H_x_R", "I2_F_x_R", "I3_H_x_F"):
+        assert "p_2x_block" in out[name], f"{name} missing p_2x_block"
+        p2x = out[name]["p_2x_block"]
+        assert np.isnan(p2x) or 0.0 <= p2x <= 1.0
+    for name in ("M1_H", "M2a_F_dedup_vs_all", "M2b_F_nontechnical_vs_random", "M3_R"):
+        assert "p_2x_block" not in out[name], f"{name} should not carry p_2x_block"
+
+
+def test_i1_2x_block_sensitivity_still_detects_a_real_crossover():
+    """The 2x-block re-run should agree with the primary-block p on a clear
+    injected signal (same fixture as test_i1_detects_injected_horizon_by_
+    regime_crossover) -- it is a sensitivity check, not a different estimator."""
+    cells = _null_cells()
+    cells["fwd_60d_excess|all_172|pooled"] = _make_cell(
+        lambda rg: 0.06 if rg == "BEAR" else 0.01, rng_seed=10)
+    cells["fwd_20d_excess|all_172|pooled"] = _make_cell(
+        lambda rg: 0.01 if rg == "BEAR" else 0.03, rng_seed=11)
+    out = mod.run_interaction_tests(cells)
+    assert out["I1_H_x_R"]["p_2x_block"] < 0.05
+
+
+# --- review round 8, Finding 3: per-seed data + manifest survive a round trip -------
+def test_serialize_deserialize_round_trip_reproduces_verdicts():
+    """`serialize_cells` -> JSON round trip -> `deserialize_cells` must feed
+    `run_interaction_tests` identically to the original in-memory `cells` --
+    otherwise a results PR cannot replay the frozen analyzer from a
+    persisted bundle (review round 8, Finding 3)."""
+    import json as _json
+
+    cells = _null_cells()
+    cells["fwd_60d_excess|all_172|pooled"] = _make_cell(
+        lambda rg: 0.06 if rg == "BEAR" else 0.01, rng_seed=10)
+    cells["fwd_20d_excess|all_172|pooled"] = _make_cell(
+        lambda rg: 0.01 if rg == "BEAR" else 0.03, rng_seed=11)
+    original = mod.run_interaction_tests(cells)
+
+    payload = _json.loads(_json.dumps(mod.serialize_cells(cells), default=str))
+    reloaded_cells = mod.deserialize_cells(payload)
+    reloaded = mod.run_interaction_tests(reloaded_cells)
+
+    assert set(reloaded) == set(original)
+    for name in original:
+        for field in ("stat", "p", "seed_stable", "holm_rejected", "registered_verdict"):
+            a, b = original[name][field], reloaded[name][field]
+            if isinstance(a, float):
+                assert a == pytest.approx(b, nan_ok=True), f"{name}.{field} drifted"
+            else:
+                assert a == b, f"{name}.{field} drifted"
+        if "p_2x_block" in original[name]:
+            assert original[name]["p_2x_block"] == pytest.approx(
+                reloaded[name]["p_2x_block"], nan_ok=True)
+
+
+def test_serialized_bundle_carries_clean_by_seed_not_just_averaged_clean():
+    cells = _null_cells()
+    payload = mod.serialize_cells(cells)
+    key = next(iter(payload))
+    assert "clean_by_seed" in payload[key]
+    for ev in mod.HORIZONS:
+        assert set(payload[key]["clean_by_seed"][ev]) == {str(s) for s in mod.SEEDS}
+
+
+def test_build_manifest_digests_and_records_command(tmp_path):
+    from renquant_model_gbdt.panel_data import PANEL_FILE
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / PANEL_FILE).write_bytes(b"fake panel bytes")
+    regimes_path = tmp_path / "regimes.parquet"
+    regimes_path.write_bytes(b"fake regime bytes")
+
+    manifest = mod.build_manifest(
+        data_dir=data_dir, regimes_path=str(regimes_path),
+        argv=["research_factorial_hfr.py", "--out", "x.json"])
+
+    assert manifest["data_digest"] == "sha256:" + mod._sha256_file(data_dir / PANEL_FILE)
+    assert manifest["regime_label_digest"] == "sha256:" + mod._sha256_file(regimes_path)
+    assert manifest["command"] == "research_factorial_hfr.py --out x.json"
+    assert manifest["code_revision"]  # non-empty: a real SHA inside this repo's checkout
+
+
+def test_build_manifest_missing_files_report_none_digest_not_a_crash(tmp_path):
+    manifest = mod.build_manifest(
+        data_dir=tmp_path / "nope", regimes_path=str(tmp_path / "also-nope.parquet"),
+        argv=["x"])
+    assert manifest["data_digest"] is None
+    assert manifest["regime_label_digest"] is None

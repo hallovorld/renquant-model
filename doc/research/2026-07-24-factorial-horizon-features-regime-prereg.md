@@ -65,8 +65,10 @@ from #573 §§0-1, 5 are carried forward verbatim and are not re-derived.
 | **R** — regime mode | `pooled`, `specialist` | `specialist` = one model per production regime, mirroring `RegimeEnsemblePanelScorer`'s fallback semantics |
 
 3 × 4 × 2 = **24 cells**, each also run as a **matched placebo** (§4) = 48
-configurations × 3 seeds × 5 folds. Measured runtime **≈ 87 min** (feasibility
-probe, §7).
+configurations × 3 seeds × **3 folds** (revised from 5 — review round 8,
+Finding 1: see §4/§6). Estimated runtime **≈ 52 min**, linearly extrapolated
+from the 5-fold feasibility probe (§7); not independently re-measured at 3
+folds.
 
 `random_14` is the size-matched control for `nontechnical_14`. Per D3, if they
 tie, the finding is about **model capacity**, not feature quality — precommitted
@@ -111,7 +113,7 @@ Production, apples-to-apples; nothing varies but the three factors.
 | element | value |
 |---|---|
 | model | XGB `rank:pairwise`, groups = one per date, `PANEL_LTR_PARAMS`, 100 rounds |
-| CV | purged walk-forward, expanding train, **5 folds** |
+| CV | purged walk-forward, expanding train, **3 folds** (matches production; the anchor is only validated at this fold count — §5, §6) |
 | embargo | **60 trading days for ALL cells** — see below |
 | normalization | rebuilt train-only per fold |
 | regime labels | production 5-task chain (Hurst→CUSUM→GMM→BEAROverride→Finalize), **causal by construction** |
@@ -135,6 +137,13 @@ Per-regime training dates by fold, minimum 60 to fit:
 | BULL_VOLATILE | 2/5 | 183 (8.5%) | **~3** |
 | CHOPPY | 2/5 | 82 (3.8%) | **~1** |
 
+*Measured at the original 5-fold probe (§7); denominators do not literally
+apply to the now-primary 3-fold design (§4, §6#6) and are not re-measured
+here. Expanding-train folds get a larger initial training window as the
+fold count drops, so per-regime estimability at 3 folds is expected to be
+at least as good as this table, not worse — treat these numbers as a
+conservative floor.*
+
 **Precommitted: only BULL_CALM and BEAR may carry a per-regime verdict.**
 BULL_VOLATILE and CHOPPY are reported for completeness and are **not
 registrable at any significance level** — with 1–3 independent blocks the
@@ -157,8 +166,11 @@ more conservative of the two. `fwd_5d` and `fwd_60d` are SECONDARY.
 **Dependence correction.** Moving-block bootstrap, B = 10,000, seed 20260724,
 **block = the evaluation label's horizon** (not a constant 60 — a 5d label's
 dependence range is 5 days, and forcing 60 there is needlessly conservative).
-Sensitivity re-run at 2× block is reported for every primary contrast. No naive
-t-test is reported as evidence.
+Sensitivity re-run at 2× block is reported for every primary contrast — I1,
+I2, I3 each carry a `p_2x_block` alongside `p` in the frozen analyzer
+(`run_interaction_tests()`); it is reported, not gating — `holm_rejected`
+and `registered_verdict` are decided from the primary-block `p` only. No
+naive t-test is reported as evidence.
 
 **PRIMARY hypotheses — the interactions.**
 
@@ -194,9 +206,11 @@ measured placebo spread instead.
 
 **Anchor.** `all_172` / `pooled` / `fwd_60d` at the production 3-fold setting
 must reproduce `mean_ic = 0.0488 ± 0.010` (live artifact: 0.0533). The anchor
-is only validated at 3 folds; the script **fails closed** on any other fold
-count rather than compare against an unvalidated expectation. Anchor failure
-⇒ the run is VOID and no cell is read.
+is only validated at 3 folds — which is why 3 folds is now also the study's
+primary/default fold count (§4, §6#6) rather than a separate setting — and
+the script **fails closed** on any other fold count rather than compare
+against an unvalidated expectation. Anchor failure ⇒ the run is VOID and no
+cell is read.
 
 **Pre-committed consequences.**
 
@@ -231,8 +245,12 @@ count rather than compare against an unvalidated expectation. Anchor failure
    rank composite**, so this study can rehabilitate or bury that conclusion only
    within the XGB family.
 5. **No P&L, no costs, no meta-label, no QP.** IC only. See the E42v2 clause.
-6. **5 folds, not production's 3.** Early folds train on less history than
-   production would. Anchor is checked at 3.
+6. **3 folds, matching production.** Revised from an original 5-fold primary
+   design (review round 8, Finding 1): the only anchor-validated fold count
+   is 3, and this design-only PR does not train a fresh 5-fold anchor to
+   justify a different default. `--n-splits 5 --skip-anchor` remains
+   available as an explicit EXPLORATORY-ONLY run — `analysis_eligible` is
+   forced `False` for it, so it can never produce a `registered_verdict`.
 7. **What is held fixed and therefore untested:** XGB hyperparameters, the
    universe, the 100-round budget, the meta-label stage, sizing, and costs. A
    fourth factor is not affordable at 24 cells; these are declared, not
@@ -242,8 +260,13 @@ count rather than compare against an unvalidated expectation. Anchor failure
 
 Probe run 2026-07-24 on the real panel: pooled 172-feature fit ≈ 7.5 s/fold;
 2-specialist fit ≈ 7.0 s/fold. 24 cells × 2 (real + placebo) × 5 folds ×
-3 seeds ⇒ **≈ 87 min**. Per-regime estimability and block counts in §4 come
-from the same probe.
+3 seeds ⇒ **≈ 87 min** (as originally probed at 5 folds). At the now-primary
+3-fold design (§4, §6#6): ≈ 52 min, linearly extrapolated as 3/5 of the
+probed figure — not independently re-measured at 3 folds. Per-regime
+estimability and block counts in §4 come from the same 5-fold probe and are
+not revised here (the specialist-fit sample per fold only grows with fewer,
+larger folds, so §4's estimability table is conservative, not invalidated,
+at 3 folds).
 
 ## 8. Questions for the reviewer
 

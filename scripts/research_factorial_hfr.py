@@ -18,6 +18,13 @@ across horizons compares floors, not skills — very likely why E35 picked 60d.
 
 Read-only against production; refuses to write near production paths.
 
+The `--out` bundle is analysis-replayable: it carries per-seed clean-IC
+observations (`cells[key]["clean_by_seed"]`), not just the seed-averaged
+`clean` map, plus a `manifest` (data/regime-label digests, code revision,
+command) — a results PR reloads the bundle and reruns `run_interaction_tests`
+against it rather than redefining the estimator (`serialize_cells` /
+`deserialize_cells` are the exact inverse pair; pinned by a round-trip test).
+
 Usage::
 
     python scripts/research_factorial_hfr.py --probe          # sizing only
@@ -26,7 +33,9 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import subprocess
 import sys
 import time
 import warnings
@@ -46,8 +55,13 @@ REGIME_MODES = ("pooled", "specialist")
 
 PRIMARY_EVAL = "fwd_20d_excess"     # §5: live book exits winners ~8d, 69% out by 20d
 EMBARGO_DAYS = 60                   # §4: held constant across cells to isolate the target
-N_SPLITS = 5
 ANCHOR_SPLITS = 3
+# Primary default == the only anchor-validated fold count (review round 8,
+# Finding 1): a fresh 5-fold anchor is not established, and this is a
+# design-only PR (no run yet) so one is not trained here to manufacture one.
+# --n-splits 5 --skip-anchor remains available as an explicit EXPLORATORY-ONLY
+# run that can never produce a `registered_verdict` (see `analysis_eligible`).
+N_SPLITS = ANCHOR_SPLITS
 N_ROUNDS = 100
 SEEDS = (42, 43, 44)
 N_BOOT = 10_000
@@ -274,6 +288,14 @@ def run_interaction_tests(cells: dict) -> dict:
     registered verdict additionally requires seed-sign-agreement across all
     3 seeds (§5); split signs => INCONCLUSIVE regardless of the interval.
 
+    Each of the 3 PRIMARY interaction tests (I1/I2/I3) also carries a
+    `p_2x_block` — the same bootstrap re-run at twice the evaluation block
+    size (prereg §5: "Sensitivity re-run at 2x block is reported for every
+    primary contrast"). It is REPORTED, not gating: `holm_rejected` and
+    `registered_verdict` are computed from the primary-block `p` only, per
+    the frozen decision rule. SECONDARY tests (M1-M3) do not carry it — §5
+    scopes the 2x-block requirement to "primary contrast".
+
     Estimand note (resolves a round-1 review comment that the prereg text
     never explicitly settled): §2 defines R as the training design factor
     (pooled/specialist), which is what I2/I3 use. I1's own contrast notation
@@ -301,6 +323,7 @@ def run_interaction_tests(cells: dict) -> dict:
     tests["I1_H_x_R"] = {
         "stat": float(da.mean() - db.mean()) if len(da) and len(db) else float("nan"),
         "p": _boot_pvalue_two_sample(da, db, block),
+        "p_2x_block": _boot_pvalue_two_sample(da, db, block * 2),
         "seed_stable": (
             _seed_stable_paired(cells, key(h_hi, "all_172", "pooled"),
                                key(h_lo, "all_172", "pooled"), ev, "BEAR")
@@ -315,6 +338,7 @@ def run_interaction_tests(cells: dict) -> dict:
     tests["I2_F_x_R"] = {
         "stat": float(d.mean()) if len(d) else float("nan"),
         "p": boot_pvalue(d, block),
+        "p_2x_block": boot_pvalue(d, block * 2),
         "seed_stable": _seed_stable_double(
             cells, key(h_lo, "dedup_r70", "specialist"), key(h_lo, "all_172", "specialist"),
             key(h_lo, "dedup_r70", "pooled"), key(h_lo, "all_172", "pooled"), ev),
@@ -327,6 +351,7 @@ def run_interaction_tests(cells: dict) -> dict:
     tests["I3_H_x_F"] = {
         "stat": float(d.mean()) if len(d) else float("nan"),
         "p": boot_pvalue(d, block),
+        "p_2x_block": boot_pvalue(d, block * 2),
         "seed_stable": _seed_stable_double(
             cells, key(h_hi, "dedup_r70", "pooled"), key(h_hi, "all_172", "pooled"),
             key(h_lo, "dedup_r70", "pooled"), key(h_lo, "all_172", "pooled"), ev),
@@ -376,6 +401,95 @@ def run_interaction_tests(cells: dict) -> dict:
         tests[k]["holm_rejected"] = rejected[k]
         tests[k]["registered_verdict"] = bool(rejected[k] and tests[k]["seed_stable"])
     return tests
+
+
+def serialize_cells(cells: dict) -> dict:
+    """JSON-safe view of `cells`, including the per-seed observations
+    (review round 8, Finding 3). Without `clean_by_seed`, a reloaded bundle
+    cannot reproduce `run_interaction_tests()`'s seed-stability gate or its
+    `registered_verdict`s — the prior serialization wrote only the
+    seed-averaged `clean` map. `_deserialize_cells` is the exact inverse;
+    `run_interaction_tests(_deserialize_cells(serialize_cells(cells)))` must
+    equal `run_interaction_tests(cells)` (pinned by the round-trip test)."""
+    out = {}
+    for key, v in cells.items():
+        out[key] = {
+            "raw_primary": v["raw_primary"],
+            "placebo_primary": v["placebo_primary"],
+            "fallbacks": v["fallbacks"],
+            "clean": {
+                ev: {str(d): [rg, val] for d, (rg, val) in c.items()}
+                for ev, c in v["clean"].items()
+            },
+            "clean_by_seed": {
+                ev: {
+                    str(seed): {str(d): [rg, val] for d, (rg, val) in by_date.items()}
+                    for seed, by_date in by_seed.items()
+                }
+                for ev, by_seed in v["clean_by_seed"].items()
+            },
+        }
+    return out
+
+
+def deserialize_cells(payload: dict) -> dict:
+    """Inverse of `serialize_cells` — restores the in-memory `cells` shape
+    `run_interaction_tests()` / `_cell_series_by_seed()` expect, including
+    the int seed keys JSON's string-only object keys drop."""
+    out = {}
+    for key, v in payload.items():
+        out[key] = {
+            "raw_primary": v["raw_primary"],
+            "placebo_primary": v["placebo_primary"],
+            "fallbacks": v["fallbacks"],
+            "clean": {
+                ev: {d: (rg, val) for d, (rg, val) in c.items()}
+                for ev, c in v["clean"].items()
+            },
+            "clean_by_seed": {
+                ev: {
+                    int(seed): {d: (rg, val) for d, (rg, val) in by_date.items()}
+                    for seed, by_date in by_seed.items()
+                }
+                for ev, by_seed in v["clean_by_seed"].items()
+            },
+        }
+    return out
+
+
+def _sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _git_revision(repo_dir: Path) -> str:
+    try:
+        proc = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo_dir,
+                              capture_output=True, text=True, check=True)
+        return proc.stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return "unknown"
+
+
+def build_manifest(*, data_dir: Path, regimes_path: str, argv: list[str]) -> dict:
+    """Reproducibility manifest (review round 8, Finding 3): a results PR
+    must be able to prove which panel snapshot, which regime-label artifact,
+    and which code revision produced a bundle, without re-deriving digests
+    by hand from an unversioned data directory."""
+    from renquant_model_gbdt.panel_data import PANEL_FILE
+    panel_path = data_dir / PANEL_FILE
+    regimes = Path(regimes_path)
+    return {
+        "data_path": str(panel_path),
+        "data_digest": f"sha256:{_sha256_file(panel_path)}" if panel_path.exists() else None,
+        "regime_label_path": str(regimes),
+        "regime_label_digest": f"sha256:{_sha256_file(regimes)}" if regimes.exists() else None,
+        "code_revision": _git_revision(Path(__file__).resolve().parents[1]),
+        "command": " ".join(argv),
+    }
 
 
 def main() -> int:
@@ -454,7 +568,9 @@ def main() -> int:
     out_path = refuse_production_output_path(Path(args.out))
 
     # Fail closed on an unvalidated fold count BEFORE training, not after —
-    # otherwise the full ~87-minute sweep runs only to VOID at the end.
+    # otherwise the full sweep runs only to VOID at the end. Now redundant
+    # with the default (N_SPLITS == ANCHOR_SPLITS) for a primary-eligible
+    # run; still load-bearing for an explicit --n-splits override.
     if args.n_splits != ANCHOR_SPLITS and not args.skip_anchor:
         raise SystemExit(
             f"no validated anchor at --n-splits {args.n_splits} (only "
@@ -583,11 +699,15 @@ def main() -> int:
             t["registered_verdict"] = False
     print()
     for name, t in interaction.items():
-        print(f"  {name:28} stat={t['stat']:+.4f} p={t['p']:.4f} "
+        p2x = f" p_2x_block={t['p_2x_block']:.4f}" if "p_2x_block" in t else ""
+        print(f"  {name:28} stat={t['stat']:+.4f} p={t['p']:.4f}{p2x} "
               f"seed_stable={t['seed_stable']} holm_reject={t['holm_rejected']} "
               f"registered={t['registered_verdict']}")
 
+    manifest = build_manifest(data_dir=dd, regimes_path=args.regimes, argv=sys.argv)
+
     json.dump({"prereg": "doc/research/2026-07-24-factorial-horizon-features-regime-prereg.md",
+               "manifest": manifest,
                "primary_eval": PRIMARY_EVAL, "embargo": EMBARGO_DAYS,
                "n_splits": args.n_splits, "seeds": list(SEEDS),
                "registrable_regimes": list(REGISTRABLE_REGIMES),
@@ -597,13 +717,7 @@ def main() -> int:
                "analysis_eligible": analysis_eligible,
                "ineligible_reason": ineligible_reason,
                "interaction_tests": interaction,
-               "cells": {k: {"raw_primary": v["raw_primary"],
-                             "placebo_primary": v["placebo_primary"],
-                             "fallbacks": v["fallbacks"],
-                             "clean": {ev: {str(d): [rg, val]
-                                            for d, (rg, val) in c.items()}
-                                       for ev, c in v["clean"].items()}}
-                         for k, v in cells.items()}},
+               "cells": serialize_cells(cells)},
               open(out_path, "w"), indent=2, default=str)
     print(f"\nwrote {out_path}  [{(time.time()-t_start)/60:.0f} min]")
     print("Interaction/Holm verdicts are computed by THIS script (frozen "
