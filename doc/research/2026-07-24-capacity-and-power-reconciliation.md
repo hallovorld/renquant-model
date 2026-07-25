@@ -283,8 +283,10 @@ preregistered study before any gate changes.
 ### 7.3 Dispersion — sizing signal, but the episodes are NOT explained
 
 - Top-10 spread by dispersion tercile: **+0.10 → +0.19 → +0.72 /60d** (7×) —
-  the Grinold σ-scaling is real and large ⇒ dispersion-scaled position
-  sizing is a live, observable lever.
+  the Grinold σ-scaling is real and large in this single run. Pending
+  reproduction of the underlying scores (see §7 header), this is a
+  **candidate hypothesis for dispersion-scaled position sizing, not a
+  certified lever** — it does not drive a sizing recommendation on its own.
 - But YEARLY clean IC vs yearly dispersion: **corr = −0.12.** The
   2021/2022 negative years were NOT low-opportunity years. Episode risk is
   model-specific, unexplained, and cannot currently be timed.

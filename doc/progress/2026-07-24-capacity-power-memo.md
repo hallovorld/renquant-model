@@ -76,18 +76,25 @@ EVIDENCE:
                    doc/research/evidence/2026-07-24-capacity-memo/structural_decomposition_result.json,
                    doc/research/evidence/2026-07-24-capacity-memo/placebo_clean_all172.json,
                    doc/research/evidence/2026-07-24-capacity-memo/feature_redundancy_result.json
-    prod or exp:   exit-stack counterfactual (test 3) applies PRODUCTION
-                   `strategy_config.json` BULL_CALM stop params to real
-                   OHLCV paths; read-only, no writes
+    prod or exp:   experiment, read-only, no writes. DGTW (test 1) and
+                   dispersion (test 2) are measured on cached production
+                   scores from an ad hoc pass not committed as a script
+                   (see reproducibility caveat below). The exit-stack
+                   counterfactual (test 3) was REMOVED per round-2 finding
+                   3 below — it read production `strategy_config.json` and
+                   OHLCV directly, outside this repo's boundary; no
+                   stop-layer claim survives in this repo or this doc.
     existing data: none prior — first DGTW characteristic-matched
                    decomposition on this book
     best-known?:   DGTW adjustment is the standard skill/characteristic
                    separation (Daniel-Grinblatt-Titman-Wermers 1997); first
                    application on this book
     scope:         "DGTW skill +0.243/60d block-t=+2.92 (winsorized
-                   t=+1.70 — certification is tail-dependent); stop-layer
-                   cost −2.69pp/position/60d is a LOWER bound (model exits
-                   excluded)" (memo §7.1, §7.4)
+                   t=+1.70 — certification is tail-dependent), a CANDIDATE
+                   finding pending reproduction of its score inputs (memo
+                   §7 header, §7.1); dispersion-scaled sizing is a
+                   hypothesis, not a certified lever, same caveat (memo
+                   §7.3). No stop-layer cost claim — §7.4 was removed."
   reproducibility caveat: `structural_decomposition.py`'s two score inputs
     (`scores_real.parquet`, `scores_placebo.parquet`) are not committed and
     not regenerable from a script in this bundle — see the
@@ -135,3 +142,16 @@ doc/research/evidence/2026-07-24-capacity-memo/audit_my_experiment.py
 doc/research/evidence/2026-07-24-capacity-memo/structural_decomposition.py`
 passed. No pytest suite references these evidence scripts (research
 artifacts, not production code).
+
+## Round 3 review finding addressed
+
+4. BLOCKER — this doc's own §7 EVIDENCE block still described the removed
+   TEST 3 (production `strategy_config.json`/OHLCV) and the retracted
+   "stop-layer cost −2.69pp/position/60d" number, contradicting round-1-2
+   finding 3 immediately above it in this same file. Rewrote the §7
+   EVIDENCE block's `prod or exp` and `scope` lines to match the memo's
+   current §7 content exactly (test 1/2 only, test 3 removed, no
+   stop-layer claim). Also softened memo §7.3's "dispersion-scaled
+   position sizing is a live, observable lever" to a candidate hypothesis
+   pending reproduction — it does not drive a sizing recommendation,
+   matching the same pending-reproduction caveat already applied to §7.1.
