@@ -2,7 +2,9 @@
 
 STATUS:    results PR for the merged model#68 prereg; supersedes closed model#70;
            re-run + reclassified per model#73 review round 2 (both CHANGES_REQUESTED);
-           memo numbers corrected to match the committed bundle per round 3 (BLOCKER)
+           memo numbers corrected to match the committed bundle per round 3 (BLOCKER);
+           PR title/body synced to the memo's EXPLORATORY/PROVISIONAL classification
+           and withdrawn consequence per round 4 (MED)
 WHAT:      results memo + REPLAYABLE evidence bundle
            (`doc/research/evidence/2026-07-25-objective-blend/confirmatory-bundle.json`),
            re-run from a checkout rebased onto merged main (924ed1b) with an
@@ -27,6 +29,15 @@ WHY/DIR:   model#70 was closed because its aggregate-only artifact could not rep
            reference, and Boundaries section to the bundle's actual values, and
            retracting the "four byte-identical executions" Determinism claim,
            which was stale prose that never matched this run's committed data.
+           Round-4 review found the PR title/body still presented the result as
+           promotable CONFIRMED and still described the shadow-design PR /
+           ledger VERDICTS re-add as following after acceptance, even though the
+           committed memo/progress-doc had already downgraded to
+           EXPLORATORY/PROVISIONAL and withdrawn that consequence (MED) — fixed
+           by editing the PR title and body to state the run's technical
+           CONFIRMED verdict separately from the PR's EXPLORATORY/PROVISIONAL
+           standing, and to state the consequence is WITHDRAWN, matching the
+           memo exactly.
 EVIDENCE:
   artifact:      evidence/2026-07-25-objective-blend/confirmatory-bundle.json
   prod or exp:   EXPERIMENT, read-only; panel digest + prereg digest stamped in the
