@@ -10,9 +10,13 @@ covariance structure of the features themselves. Cheap and decisive.
 import pandas as pd, numpy as np, json, re, warnings, os
 warnings.filterwarnings('ignore')
 
-# Both overridable; SCRATCH defaults to this file's own directory (repo-local,
-# reproducible from a fresh clone) instead of an agent-session tmp path.
-RQ = os.environ.get("RQ_UMBRELLA_ROOT", "/Users/renhao/git/github/RenQuant")
+# RQ_UMBRELLA_ROOT has no default: this repo does not contain the umbrella
+# repo, so a hardcoded path would only work on one operator's machine.
+# SCRATCH defaults to this file's own directory (repo-local, reproducible
+# from a fresh clone) instead of an agent-session tmp path.
+if "RQ_UMBRELLA_ROOT" not in os.environ:
+    raise SystemExit("RQ_UMBRELLA_ROOT must be set to the RenQuant umbrella repo root")
+RQ = os.environ["RQ_UMBRELLA_ROOT"]
 SCRATCH = os.environ.get("CAPACITY_MEMO_OUT", os.path.dirname(os.path.abspath(__file__)))
 
 # Production feature set = every panel col minus the label-ish ones

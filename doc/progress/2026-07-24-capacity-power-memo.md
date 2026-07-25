@@ -1,19 +1,21 @@
 # Relocate capacity + power reconciliation memo from orchestrator#575
 
-STATUS:    in-progress; round-1-2 findings addressed below
+STATUS:    in-progress; round-1-4 findings addressed below
 WHAT:      Relocates the capacity/power research memo
            (`doc/research/2026-07-24-capacity-and-power-reconciliation.md`,
            §1-7) and its committed evidence bundle
            (`doc/research/evidence/2026-07-24-capacity-memo/` — 5 analysis
            scripts + 6 result JSONs) from `hallovorld/renquant-orchestrator#575`
-           into this repo, byte-identical except: (1) `depth_probe.py`,
-           `horizon_matched.py`, `structural_decomposition.py`,
-           `feature_redundancy.py` no longer hardcode an agent-session
-           scratch path (`/private/tmp/claude-502/...`) — `SCRATCH`/`S` now
-           default to the script's own directory and are overridable via
-           `CAPACITY_MEMO_OUT`; `DD`/`RQ` are overridable via
-           `RQ_DATA_DIR`/`RQ_UMBRELLA_ROOT`. `structural_decomposition.py`
-           also gained a REPRODUCIBILITY GAP docstring note: its two inputs
+           into this repo. This is NOT a byte-identical move — the final
+           diff also: (1) `depth_probe.py`, `horizon_matched.py`,
+           `structural_decomposition.py`, `feature_redundancy.py` no longer
+           hardcode an agent-session scratch path (`/private/tmp/claude-502/
+           ...`) — `SCRATCH`/`S` now default to the script's own directory
+           and are overridable via `CAPACITY_MEMO_OUT`; `DD`/`RQ` have no
+           default and now require `RQ_DATA_DIR`/`RQ_UMBRELLA_ROOT` to be
+           set explicitly (round-4 fix below — no machine-specific default
+           path). `structural_decomposition.py` also gained a
+           REPRODUCIBILITY GAP docstring note: its two inputs
            (`scores_real.parquet`, `scores_placebo.parquet`) come from an
            ad hoc scoring pass that was never itself committed as a script,
            so they are not regenerable from this bundle alone — the note
@@ -22,8 +24,15 @@ WHAT:      Relocates the capacity/power research memo
            no longer claim "zero statistical risk" for the TC 0.4→0.7
            lever — both now read as a conditional scenario pending a
            precommitted execution/P&L validation, per review finding 3 on
-           orchestrator#575's first review round. No other numeric or
-           analytical content changed.
+           orchestrator#575's first review round. (3) §7.4's exit-stack
+           counterfactual — implementation, memo section, and its
+           `amputation_per_pos` result key — was REMOVED entirely (round-2
+           BLOCKER 3 below); no stop-layer cost claim survives anywhere in
+           this repo. (4) the memo's Status line and §4 header/framing were
+           downgraded from "decision-grade synthesis" / "what this memo
+           recommends" to explicit non-authorizing hypotheses (round-4 fix
+           below), since §4's program-priority language leans on live-book
+           and TC inputs this repo does not version or reproduce.
 WHY/DIR:   `renquant-orchestrator`'s review (2 rounds, both BLOCKER) found
            the memo and its evidence scripts are model/strategy research —
            `depth_probe.py` and `horizon_matched.py` import
@@ -155,3 +164,53 @@ artifacts, not production code).
    position sizing is a live, observable lever" to a candidate hypothesis
    pending reproduction — it does not drive a sizing recommendation,
    matching the same pending-reproduction caveat already applied to §7.1.
+
+## Round 4 review findings addressed
+
+5. MED — all 5 evidence scripts still defaulted `RQ_DATA_DIR` /
+   `RQ_UMBRELLA_ROOT` to the operator's absolute umbrella path
+   (`/Users/renhao/git/github/RenQuant[/data]`) when the env var was unset,
+   contradicting this doc's own "env-overridable, repo-local defaults"
+   claim (this repo does not contain the umbrella's `data/` dir, so that
+   default only ever worked on one machine). Removed the machine-specific
+   default from all 5 scripts (`audit_my_experiment.py`, `depth_probe.py`,
+   `horizon_matched.py`, `structural_decomposition.py`,
+   `feature_redundancy.py`); `RQ_DATA_DIR`/`RQ_UMBRELLA_ROOT` are now
+   required and each script raises `SystemExit` with a clear message if
+   unset. `CAPACITY_MEMO_OUT`/`SCRATCH` are unaffected — those already
+   defaulted to the script's own directory, which is genuinely repo-local.
+6. BLOCKER — this doc's WHAT field still summarized the relocation as
+   "byte-identical except [path/TC wording]" although the final diff also
+   removed the entire §7.4 exit-stack implementation, script section, and
+   result key (round-1-2 finding 3) — a change the WHAT field only surfaced
+   later, in the round-1-2 findings appendix, not in the top-level summary
+   itself. Rewrote WHAT to state directly that this is not a byte-identical
+   move and to list the exit-stack removal as one of its four changes.
+7. HIGH — the memo's Status line labeled it a "decision-grade synthesis"
+   and §4 was headed "What this memo recommends," while §4's program-
+   priority claims (stop feature archaeology; TC/horizon lever priority;
+   book-size framing) lean on live-book stats and a TC figure that this
+   doc's own EVIDENCE block already says are cited to external sources,
+   not versioned or reproduced in this repo. No source run bundle for
+   those inputs exists to attach in this fix cycle, so downgraded rather
+   than fabricated a manifest: the Status line now states the
+   reproducibility scope explicitly (§1 IC_clean and §6 depth-probe are
+   in-repo reproducible; live-book/TC/§7 are not) and says §4 is
+   non-authorizing; §4's header changed to "What this memo's evidence
+   suggests — non-authorizing hypotheses" with an explicit lead-in
+   sentence, and each of its 4 points was reworded from an imperative
+   ("Stop feature archaeology", "Say the quiet part") to a hedged
+   conclusion ("looks like a low-value use of effort", "if the cited
+   live-book stats hold up"). No numeric content in §1-6 changed.
+
+Tests: `../RenQuant/.venv/bin/python -m py_compile
+doc/research/evidence/2026-07-24-capacity-memo/audit_my_experiment.py
+doc/research/evidence/2026-07-24-capacity-memo/depth_probe.py
+doc/research/evidence/2026-07-24-capacity-memo/feature_redundancy.py
+doc/research/evidence/2026-07-24-capacity-memo/horizon_matched.py
+doc/research/evidence/2026-07-24-capacity-memo/structural_decomposition.py`
+passed. Manually verified the new fail-closed path: running
+`audit_my_experiment.py` with `RQ_DATA_DIR` unset exits 1 with
+"RQ_DATA_DIR must be set to the RenQuant umbrella repo's data/ dir" instead
+of silently reading the operator's machine. No pytest suite references
+these evidence scripts (research artifacts, not production code).

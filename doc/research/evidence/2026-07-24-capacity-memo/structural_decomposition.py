@@ -45,9 +45,13 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-# Overridable; both S and DD default to repo-local paths — see the
-# REPRODUCIBILITY GAP note above for what must be placed in S.
-DD = Path(os.environ.get("RQ_DATA_DIR", "/Users/renhao/git/github/RenQuant/data"))
+# RQ_DATA_DIR has no default: this repo does not contain the umbrella's
+# data/ dir, so a hardcoded path would only work on one operator's machine.
+# S (CAPACITY_MEMO_OUT) defaults to this file's own directory (repo-local)
+# — see the REPRODUCIBILITY GAP note above for what must be placed in S.
+if "RQ_DATA_DIR" not in os.environ:
+    raise SystemExit("RQ_DATA_DIR must be set to the RenQuant umbrella repo's data/ dir")
+DD = Path(os.environ["RQ_DATA_DIR"])
 S = Path(os.environ.get("CAPACITY_MEMO_OUT", str(Path(__file__).resolve().parent)))
 TOP_N = 10
 

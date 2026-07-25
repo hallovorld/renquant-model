@@ -24,9 +24,13 @@ from renquant_model_gbdt.panel_data import load_panel, build_normalization
 from renquant_model_gbdt.panel_trainer import (
     PANEL_LTR_PARAMS, panel_training_matrix, train_xgb)
 
-# Both overridable; SCRATCH defaults to this file's own directory (repo-local,
-# reproducible from a fresh clone) instead of an agent-session tmp path.
-DD = Path(os.environ.get("RQ_DATA_DIR", "/Users/renhao/git/github/RenQuant/data"))
+# RQ_DATA_DIR has no default: this repo does not contain the umbrella's
+# data/ dir, so a hardcoded path would only work on one operator's machine.
+# SCRATCH defaults to this file's own directory (repo-local, reproducible
+# from a fresh clone) instead of an agent-session tmp path.
+if "RQ_DATA_DIR" not in os.environ:
+    raise SystemExit("RQ_DATA_DIR must be set to the RenQuant umbrella repo's data/ dir")
+DD = Path(os.environ["RQ_DATA_DIR"])
 SCRATCH = Path(os.environ.get("CAPACITY_MEMO_OUT", str(Path(__file__).resolve().parent)))
 HZ = ["fwd_5d_excess", "fwd_20d_excess", "fwd_60d_excess"]
 N_SPLITS, N_ROUNDS, SEEDS = 5, 100, (42, 43, 44)

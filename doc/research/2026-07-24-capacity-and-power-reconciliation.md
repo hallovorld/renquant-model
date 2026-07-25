@@ -1,8 +1,16 @@
 # The book is at its theoretical capacity — and the research program is below its own detection floor
 
 Date: 2026-07-24
-Status: RESEARCH MEMO (decision-grade synthesis; every input measured this
-session or cited to its house source)
+Status: RESEARCH MEMO — non-authorizing hypotheses, not a decision-grade
+synthesis. Reproducibility scope: §1's IC_clean and §6's depth-probe numbers
+are reproducible from this repo's committed evidence bundle
+(`doc/research/evidence/2026-07-24-capacity-memo/`); the live-book stats
+(07-24 daily run) and the TC figure (cited to a house doc) that §1/§3/§4
+also lean on are NOT versioned or reproducible in this repo; §7's
+DGTW/dispersion numbers are pending reproduction (see
+`doc/progress/2026-07-24-capacity-power-memo.md`). §4's program-priority
+language below should be read accordingly — as candidate conclusions this
+memo's own evidence supports, not as authorized decisions.
 Inputs: clean-IC measurement (this session), TC from
 `2026-07-02-ic-ceiling-institutional-gap-107-route.md`, live-book stats from
 the 07-24 daily run, MDE from this session's actual bootstrap CIs,
@@ -110,28 +118,38 @@ second row: **the horizon question is the only open research question with a
 — was made on a statistic now known to reward the longest label's
 self-persistence, +0.049 autocorrelation at the gate shift).
 
-## 4. What this memo recommends
+## 4. What this memo's evidence suggests — non-authorizing hypotheses
 
-1. **Stop feature archaeology on this corpus.** Not because features don't
-   matter, but because effects of the plausible size cannot be adjudicated
-   here. The M-SIG frozen-prereg gate already implements this de facto; this
-   memo supplies the quantitative reason. (The factorial prereg #574 should
-   still run once — its primary hypotheses are *interactions*, which the OFAT
-   record cannot speak to, and its cost is 87 minutes. But it should be the
-   **last** IC-only study on this panel.)
-2. **The one study worth designing next is the horizon P&L study** —
-   `fwd_20d` vs `fwd_60d` through the FULL stack (meta-label, QP, costs,
-   turnover), preregistered, reconciling this session's IC grid with E42v2.
-   It is the only question whose answer moves realized IR by ~70%.
-3. **TC work continues to dominate the lever table on the arithmetic estimate**,
+Nothing below authorizes a program change on its own; §3-4's live-book and
+TC inputs are cited to external sources not versioned or reproduced in this
+repo (see the Status line above), so these are candidate conclusions this
+session's evidence points toward, pending independent confirmation of those
+inputs — not decisions.
+
+1. **Feature archaeology on this corpus looks like a low-value use of
+   effort** — not because features don't matter, but because effects of the
+   plausible size cannot be adjudicated here on this session's §1/§6
+   evidence. The M-SIG frozen-prereg gate already implements this de facto;
+   this memo supplies the quantitative reason. (The factorial prereg #574
+   should still run once — its primary hypotheses are *interactions*, which
+   the OFAT record cannot speak to, and its cost is 87 minutes. But on this
+   reading it should be the **last** IC-only study on this panel.)
+2. **The one study this reasoning suggests designing next is the horizon
+   P&L study** — `fwd_20d` vs `fwd_60d` through the FULL stack (meta-label,
+   QP, costs, turnover), preregistered, reconciling this session's IC grid
+   with E42v2. On the lever-table arithmetic (§3) it is the question whose
+   answer would move realized IR by ~70%.
+3. **TC work would dominate the lever table on the arithmetic estimate**,
    but per review the +75% IR figure is a conditional scenario, not a
    zero-risk given — it still needs a precommitted execution/P&L validation
    (coupled cost, turnover, participation, liquidity effects) before being
-   treated as confirmed upside.
-4. **Say the quiet part about book size.** Alpha scales linearly with
-   capital: at $10.6k the entire annual alpha is < $150 — less than the cost
-   of the compute used to measure it. The book's honest present function is
-   an R&D platform and live test harness, and decisions (e.g. whether a $99
+   treated as confirmed upside, and the TC figure itself is cited to a house
+   doc rather than reproduced here.
+4. **The quiet part about book size, if the cited live-book stats hold up**:
+   alpha scales linearly with capital, so at $10.6k the entire annual alpha
+   is < $150 — less than the cost of the compute used to measure it. On
+   that reading the book's present function is an R&D platform and live
+   test harness, and decisions (e.g. whether a $99
    data subscription "pays for itself") should be made against the platform
    value, not the P&L.
 
