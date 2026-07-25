@@ -48,6 +48,12 @@ _FORBIDDEN = ("artifacts/prod", "artifacts/sim", "strategy_config", "/data/",
               "walkforward", "panel-ltr")
 PREREG_PATH = (Path(__file__).resolve().parents[1] / "doc" / "research"
                 / "2026-07-25-objective-blend-confirmatory-prereg.md")
+# Durable locator for the training panel's producing job (model#73 review
+# HIGH): the parquet itself is gitignored/workstation-local, but the ETL
+# script that builds it is git-tracked in the owning repo, so its revision
+# is a portable, non-workstation-path fingerprint for the input.
+_BASE_DATA_REPO = Path("/Users/renhao/git/github/renquant-base-data")
+_PANEL_BUILDER_SCRIPT = "src/renquant_base_data/alpha158_fund_panel.py"
 
 CLF = {"objective": "binary:logistic", "eta": 0.05, "max_depth": 5,
        "min_child_weight": 50, "subsample": 0.7, "colsample_bytree": 0.7,
@@ -99,23 +105,95 @@ def _git_revision(repo_dir: Path) -> str:
         return "unknown"
 
 
+def _git_revision_parents(repo_dir: Path) -> list[str]:
+    """Parent SHAs of `code_revision` (model#73 review BLOCKER 1): lets a
+    reviewer confirm the run's checkout is the declared merge commit on
+    `main`, not an unmerged branch head mislabeled as main."""
+    try:
+        proc = subprocess.run(["git", "log", "-1", "--format=%P"], cwd=repo_dir,
+                              capture_output=True, text=True, check=True)
+        return proc.stdout.split()
+    except (OSError, subprocess.CalledProcessError):
+        return []
+
+
+def _prereg_commit(repo_dir: Path) -> str | None:
+    """Immutable commit that last froze the prereg text (model#73 review
+    BLOCKER 2: "no immutable prereg_commit ... binding"). `prereg_digest`
+    proves *which* text; this proves *which commit* froze it, so a reviewer
+    can check the run happened after the freeze by git ancestry, not just a
+    wall-clock timestamp (a wall-clock claim is exactly what BLOCKER 1
+    caught being wrong)."""
+    try:
+        proc = subprocess.run(
+            ["git", "log", "-1", "--format=%H", "--", str(PREREG_PATH.relative_to(repo_dir))],
+            cwd=repo_dir, capture_output=True, text=True, check=True)
+        return proc.stdout.strip() or None
+    except (OSError, subprocess.CalledProcessError, ValueError):
+        return None
+
+
+def _is_ancestor(ancestor: str | None, descendant: str | None, repo_dir: Path) -> bool | None:
+    """True if `ancestor` is a git ancestor of (or equal to) `descendant` —
+    the ancestor check BLOCKER 2 asked for for `prereg_commit` vs
+    `code_revision`. None if either SHA is unknown."""
+    if not ancestor or not descendant:
+        return None
+    proc = subprocess.run(["git", "merge-base", "--is-ancestor", ancestor, descendant],
+                          cwd=repo_dir, capture_output=True, text=True)
+    return proc.returncode == 0
+
+
+def _producing_script_revision() -> str | None:
+    """Git revision of the ETL script that built the training panel — the
+    durable locator model#73 review HIGH asked for, since the parquet
+    itself carries only a workstation-absolute `data_path`."""
+    if not (_BASE_DATA_REPO / _PANEL_BUILDER_SCRIPT).exists():
+        return None
+    try:
+        proc = subprocess.run(
+            ["git", "log", "-1", "--format=%H", "--", _PANEL_BUILDER_SCRIPT],
+            cwd=_BASE_DATA_REPO, capture_output=True, text=True, check=True)
+        return proc.stdout.strip() or None
+    except (OSError, subprocess.CalledProcessError):
+        return None
+
+
 def build_manifest(*, data_dir: Path, argv: list[str], run_started_at: str,
-                    run_finished_at: str) -> dict:
+                    run_finished_at: str, panel: pd.DataFrame) -> dict:
     """Reproducibility + pre-run-freeze manifest (model#68 review rounds
-    3-4). `prereg_digest` proves which frozen decision-rule text the run
-    executed against; a results PR is only an honest confirmatory read if
-    `run_started_at` postdates the prereg's own frozen commit and this
-    digest matches the prereg file at that commit."""
+    3-4; model#73 review HIGH). `prereg_digest` proves which frozen
+    decision-rule text the run executed against; a results PR is only an
+    honest confirmatory read if `run_started_at` postdates the prereg's own
+    frozen commit and this digest matches the prereg file at that commit.
+    `row_count`/`date_range` plus `producing_script.git_revision` are a
+    durable fingerprint for the input panel, independent of the
+    workstation-absolute `data_path`."""
     from renquant_model_gbdt.panel_data import PANEL_FILE
+    repo_dir = Path(__file__).resolve().parents[1]
     panel_path = data_dir / PANEL_FILE
     data_digest = _sha256_file(panel_path)
     prereg_digest = _sha256_file(PREREG_PATH)
+    dates = pd.to_datetime(panel["date"])
+    code_revision = _git_revision(repo_dir)
+    prereg_commit = _prereg_commit(repo_dir)
     return {
         "data_path": str(panel_path),
         "data_digest": f"sha256:{data_digest}" if data_digest else None,
+        "row_count": int(len(panel)),
+        "date_range": [str(dates.min().date()), str(dates.max().date())],
+        "producing_script": {
+            "repo": "renquant-base-data",
+            "path": _PANEL_BUILDER_SCRIPT,
+            "git_revision": _producing_script_revision(),
+        },
         "prereg_path": str(PREREG_PATH),
         "prereg_digest": f"sha256:{prereg_digest}" if prereg_digest else None,
-        "code_revision": _git_revision(Path(__file__).resolve().parents[1]),
+        "prereg_commit": prereg_commit,
+        "code_revision": code_revision,
+        "code_revision_parents": _git_revision_parents(repo_dir),
+        "prereg_commit_is_ancestor_of_code_revision":
+            _is_ancestor(prereg_commit, code_revision, repo_dir),
         "command": " ".join(argv),
         "run_started_at": run_started_at,
         "run_finished_at": run_finished_at,
@@ -331,7 +409,7 @@ def main() -> int:
 
     run_finished_at = datetime.now(timezone.utc).isoformat()
     manifest = build_manifest(data_dir=dd, argv=sys.argv, run_started_at=run_started_at,
-                               run_finished_at=run_finished_at)
+                               run_finished_at=run_finished_at, panel=panel)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     json.dump({"prereg": "doc/research/2026-07-25-objective-blend-confirmatory-prereg.md",
