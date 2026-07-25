@@ -1,15 +1,20 @@
-# Results — tail-aware blend objective vs production rank:pairwise: CONFIRMED
+# Results — tail-aware blend objective vs production rank:pairwise: CONFIRMED (PROVISIONAL — non-replayable evidence)
 
 Date: 2026-07-25
 Prereg (FROZEN): `doc/research/2026-07-25-objective-blend-confirmatory-prereg.md`
 Evidence: `doc/research/evidence/2026-07-25-objective-blend/confirmatory-result.json`
 Executor: `scripts/research_objective_blend_confirm.py` (guard (b) verbatim)
 
-## Verdict — CONFIRMED [VERIFIED: recomputed from the printed run output;
-NOT independently replayable from the committed bundle — see the
-"Disclosed reproducibility gap" section of this PR's progress doc,
+## Verdict — CONFIRMED per the frozen numeric rule, PROVISIONAL as a decision
+[VERIFIED: recomputed from the printed run output; NOT independently
+replayable from the committed bundle — see the "Disclosed reproducibility
+gap" section of this PR's progress doc,
 `doc/progress/2026-07-25-objective-blend-confirmatory-results.md`. model#68's
-round-3/4 fix (bundle + manifest) landed after this run completed.]
+round-3/4 fix (bundle + manifest) landed after this run completed. Because
+the committed evidence cannot be independently recomputed, this verdict is
+**PROVISIONAL until a replayable re-run against the bundle-capable executor
+confirms it** — see "Pre-committed consequence" below, which gates the
+next step on that re-run rather than proceeding on this evidence alone.]
 
 All three frozen conditions met:
 
@@ -36,15 +41,20 @@ every one of 10 seeds (blend range +0.2271…+0.3533; rank60 range
 3. Executor fixed to the frozen guard verbatim; full rerun produced the
    numbers above. No decision-rule text changed at any point.
 
-## Pre-committed consequence (from the frozen prereg)
+## Pre-committed consequence (from the frozen prereg) — GATED on replayability
 
-**CONFIRMED → a SHADOW deployment design PR follows. Nothing in this result
-authorizes a production config change.** The shadow design will route the
+**CONFIRMED → a SHADOW deployment design PR follows, once a replayable
+re-run exists.** This PR's non-replayable evidence does not by itself
+authorize opening that shadow-deployment design PR — see "Disclosed
+reproducibility gap" in the progress doc for the two honest paths forward
+(re-run with the bundle-capable executor, or carry this row as
+provisional). **Nothing in this result authorizes a production config
+change, replayable or not.** Once earned, the shadow design will route the
 blend scorer through the existing shadow-scorer infrastructure
 (renquant-pipeline #211 health-record line) with a forward clean-spread
 readout rule frozen in that design PR. The historical corpus supplied the
-hypothesis and this confirmation; **the decisive evidence for any
-production change is shadow-forward**, exactly as the prereg's own
+hypothesis and this (provisional) confirmation; **the decisive evidence for
+any production change is shadow-forward**, exactly as the prereg's own
 INCONCLUSIVE branch already stipulated.
 
 ## Boundaries
