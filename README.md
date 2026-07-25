@@ -93,14 +93,14 @@ _Auto-generated from `data/sim_runs.db::training_runs` by `scripts/refresh_readm
 
 | run_id | when | family | OOS IC | features | tickers | device | took | trigger | commit |
 |---|---|---|---|---|---|---|---|---|---|
-| `20260530085443-hf_patchtst-95373a` | 2026-05-30T08:54:43.713636 | hf_patchtst | -0.0814 | 169 | 142 | mps | — | manual | `dbec047` |
-| `20260530083720-hf_patchtst-ea9013` | 2026-05-30T08:37:20.527692 | hf_patchtst | -0.0509 | 169 | 142 | mps | — | manual | `423cf68` |
-| `20260530081449-hf_patchtst-fe31d3` | 2026-05-30T08:14:49.501296 | hf_patchtst | -0.0385 | 169 | 142 | mps | — | manual | `550c328` |
-| `20260530075326-hf_patchtst-3674ad` | 2026-05-30T07:53:26.997435 | hf_patchtst | -0.1024 | 169 | 142 | mps | — | manual | `d86027a` |
-| `20260530073808-hf_patchtst-bc239c` | 2026-05-30T07:38:08.060957 | hf_patchtst | +0.0304 | 169 | 142 | mps | — | manual | `1be8c8d` |
-| `20260530071930-hf_patchtst-21e1c5` | 2026-05-30T07:19:30.614108 | hf_patchtst | +0.0841 | 169 | 142 | mps | — | manual | `1be8c8d` |
-| `20260530070205-hf_patchtst-8b2c44` | 2026-05-30T07:02:05.152369 | hf_patchtst | -0.0366 | 169 | 142 | mps | — | manual | `6ca88db` |
-| `20260530064929-hf_patchtst-759431` | 2026-05-30T06:49:29.023165 | hf_patchtst | -0.0604 | 169 | 142 | mps | — | manual | `67bf666` |
+| `20260723213615-hf_patchtst-6567bb` | 2026-07-23T21:36:15.281886 | hf_patchtst | -0.0569 | 172 | 145 | mps | — | manual | `e10b02e` |
+| `20260723210654-hf_patchtst-b88395` | 2026-07-23T21:06:54.180992 | hf_patchtst | -0.0439 | 172 | 145 | mps | — | manual | `e10b02e` |
+| `20260723202258-hf_patchtst-6a6f34` | 2026-07-23T20:22:58.624333 | hf_patchtst | +0.0143 | 172 | 145 | mps | — | manual | `e10b02e` |
+| `20260723182427-hf_patchtst-9a8a1c` | 2026-07-23T18:24:27.235924 | hf_patchtst | +0.1994 | 172 | 145 | mps | — | manual | `e10b02e` |
+| `20260723180816-hf_patchtst-bfed54` | 2026-07-23T18:08:16.045060 | hf_patchtst | +0.1454 | 172 | 145 | mps | — | manual | `e10b02e` |
+| `20260723175216-hf_patchtst-9309ad` | 2026-07-23T17:52:16.201190 | hf_patchtst | +0.0465 | 172 | 145 | mps | — | manual | `e10b02e` |
+| `20260722053029-hf_patchtst-d1af71` | 2026-07-22T05:30:29.523244 | hf_patchtst | -0.0024 | 172 | 145 | cpu | — | manual | `5ef1c2d` |
+| `20260722052754-hf_patchtst-64cd5d` | 2026-07-22T05:27:54.719251 | hf_patchtst | -0.0192 | 172 | 145 | cpu | — | manual | `5ef1c2d` |
 
-_last refreshed: 2026-05-30T18:30:43.902414Z_
+_last refreshed: 2026-07-23T21:36:15.414428Z_
 <!-- LATEST_MODELS:END -->
