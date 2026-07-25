@@ -127,22 +127,33 @@ days per fold — a real production advantage, but a confound for the question
 label-matched variant is registered as a SECONDARY read and reported
 separately; it must not be mixed with the primary.*
 
-**Specialist estimability — measured, not assumed** (feasibility probe, §7).
-Per-regime training dates by fold, minimum 60 to fit:
+**Specialist estimability — measured at the primary 3-fold design** (feasibility
+probe, §7, re-run 2026-07-25 at the frozen `--n-splits 3` default per review
+round 9, Finding 1). Per-regime training dates by fold, minimum 60 to fit:
 
 | regime | folds where estimable | validation dates | independent 60d blocks |
 |---|---|---|---|
-| BULL_CALM | 5/5 | 1480 (68.6%) | ~24 |
-| BEAR | 4/5 | 412 (19.1%) | ~6 |
-| BULL_VOLATILE | 2/5 | 183 (8.5%) | **~3** |
-| CHOPPY | 2/5 | 82 (3.8%) | **~1** |
+| BULL_CALM | 3/3 | 1288 (66.3%) | ~21 |
+| BEAR | 2/3 | 395 (20.3%) | ~6 |
+| BULL_VOLATILE | 1/3 | 183 (9.4%) | **~3** |
+| CHOPPY | 1/3 | 77 (4.0%) | **~1** |
 
-*Measured at the original 5-fold probe (§7); denominators do not literally
-apply to the now-primary 3-fold design (§4, §6#6) and are not re-measured
-here. Expanding-train folds get a larger initial training window as the
-fold count drops, so per-regime estimability at 3 folds is expected to be
-at least as good as this table, not worse — treat these numbers as a
-conservative floor.*
+*Supersedes the original 5-fold probe's numbers (BULL_CALM 5/5, 1480 val
+dates, ~24 blocks; BEAR 4/5, 412 val dates, ~6 blocks; BULL_VOLATILE 2/5, 183
+val dates, ~3 blocks; CHOPPY 2/5, 82 val dates, ~1 block), which this
+document previously carried forward under an unverified "conservative floor"
+claim (review round 9, Finding 1: `np.array_split(..., n_splits + 1)[1:]`
+moves the validation-window boundary when the fold count changes, so fewer
+folds do not only grow the training window — they can also shrink or shift
+per-regime validation support, and the floor claim was not justified without
+a direct measurement). The re-measured 3-fold numbers are in fact lower than
+the 5-fold ones for BULL_CALM (1480→1288 val dates, ~24→~21 blocks) and for
+BEAR's validation-date count (412→395), though BEAR's block count is
+unchanged at ~6. Both remain far more informative than BULL_VOLATILE (~3
+blocks) or CHOPPY (~1 block), so **the precommitted registrable set
+(BULL_CALM, BEAR) is confirmed, not assumed, at the primary 3-fold design.**
+Reproduction: `python scripts/research_factorial_hfr.py --probe --data-dir
+<panel dir> --regimes <production 5-task-chain regime-label parquet>`.*
 
 **Precommitted: only BULL_CALM and BEAR may carry a per-regime verdict.**
 BULL_VOLATILE and CHOPPY are reported for completeness and are **not
@@ -262,11 +273,13 @@ Probe run 2026-07-24 on the real panel: pooled 172-feature fit ≈ 7.5 s/fold;
 2-specialist fit ≈ 7.0 s/fold. 24 cells × 2 (real + placebo) × 5 folds ×
 3 seeds ⇒ **≈ 87 min** (as originally probed at 5 folds). At the now-primary
 3-fold design (§4, §6#6): ≈ 52 min, linearly extrapolated as 3/5 of the
-probed figure — not independently re-measured at 3 folds. Per-regime
-estimability and block counts in §4 come from the same 5-fold probe and are
-not revised here (the specialist-fit sample per fold only grows with fewer,
-larger folds, so §4's estimability table is conservative, not invalidated,
-at 3 folds).
+probed figure — the per-fold fit-time component is not independently
+re-measured at 3 folds, only linearly extrapolated. Per-regime estimability
+and block counts in §4, by contrast, ARE independently re-measured at the
+primary 3-fold design (probe re-run 2026-07-25, review round 9, Finding 1)
+and supersede the original 5-fold figures — see §4 for the corrected table
+and the direction of the change (lower for BULL_CALM and for BEAR's
+validation-date count, unchanged for BEAR's block count).
 
 ## 8. Questions for the reviewer
 
