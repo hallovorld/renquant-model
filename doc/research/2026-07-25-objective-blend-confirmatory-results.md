@@ -5,7 +5,11 @@ Prereg (FROZEN): `doc/research/2026-07-25-objective-blend-confirmatory-prereg.md
 Evidence: `doc/research/evidence/2026-07-25-objective-blend/confirmatory-result.json`
 Executor: `scripts/research_objective_blend_confirm.py` (guard (b) verbatim)
 
-## Verdict — CONFIRMED [VERIFIED]
+## Verdict — CONFIRMED [VERIFIED: recomputed from the printed run output;
+NOT independently replayable from the committed bundle — see the
+"Disclosed reproducibility gap" section of this PR's progress doc,
+`doc/progress/2026-07-25-objective-blend-confirmatory-results.md`. model#68's
+round-3/4 fix (bundle + manifest) landed after this run completed.]
 
 All three frozen conditions met:
 
