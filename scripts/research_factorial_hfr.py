@@ -628,6 +628,9 @@ def main() -> int:
 
     cells, t_start = {}, time.time()
     combos = list(product(HORIZONS, FEATURE_SETS, REGIME_MODES))
+    _ANCHOR_COMBO = ("fwd_60d_excess", "all_172", "pooled")
+    combos.remove(_ANCHOR_COMBO)
+    combos.insert(0, _ANCHOR_COMBO)   # anchor first: gate fires before the sweep
     for n, (h, f, r_mode) in enumerate(combos, 1):
         key = f"{h}|{f}|{r_mode}"
         t0 = time.time()
@@ -660,17 +663,32 @@ def main() -> int:
                       "raw_primary": float(np.mean(
                           [np.mean(v[1]) for v in real[PRIMARY_EVAL].values()])),
                       "placebo_primary": float(np.mean(
-                          [np.mean(v[1]) for v in plac[PRIMARY_EVAL].values()]))}
+                          [np.mean(v[1]) for v in plac[PRIMARY_EVAL].values()])),
+                      # anchor statistic: raw IC at the cell's own TRAINING
+                      # horizon eval — the prereg's 0.0488 was validated as
+                      # production-CV IC against the fwd_60d label, NOT at
+                      # the 20d primary eval (the round-10 spurious-VOID bug)
+                      "raw_at_60d_eval": float(np.mean(
+                          [np.mean(v[1]) for v in real["fwd_60d_excess"].values()]))}
         cp = [v for _, v in cells[key]["clean"][PRIMARY_EVAL].values()]
         print(f"[{n:2d}/{len(combos)}] {key:46} clean@{PRIMARY_EVAL.split('_')[1]}="
               f"{np.nanmean(cp):+.4f}  raw={cells[key]['raw_primary']:+.4f}  "
               f"placebo={cells[key]['placebo_primary']:+.4f}  "
               f"fb={fb}  [{time.time()-t0:.0f}s]", flush=True)
+        if (h, f, r_mode) == _ANCHOR_COMBO and args.n_splits == ANCHOR_SPLITS \
+                and not args.skip_anchor:
+            _a = cells[key]["raw_at_60d_eval"]
+            if abs(_a - ANCHOR_IC_EXPECTED) > ANCHOR_TOLERANCE:
+                raise SystemExit(
+                    f"anchor did not reproduce at its own 60d eval "
+                    f"({_a:+.4f} vs {ANCHOR_IC_EXPECTED:+.4f} ± {ANCHOR_TOLERANCE}) "
+                    "— run VOID before the sweep (prereg §5 fail-closed)")
+            print(f"    ANCHOR OK at 60d eval: {_a:+.4f} — sweep proceeds", flush=True)
 
     # ── Anchor (prereg §5) — reproduction check; fold-count gate already
     # enforced above, before training started ──
     anchor_key = "fwd_60d_excess|all_172|pooled"
-    anchor = cells[anchor_key]["raw_primary"]
+    anchor = cells[anchor_key]["raw_at_60d_eval"]
     anchor_validated = args.n_splits == ANCHOR_SPLITS
     analysis_eligible, ineligible_reason = False, None
     if anchor_validated:
