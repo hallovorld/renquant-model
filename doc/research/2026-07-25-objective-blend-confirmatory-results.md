@@ -26,27 +26,34 @@ and ledger-verdict authorization below (see Consequence).
 
 | condition | frozen requirement | measured |
 |---|---|---|
-| primary | block-bootstrap 90% CI lower bound > 0 | **+0.0018** (diff +0.0552/60d, CI [+0.0018, +0.1085]) |
-| guard (a) | ≥8/10 seed signs positive | **10/10** |
-| guard (b) | winsorized-±50% diff ≥ 0 | **+0.0095** |
+| primary | block-bootstrap 90% CI lower bound > 0 | **+0.0116** (diff +0.0602/60d, CI [+0.0116, +0.1155]) |
+| guard (a) | ≥8/10 seed signs positive | **9/10** |
+| guard (b) | winsorized-±50% diff ≥ 0 | **+0.0125** |
 
-blend clean top-10 spread **+0.2873/60d** vs production **+0.2321/60d** —
-**+24% relative on the harvest statistic**, positive in all 10 seeds.
+blend clean top-10 spread **+0.2837/60d** vs production **+0.2235/60d** —
+**+27% relative on the harvest statistic**, positive in 9 of 10 seeds.
 
 **Replay path (verified before submission):**
 `deserialize_result(bundle["series"])` → `verdict_from_bundle(...)`
 recomputes diff_mean, the CI, both guards, and the CONFIRMED verdict from
 the committed per-date/per-seed series, matching the run's aggregates
 exactly. The freeze manifest carries both digests
-(`data_digest sha256:677939fe…`, `prereg_digest sha256:dc34fe5d…`).
+(`data_digest sha256:67dab241…`, `prereg_digest sha256:dc34fe5d…`).
 
-## Determinism — four identical executions
+## Determinism — retracted per model#73 review round 3 (BLOCKER)
 
-The statistic set (+0.0552 / [+0.0018,+0.1085] / 10/10 / +0.0095) is
-byte-identical across: (1) the pre-catch run (killed unread — guard wiring,
-not numbers), (2) the fixed-executor run, (3) the first replayable-bundle
-run (incomplete prereg digest — my concurrent branch switch during the run;
-disclosed), (4) this clean run on main. Seeded end-to-end as designed.
+The prior claim of four byte-identical executions
+(+0.0552 / [+0.0018,+0.1085] / 10/10 / +0.0095) is **retracted**: it was
+stale prose left over from the earlier, non-citable runs and did not match
+this PR's committed bundle. Round-3 review found the committed
+`confirmatory-bundle.json` — and an independent replay via
+`deserialize_result(bundle["series"])` → `verdict_from_bundle(...)` —
+reproduce **+0.0602 / [+0.0116, +0.1155] / 9/10 / +0.0125**, the numbers now
+in the table above. The three earlier runs ((1) pre-catch, killed unread;
+(2) the fixed-executor run; (3) the first replayable-bundle run) are not
+part of the committed evidence and their statistic set cannot be verified
+against this artifact, so no determinism claim across those runs is made
+here — only this run's committed bundle is evidentiary.
 
 ## Consequence — WITHDRAWN pending an immutable blend-specific screen (model#73 review BLOCKER 2)
 
@@ -62,8 +69,8 @@ confirmatory prereg citing that screen.
 
 ## Boundaries
 
-CI lower bound is thin (+0.0018) — a just-clears confirmation, ~±20%
-relative uncertainty on a +24% relative effect. Survivorship panel (levels
+CI lower bound is thin (+0.0116) — a just-clears confirmation, ~±20%
+relative uncertainty on a +27% relative effect. Survivorship panel (levels
 inflated; the paired diff is the robust read). One model family, fwd_60d
 label; the factorial (model#72) found no H×F×R interactions that would
 bound this claim, at ~±0.01-0.02 resolution. Classification: EXPLORATORY /

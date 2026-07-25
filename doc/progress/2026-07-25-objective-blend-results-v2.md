@@ -1,7 +1,8 @@
 # 2026-07-25 — objective-blend confirmatory results v2 (replayable bundle)
 
 STATUS:    results PR for the merged model#68 prereg; supersedes closed model#70;
-           re-run + reclassified per model#73 review round 2 (both CHANGES_REQUESTED)
+           re-run + reclassified per model#73 review round 2 (both CHANGES_REQUESTED);
+           memo numbers corrected to match the committed bundle per round 3 (BLOCKER)
 WHAT:      results memo + REPLAYABLE evidence bundle
            (`doc/research/evidence/2026-07-25-objective-blend/confirmatory-bundle.json`),
            re-run from a checkout rebased onto merged main (924ed1b) with an
@@ -17,15 +18,25 @@ WHY/DIR:   model#70 was closed because its aggregate-only artifact could not rep
            fixed by downgrading the PR's standing to EXPLORATORY/PROVISIONAL and
            withdrawing the shadow-design/ledger consequence. HIGH (durable data
            locator) fixed by adding `producing_script` git-revision + row_count +
-           date_range to the manifest.
+           date_range to the manifest. Round-3 review found the regenerated
+           bundle's actual top-level fields (diff_mean=0.0602, ci90=[0.0116,
+           0.1155], seeds_positive=9/10, winsorized_w50_diff=0.0125) did not
+           match the memo/progress-doc prose, which still quoted the earlier,
+           non-citable runs' numbers (+0.0552/[+0.0018,+0.1085]/10/10/+0.0095) —
+           fixed by correcting the memo's table, harvest-spread line, digest
+           reference, and Boundaries section to the bundle's actual values, and
+           retracting the "four byte-identical executions" Determinism claim,
+           which was stale prose that never matched this run's committed data.
 EVIDENCE:
   artifact:      evidence/2026-07-25-objective-blend/confirmatory-bundle.json
   prod or exp:   EXPERIMENT, read-only; panel digest + prereg digest stamped in the
                  bundle's freeze manifest, alongside code_revision_parents /
                  prereg_commit / prereg_commit_is_ancestor_of_code_revision
-  existing data: replay verified pre-submission via deserialize_result +
-                 verdict_from_bundle — recomputes CI, both guards, verdict, matching
-                 the run aggregates exactly
+  existing data: replay verified via deserialize_result + verdict_from_bundle on the
+                 committed bundle — recomputes diff_mean=0.0602, ci90=[0.0116,0.1155],
+                 seeds_positive=9/10, winsorized_w50_diff=0.0125, verdict=CONFIRMED,
+                 matching the bundle's own top-level fields and the corrected memo
+                 exactly
   best-known?:   the frozen decide_verdict() rule's technical output on this run is
                  CONFIRMED; the PR's own standing is downgraded to
                  EXPLORATORY/PROVISIONAL per model#73 review (see results memo
