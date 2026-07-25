@@ -3,10 +3,19 @@
 Date: 2026-07-25
 Status: PREREGISTRATION — decision rule frozen at this commit, BEFORE the run.
 Script: `scripts/research_objective_blend_confirm.py` (this repo — model-training research belongs in renquant-model per the orchestrator boundary that relocated #574 to model#67)
-Screen provenance: 2026-07-24 six-arm objective A/B (orchestrator PR #575 memo + session screen `objective_ab_result.json`) — all three cross-sectional tail-aware arms beat
-the production objective by +21–28% on the harvest statistic (each ns alone);
-the absolute-threshold arm failed. This is the single pre-named confirmatory
-test that screen earns. No other arm may be promoted from that screen.
+Screen provenance: 2026-07-24 objective A/B screen (session run). The
+committed evidence — `doc/research/evidence/2026-07-25-objective-blend/screen-six-arm-result.json`
+— covers 4 arms: the production baseline `rank_pairwise` plus three
+cross-sectional tail-aware arms (`top_decile_clf`, `big_run_clf`,
+`rank_on_20d`), each beating the baseline by +21–28% on the harvest
+statistic (each ns alone). **Narrowed per review (model#68 round 3-4):**
+the screen session is reported to have also run additional arms (including
+an absolute-threshold arm said to have failed), but no artifact for those
+arms is committed to any repo and the earlier "six-arm" / "orchestrator PR
+#575 memo" citation does not resolve — PR #575 in renquant-orchestrator is
+the unrelated capacity-power-reconciliation memo. Only the 4 committed arms
+back this prereg. This is the single pre-named confirmatory test the
+committed evidence earns. No other arm may be promoted from that screen.
 
 ## Hypothesis (one, named, frozen)
 

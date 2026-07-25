@@ -6,14 +6,31 @@ Decision rule frozen there; this script only executes it.
 
 Read-only against production; writes only to the given --out path (refuses
 production-adjacent paths).
+
+The `--out` bundle is analysis-replayable (model#68 review rounds 3-4): it
+carries the per-date clean-spread series for both arms (raw and winsorized
+±50%), the per-seed per-date series, the paired `diff` series the bootstrap
+CI is computed from, and a `manifest` (panel-file digest, prereg-file
+digest, code revision, command, run start/finish timestamps). A reviewer
+reloads the bundle with `deserialize_result` and recomputes the CI, both
+guards, and the verdict via `verdict_from_bundle` rather than trusting the
+printed aggregates. `serialize_result`/`deserialize_result` are the exact
+inverse pair, pinned by a round-trip test in
+`tests/gbdt/test_research_objective_blend_confirm.py`. `run_started_at` in
+the manifest, compared against the prereg file's git log timestamp, is the
+auditable pre-run boundary: a legitimate confirmatory run's manifest
+postdates the frozen prereg commit.
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import subprocess
 import sys
 import time
 import warnings
+from datetime import datetime, timezone
 from functools import partial
 from pathlib import Path
 
@@ -26,12 +43,150 @@ LAB = "fwd_60d_excess"
 SEEDS = tuple(range(42, 52))          # 10 seeds — prereg-frozen
 N_ROUNDS, EMBARGO, TOP_N = 100, 60, 10
 BLK, N_BOOT, BOOT_SEED = 60, 10_000, 20260725
+MIN_SEEDS_POSITIVE = 8                # prereg guard (a): >= 8/10 seeds positive
 _FORBIDDEN = ("artifacts/prod", "artifacts/sim", "strategy_config", "/data/",
               "walkforward", "panel-ltr")
+PREREG_PATH = (Path(__file__).resolve().parents[1] / "doc" / "research"
+                / "2026-07-25-objective-blend-confirmatory-prereg.md")
 
 CLF = {"objective": "binary:logistic", "eta": 0.05, "max_depth": 5,
        "min_child_weight": 50, "subsample": 0.7, "colsample_bytree": 0.7,
        "verbosity": 0, "eval_metric": "logloss"}
+
+
+def block_bootstrap_ci(diff, block: int = BLK, n_boot: int = N_BOOT,
+                        seed: int = BOOT_SEED) -> tuple[float, float]:
+    """Moving-block bootstrap 90% CI of mean(diff). Pure function: the live
+    run and a reloaded bundle get an identical CI from the same series."""
+    d = np.asarray(diff.values if isinstance(diff, pd.Series) else diff, dtype=float)
+    rng = np.random.default_rng(seed)
+    starts = np.arange(max(len(d) - block + 1, 1))
+    n_blocks = int(np.ceil(len(d) / block))
+    boots = np.array([np.concatenate(
+        [d[i:i + block] for i in rng.choice(starts, size=n_blocks, replace=True)]
+    )[:len(d)].mean() for _ in range(n_boot)])
+    return float(np.percentile(boots, 5)), float(np.percentile(boots, 95))
+
+
+def decide_verdict(ci_lo: float, diff_mean: float, n_pos: int, wins_diff: float,
+                    min_pos: int = MIN_SEEDS_POSITIVE) -> str:
+    """Prereg decision rule, verbatim: CONFIRMED needs the CI lower bound > 0
+    AND >= min_pos seed signs positive AND the winsorized ±50% guard (b) >=
+    0; REFUTED if the point estimate is <= 0; else INCONCLUSIVE."""
+    if ci_lo > 0 and n_pos >= min_pos and wins_diff >= 0:
+        return "CONFIRMED"
+    if diff_mean <= 0:
+        return "REFUTED"
+    return "INCONCLUSIVE"
+
+
+def _sha256_file(path: Path) -> str | None:
+    if not path.exists():
+        return None
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _git_revision(repo_dir: Path) -> str:
+    try:
+        proc = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo_dir,
+                              capture_output=True, text=True, check=True)
+        return proc.stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return "unknown"
+
+
+def build_manifest(*, data_dir: Path, argv: list[str], run_started_at: str,
+                    run_finished_at: str) -> dict:
+    """Reproducibility + pre-run-freeze manifest (model#68 review rounds
+    3-4). `prereg_digest` proves which frozen decision-rule text the run
+    executed against; a results PR is only an honest confirmatory read if
+    `run_started_at` postdates the prereg's own frozen commit and this
+    digest matches the prereg file at that commit."""
+    from renquant_model_gbdt.panel_data import PANEL_FILE
+    panel_path = data_dir / PANEL_FILE
+    data_digest = _sha256_file(panel_path)
+    prereg_digest = _sha256_file(PREREG_PATH)
+    return {
+        "data_path": str(panel_path),
+        "data_digest": f"sha256:{data_digest}" if data_digest else None,
+        "prereg_path": str(PREREG_PATH),
+        "prereg_digest": f"sha256:{prereg_digest}" if prereg_digest else None,
+        "code_revision": _git_revision(Path(__file__).resolve().parents[1]),
+        "command": " ".join(argv),
+        "run_started_at": run_started_at,
+        "run_finished_at": run_finished_at,
+    }
+
+
+def serialize_result(clean_series: dict, diff: pd.Series, wins_diff_series: pd.Series) -> dict:
+    """JSON-safe view of every per-date/per-seed series behind the reported
+    aggregates — without this a reviewer cannot recompute the CI or either
+    guard from the bundle (model#68 review round 3, BLOCKER 1)."""
+    def series(s):
+        return {str(d): float(v) for d, v in s.items()}
+
+    def by_seed(df: pd.DataFrame):
+        return {str(seed): series(df[seed].dropna()) for seed in df.columns}
+
+    return {
+        "blend_clean_by_date": series(clean_series["blend"]),
+        "rank60_clean_by_date": series(clean_series["rank60"]),
+        "blend_clean_w50_by_date": series(clean_series["blend_w50"]),
+        "rank60_clean_w50_by_date": series(clean_series["rank60_w50"]),
+        "blend_by_seed": by_seed(clean_series["blend_by_seed"]),
+        "rank60_by_seed": by_seed(clean_series["rank60_by_seed"]),
+        "diff_by_date": series(diff),
+        "wins_diff_by_date": series(wins_diff_series),
+    }
+
+
+def deserialize_result(payload: dict) -> dict:
+    """Inverse of `serialize_result` — rebuilds the pandas Series/DataFrame
+    shapes `verdict_from_bundle` expects, including the int seed columns
+    JSON's string-only object keys drop."""
+    def series(d):
+        return pd.Series({k: v for k, v in d.items()}).sort_index()
+
+    def frame(by_seed):
+        return pd.DataFrame({int(seed): series(d) for seed, d in by_seed.items()})
+
+    return {
+        "blend_clean_by_date": series(payload["blend_clean_by_date"]),
+        "rank60_clean_by_date": series(payload["rank60_clean_by_date"]),
+        "blend_clean_w50_by_date": series(payload["blend_clean_w50_by_date"]),
+        "rank60_clean_w50_by_date": series(payload["rank60_clean_w50_by_date"]),
+        "blend_by_seed": frame(payload["blend_by_seed"]),
+        "rank60_by_seed": frame(payload["rank60_by_seed"]),
+        "diff_by_date": series(payload["diff_by_date"]),
+        "wins_diff_by_date": series(payload["wins_diff_by_date"]),
+    }
+
+
+def verdict_from_bundle(bundle: dict, min_pos: int = MIN_SEEDS_POSITIVE) -> dict:
+    """Recompute the CI, both guards, and the verdict from a
+    `deserialize_result` bundle — the exact replay path a reviewer runs
+    end to end against a persisted `--out` file."""
+    diff = bundle["diff_by_date"]
+    wins_diff_mean = float(bundle["wins_diff_by_date"].mean())
+    lo, hi = block_bootstrap_ci(diff)
+
+    by_seed_a, by_seed_b = bundle["blend_by_seed"], bundle["rank60_by_seed"]
+    seed_signs = []
+    for s in by_seed_a.columns:
+        if s not in by_seed_b.columns:
+            continue
+        ca, cb = by_seed_a[s].dropna(), by_seed_b[s].dropna()
+        common = ca.index.intersection(cb.index)
+        seed_signs.append(float((ca[common] - cb[common]).mean()))
+    n_pos = sum(1 for x in seed_signs if x > 0)
+
+    verdict = decide_verdict(lo, float(diff.mean()), n_pos, wins_diff_mean, min_pos)
+    return {"diff_mean": float(diff.mean()), "ci90": [lo, hi], "seeds_positive": n_pos,
+            "winsorized_w50_diff": wins_diff_mean, "verdict": verdict}
 
 
 def main() -> int:
@@ -43,6 +198,7 @@ def main() -> int:
     for bad in _FORBIDDEN:
         if bad in str(out_path.resolve()):
             raise SystemExit(f"refusing output near production: {bad!r}")
+    run_started_at = datetime.now(timezone.utc).isoformat()
 
     import xgboost as xgb
     from renquant_model_gbdt.panel_data import load_panel, build_normalization
@@ -146,16 +302,10 @@ def main() -> int:
     aw = clean_series["blend_w50"]
     bw = clean_series["rank60_w50"]
     cw = aw.index.intersection(bw.index)
-    wins_diff = float((aw[cw] - bw[cw]).mean())
+    wins_diff_series = (aw[cw] - bw[cw]).sort_index()
+    wins_diff = float(wins_diff_series.mean())
 
-    rng = np.random.default_rng(BOOT_SEED)
-    d = diff.values
-    st = np.arange(len(d) - BLK + 1)
-    k = int(np.ceil(len(d) / BLK))
-    boots = np.array([np.concatenate(
-        [d[i:i + BLK] for i in rng.choice(st, size=k, replace=True)])[:len(d)].mean()
-        for _ in range(N_BOOT)])
-    lo, hi = float(np.percentile(boots, 5)), float(np.percentile(boots, 95))
+    lo, hi = block_bootstrap_ci(diff)
 
     by_seed_a = clean_series["blend_by_seed"]
     by_seed_b = clean_series["rank60_by_seed"]
@@ -167,21 +317,21 @@ def main() -> int:
         seed_signs.append(float((ca[cc] - cb[cc]).mean()))
     n_pos = sum(1 for x in seed_signs if x > 0)
 
+    verdict = decide_verdict(lo, float(diff.mean()), n_pos, wins_diff)
+
     print("\n" + "=" * 70, flush=True)
     print("CONFIRMATORY RESULT (prereg 2026-07-25)", flush=True)
     print("=" * 70, flush=True)
     print(f"  blend clean spread : {a.mean():+.4f}/60d", flush=True)
     print(f"  rank60 clean spread: {b_.mean():+.4f}/60d", flush=True)
     print(f"  paired diff        : {diff.mean():+.4f}  90% CI [{lo:+.4f},{hi:+.4f}]", flush=True)
-    print(f"  guard: seeds positive {n_pos}/10 (need ≥8)", flush=True)
+    print(f"  guard: seeds positive {n_pos}/10 (need ≥{MIN_SEEDS_POSITIVE})", flush=True)
     print(f"  guard: winsorized ±50% diff {wins_diff:+.4f} (need ≥ 0)", flush=True)
-    if lo > 0 and n_pos >= 8 and wins_diff >= 0:
-        verdict = "CONFIRMED"
-    elif diff.mean() <= 0:
-        verdict = "REFUTED"
-    else:
-        verdict = "INCONCLUSIVE"
     print(f"  VERDICT: {verdict}", flush=True)
+
+    run_finished_at = datetime.now(timezone.utc).isoformat()
+    manifest = build_manifest(data_dir=dd, argv=sys.argv, run_started_at=run_started_at,
+                               run_finished_at=run_finished_at)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     json.dump({"prereg": "doc/research/2026-07-25-objective-blend-confirmatory-prereg.md",
@@ -189,7 +339,9 @@ def main() -> int:
                "ci90": [lo, hi], "seeds_positive": n_pos,
                "winsorized_w50_diff": wins_diff, "verdict": verdict,
                "blend_clean": float(a.mean()), "rank60_clean": float(b_.mean()),
-               "per_seed_diff_means": seed_signs},
+               "per_seed_diff_means": seed_signs,
+               "manifest": manifest,
+               "series": serialize_result(clean_series, diff, wins_diff_series)},
               open(out_path, "w"), indent=2)
     print(f"\nwrote {out_path}", flush=True)
     return 0
