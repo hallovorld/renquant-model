@@ -14,8 +14,10 @@ construction). Params: the confirmatory executor's frozen CLF params.
 Normalization: the production ``build_normalization`` pipeline, stamped
 into the artifact so serving normalizes identically to training.
 
-SHADOW-ONLY GUARD: refuses any output path that does not contain
-``shadow`` and any path containing production markers.
+SHADOW-ONLY GUARD: refuses any output path whose resolved path components
+do not include a literal ``shadow`` component, or that include a
+production-marker component (fail-closed on path components, not a
+substring match — see ``refuse_non_shadow``).
 
 Usage::
 
@@ -33,6 +35,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from renquant_common.model_fingerprint import model_content_sha256
+from renquant_model_gbdt.panel_data import attach_inference_smoke
+
 # The frozen classifier params — byte-identical to the confirmatory
 # executor's CLF block (single source of the frozen construction).
 CLF_PARAMS = {"objective": "binary:logistic", "eta": 0.05, "max_depth": 5,
@@ -42,23 +47,48 @@ N_ROUNDS = 100
 LABEL = "fwd_60d_excess"
 TOP_DECILE = 0.9
 
-_FORBIDDEN = ("artifacts/prod", "strategy_config", "walkforward")
+_FORBIDDEN_COMPONENTS = frozenset({"prod", "production", "strategy_config", "walkforward", "walk_forward"})
 
 
 def refuse_non_shadow(path: Path) -> Path:
-    s = str(path.resolve())
-    if "shadow" not in s:
-        raise SystemExit(f"refusing non-shadow output {s!r}: this trainer only "
-                         "emits SHADOW artifacts (pipeline#213 rollout step 3)")
-    for bad in _FORBIDDEN:
-        if bad in s:
-            raise SystemExit(f"refusing output near production: {bad!r}")
+    """Fail-closed shadow-only output guard, checked on path COMPONENTS (not
+    substring): a path like ``/tmp/production-shadow/model.json`` or
+    ``/tmp/prod/shadow.json`` must be refused even though the string
+    "shadow" appears somewhere in it — only a literal ``shadow`` directory
+    component makes a path shadow-only, and any production-marker component
+    refuses regardless."""
+    resolved = path.resolve()
+    components = [p.lower() for p in resolved.parts]
+    if "shadow" not in components:
+        raise SystemExit(f"refusing non-shadow output {resolved!r}: this trainer only "
+                         "emits SHADOW artifacts (pipeline#213 rollout step 3); the "
+                         "resolved path must contain a literal 'shadow' path component")
+    hit = _FORBIDDEN_COMPONENTS.intersection(components)
+    if hit:
+        raise SystemExit(f"refusing output near production: path component(s) {sorted(hit)!r}")
     return path
 
 
 def top_decile_label(train: pd.DataFrame, label: str = LABEL) -> pd.Series:
     """1{row's label is in its date's top decile} — the frozen construction."""
     return (train.groupby("date")[label].rank(pct=True) >= TOP_DECILE).astype(float)
+
+
+def stamp_contract(artifact: dict, booster, feat_cols: list[str]) -> dict:
+    """Layer the production-compatible provenance/config contract onto the core
+    v3 payload, reusing the SAME functions the umbrella's contract pipeline
+    (``panel_data.StampFingerprintTask`` / ``AttachSmokeTask``) calls — so a
+    shadow-slot fingerprint check sees the same ``config_fingerprint`` /
+    ``metadata`` fields a production artifact carries.
+
+    Must run BEFORE any shadow-only bookkeeping field (``shadow_role`` etc.)
+    is added: ``model_content_sha256`` hard-errors on any top-level key that
+    is not classified PREDICTIVE/OPERATIONAL in renquant-common, and the
+    shadow-only fields are deliberately unclassified there.
+    """
+    artifact["config_fingerprint"] = model_content_sha256(artifact)
+    attach_inference_smoke(artifact, booster, feat_cols)
+    return artifact
 
 
 def main() -> int:
@@ -101,6 +131,7 @@ def main() -> int:
             "NOT a production scorer; deployment gated by pipeline#213's "
             "frozen forward readout."),
     )
+    stamp_contract(artifact, booster, feat_cols)
     artifact["shadow_role"] = "blend_clf_leg"
     artifact["blend_spec"] = {"formula": "z(prod_score) + z(clf_score) per date",
                               "prereg": "model#75 doc/research/2026-07-25-blend-confirmatory-v2-prereg.md"}

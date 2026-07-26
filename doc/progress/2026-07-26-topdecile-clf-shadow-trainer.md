@@ -15,9 +15,13 @@ WHY/DIR:   model#76 (merged) closed the reopening chain with an independent-draw
            next rollout PRs (artifact production, pipeline shadow-slot wiring,
            orchestrator readout) follow per pipeline#213 §5.
 EVIDENCE:
-  artifact:      tests/gbdt/test_train_topdecile_clf_shadow.py — 3 passed
-                 (output guard incl. prod-path refusal; per-date 10% label
-                 property; params drift-guard against the confirmatory executor)
+  artifact:      tests/gbdt/test_train_topdecile_clf_shadow.py — 6 passed
+                 (fail-closed output guard on path COMPONENTS incl. two
+                 substring-only bypass repros; per-date 10% label property;
+                 params drift-guard against the confirmatory executor;
+                 stamp_contract adds config_fingerprint + inference-smoke
+                 metadata and pins that it must run before the shadow-only
+                 bookkeeping fields are added)
   prod or exp:   script only; shadow-only output guard enforced
   existing data: the "CONFIRMED blend" this trainer's construction is frozen from
                  is model#76's independent-draw result (merged 35a291e):
@@ -36,3 +40,19 @@ EVIDENCE:
 NEXT:      on merge -> produce the shadow artifact (additive, shadow dir) ->
            pipeline shadow-slot PR -> orchestrator readout job (operator grant
            at the launchd step).
+
+ROUND-2 FIX (Codex HIGH 1 + HIGH 2, both fixed): the trainer originally
+wrote the bare `build_model_artifact()` payload plus shadow-only bookkeeping
+fields, with no config-fingerprint/inference-smoke contract stamping and a
+substring-only (not path-component) shadow guard. Fixed by adding
+`stamp_contract()` (reuses `renquant_common.model_fingerprint.
+model_content_sha256` + `panel_data.attach_inference_smoke`, called BEFORE
+the shadow-only fields since those are deliberately unclassified in the
+fingerprint tables and would hard-error `model_content_sha256`), and by
+rewriting `refuse_non_shadow` to check `path.resolve().parts` for a literal
+`shadow` component plus a production-marker component denylist (was:
+substring match on the joined path string, which both `/tmp/prod/shadow.json`
+and `/tmp/production-shadow/model.json` bypassed).
+Verified: `pytest -q tests/gbdt/test_train_topdecile_clf_shadow.py` -> 6
+passed; `pytest -q tests/gbdt/` -> 113 passed, no regressions. No
+production-path writes in the diff.
