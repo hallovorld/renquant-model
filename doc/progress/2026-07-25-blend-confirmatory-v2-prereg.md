@@ -21,9 +21,17 @@ WHY/DIR:   model#73 downgraded the objective-blend result to EXPLORATORY/
 EVIDENCE:  n/a — this PR only freezes the decision rule; it makes no model/
            data claim. The step-1 screen evidence it builds on is committed
            at `doc/research/evidence/2026-07-25-blend-construction-screen/screen-bundle.json`
-           (PR #74, PASS +0.0627, 3/3 seeds). The step-2 run itself, and its
-           evidence bundle, land in a separate results PR per this prereg's
-           own "frozen on merge, run follows separately" rule.
+           (PR #74, PASS +0.0627, 3/3 seeds; provenance repaired in #74's
+           fix at commit `b3a8a39` — manifest now carries a real
+           code_revision/prereg_digest/prereg_commit bound to committed
+           source, not the uncommitted scratchpad runner Codex flagged).
+           This PR also inherits #74's `--seeds`/`--prereg-path` executor
+           fix (commit `9c97907`, stacked base), which makes seeds 60-69
+           and this prereg's path explicit reviewed run inputs rather than
+           requiring an unreviewed executor edit at run time. The step-2
+           run itself, and its evidence bundle, land in a separate results
+           PR per this prereg's own "frozen on merge, run follows
+           separately" rule.
 NEXT:      run the executor on seeds 60-69 in a separate results PR;
            CONFIRMED unblocks the PARKED shadow design (renquant-pipeline#213)
            at its step-2 gate; REFUTED closes the line as seed-draw-fragile;

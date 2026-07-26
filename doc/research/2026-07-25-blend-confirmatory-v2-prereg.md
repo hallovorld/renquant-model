@@ -5,7 +5,11 @@ Status: PREREGISTRATION — frozen on merge; the run and results land in a
 SEPARATE PR that may not amend this document.
 Chain: step 2 of the model#73 reopening condition. Screen (step 1, PASS,
 committed evidence): `doc/research/2026-07-25-blend-construction-screen-prereg.md`
-+ `evidence/2026-07-25-blend-construction-screen/screen-bundle.json`.
++ `evidence/2026-07-25-blend-construction-screen/screen-bundle.json`. Step
+1's provenance was repaired in #74 (commit `b3a8a39`): the evidence bundle
+now carries a real `code_revision`/`prereg_digest`/`prereg_commit` bound to
+committed source, not an uncommitted scratchpad runner — the durable-
+provenance prerequisite this step-2 prereg cites is now provenance-valid.
 
 ## What makes this an independent confirmation
 
@@ -21,9 +25,14 @@ a replay of known numbers.
 - H: `blend` = per-date z(rank:pairwise@fwd60) + z(top-decile clf@fwd60)
   beats production rank:pairwise on the clean top-10 spread.
 - Executor: `scripts/research_objective_blend_confirm.py` (merged,
-  guard-faithful, replayable-bundle emitting), with SEEDS = (60..69);
-  the seed change lands as a reviewed diff in THIS PR, nothing else may
-  change in the executor.
+  guard-faithful, replayable-bundle emitting). Seeds 60-69 and this
+  prereg's path are explicit, immutable run inputs via the
+  `--seeds`/`--prereg-path` overrides landed as a reviewed diff in #74
+  (this PR's stacked base, commit `9c97907`) — not a private patch, and
+  not this PR's own diff, since this PR stacks on and inherits it. The
+  frozen 10-seed confirmatory constants the executor defaults to are
+  unchanged; nothing else in the executor may change. Frozen future run:
+  `scripts/research_objective_blend_confirm.py --seeds 60,61,62,63,64,65,66,67,68,69 --prereg-path doc/research/2026-07-25-blend-confirmatory-v2-prereg.md --out doc/research/evidence/2026-07-25-blend-confirmatory-v2/confirmatory-bundle.json`
 - Same 5 purged folds, 60d embargo, per-arm matched within-date
   shuffled-label placebos.
 - Inference: block bootstrap b=60, boot-seed 20260725, 90% CI on the mean
