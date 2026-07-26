@@ -13,6 +13,7 @@ for the exact w50 guard and decision branches").
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import sys
 from pathlib import Path
 
@@ -219,3 +220,189 @@ def test_build_manifest_missing_data_file_reports_none_digest_not_a_crash(tmp_pa
     assert manifest["data_digest"] is None
     # the prereg file itself is real (committed in this repo) -> always present
     assert manifest["prereg_digest"] is not None
+
+
+def test_build_manifest_raises_when_prereg_freeze_unresolved(tmp_path, monkeypatch):
+    """model#74 review round 6 BLOCKER: `_prereg_freeze` returning
+    `(None, None)` (shallow clone, inconsistent history) is not itself
+    fail-closed — the round-5 fix stopped there, but `build_manifest()` just
+    serialized the nulls and `main()` still wrote the bundle. `build_manifest`
+    must raise before any manifest is produced, so `main()` can never reach
+    the `json.dump` that persists a bundle with null provenance."""
+    from renquant_model_gbdt.panel_data import PANEL_FILE
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / PANEL_FILE).write_bytes(b"fake panel bytes")
+
+    monkeypatch.setattr(mod, "_prereg_freeze", lambda *a, **k: (None, None))
+
+    with pytest.raises(RuntimeError, match="cannot resolve the pre-run freeze"):
+        mod.build_manifest(
+            data_dir=data_dir, argv=["x"],
+            run_started_at="t0", run_finished_at="t1", panel=_fake_panel())
+
+
+# --- prereg freeze: a post-run "## RESULTS" append must NOT move the stamp ---
+def _git(repo_dir, *args):
+    subprocess.run(["git", *args], cwd=repo_dir, capture_output=True, text=True, check=True)
+
+
+def _make_prereg_repo(tmp_path):
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    _git(repo_dir, "init", "-q")
+    _git(repo_dir, "config", "user.email", "test@example.com")
+    _git(repo_dir, "config", "user.name", "Test")
+    prereg = repo_dir / "prereg.md"
+    prereg.write_text("# Frozen spec\n\nSeeds 1/2/3.\n")
+    _git(repo_dir, "add", "prereg.md")
+    _git(repo_dir, "commit", "-q", "-m", "freeze prereg")
+    freeze_sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo_dir,
+                                capture_output=True, text=True, check=True).stdout.strip()
+    return repo_dir, prereg, freeze_sha
+
+
+def test_prereg_freeze_ignores_a_later_results_append():
+    """model#74 review BLOCKER: `git log -1` on the whole file picked up a
+    RESULTS-append commit made AFTER the run, not the actual pre-run freeze
+    — defeating the manifest's pre-run-freeze guarantee. The freeze commit
+    and digest must track the frozen section only, unmoved by that append."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        repo_dir, prereg, freeze_sha = _make_prereg_repo(Path(td))
+        frozen_bytes = prereg.read_bytes()
+
+        # Post-run amendment: append a "---" rule + RESULTS section, exactly
+        # as this repo's own screen-prereg convention does (round 2: the
+        # first fix attempt only tested a bare "\n## RESULTS" append with no
+        # separator and missed that the "---" rule leaks into the "frozen"
+        # side of a naive split).
+        with open(prereg, "a") as f:
+            f.write("\n\n---\n\n## RESULTS\n\nran fine\n")
+        _git(repo_dir, "add", "prereg.md")
+        _git(repo_dir, "commit", "-q", "-m", "amend with results")
+
+        commit, digest = mod._prereg_freeze(repo_dir, prereg)
+        assert commit == freeze_sha
+        assert digest == mod.hashlib.sha256(frozen_bytes).hexdigest()
+        # not the whole (now RESULTS-amended) current file
+        assert digest != mod.hashlib.sha256(prereg.read_bytes()).hexdigest()
+
+
+def test_prereg_freeze_matches_whole_file_when_never_amended():
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        repo_dir, prereg, freeze_sha = _make_prereg_repo(Path(td))
+        commit, digest = mod._prereg_freeze(repo_dir, prereg)
+        assert commit == freeze_sha
+        assert digest == mod.hashlib.sha256(prereg.read_bytes()).hexdigest()
+
+
+def test_prereg_freeze_fails_closed_on_shallow_clone():
+    """model#74 review round 5 P1: `actions/checkout@v4`'s default (depth 1,
+    what this repo's CI actually uses) makes a shallow clone where the
+    checked-out boundary commit is the ONLY commit `git log -- <path>` can
+    see. Without a shallow guard, `_prereg_freeze`'s self-consistency check
+    is trivially satisfied by that single commit, so it would silently
+    stamp the post-run RESULTS-append commit as the "freeze" here — exactly
+    the bug `test_prereg_freeze_ignores_a_later_results_append` exists to
+    catch on full history. A shallow clone must fail closed instead."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        repo_dir, prereg, freeze_sha = _make_prereg_repo(Path(td))
+        with open(prereg, "a") as f:
+            f.write("\n\n---\n\n## RESULTS\n\nran fine\n")
+        _git(repo_dir, "add", "prereg.md")
+        _git(repo_dir, "commit", "-q", "-m", "amend with results")
+
+        # `file://` forces the network-style transport for the clone; a bare
+        # local path triggers git's local-clone hardlink optimization, which
+        # ignores `--depth` and produces a full (non-shallow) clone instead.
+        shallow_dir = Path(td) / "shallow"
+        subprocess.run(["git", "clone", "-q", "--depth", "1", f"file://{repo_dir}", str(shallow_dir)],
+                      capture_output=True, text=True, check=True)
+        assert mod._is_shallow_repo(shallow_dir) is True
+
+        commit, digest = mod._prereg_freeze(shallow_dir, shallow_dir / "prereg.md")
+        assert commit is None
+        assert digest is None
+
+
+# --- manifest binding: --seeds/--prereg-path override path (model#74/#75 review) ---
+def test_build_manifest_binds_to_overridden_prereg_path(tmp_path):
+    """A `--prereg-path` override (a screen or fresh-seed confirmatory replay
+    under a different frozen prereg) must stamp digest/commit/command against
+    THAT file, not silently fall back to the default confirmatory PREREG_PATH."""
+    from renquant_model_gbdt.panel_data import PANEL_FILE
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / PANEL_FILE).write_bytes(b"fake panel bytes")
+
+    override_prereg = (mod.PREREG_PATH.parent
+                        / "2026-07-25-blend-construction-screen-prereg.md")
+    assert override_prereg != mod.PREREG_PATH
+    assert override_prereg.exists()  # a different real committed prereg in this repo
+
+    argv = ["research_objective_blend_confirm.py", "--seeds", "42,43,44",
+            "--prereg-path", str(override_prereg), "--out", "x.json"]
+    manifest = mod.build_manifest(
+        data_dir=data_dir, argv=argv,
+        run_started_at="2026-07-25T08:00:00+00:00",
+        run_finished_at="2026-07-25T09:00:00+00:00", panel=_fake_panel(),
+        prereg_path=override_prereg)
+
+    assert manifest["prereg_path"] == str(override_prereg)
+    # The contract (model#74 review round 4): the manifest must equal the
+    # _prereg_freeze ground truth FOR THE OVERRIDDEN PATH — not merely differ
+    # from the default's. (Asserting inequality of the two freeze commits was
+    # a false assumption: two preregs can legitimately be frozen in the same
+    # commit, and a shallow CI checkout can collapse their histories.)
+    repo_dir = _SPEC_PATH.resolve().parents[1]
+    ov_commit, ov_digest = mod._prereg_freeze(repo_dir, override_prereg)
+    assert manifest["prereg_commit"] == ov_commit
+    assert manifest["prereg_digest"] == (f"sha256:{ov_digest}" if ov_digest
+                                         and not str(ov_digest).startswith("sha256:")
+                                         else ov_digest)
+    assert manifest["command"] == " ".join(argv)
+
+
+def test_prereg_freeze_keys_off_the_path_argument_not_silently_ignored():
+    """model#74 review round 4 P1: the equality check above compares the
+    manifest to `_prereg_freeze(repo, override_prereg)` — a tautology if
+    `_prereg_freeze` (or the `prereg_path` plumbing into it) silently ignored
+    its argument and always resolved the default file, since both sides of
+    the comparison would then drift identically. Close that gap directly: on
+    a synthetic repo where two files are frozen in two DISTINCT commits,
+    `_prereg_freeze` must return each file's own commit/digest, not the same
+    pair for both."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        repo_dir = Path(td) / "repo"
+        repo_dir.mkdir()
+        _git(repo_dir, "init", "-q")
+        _git(repo_dir, "config", "user.email", "test@example.com")
+        _git(repo_dir, "config", "user.name", "Test")
+
+        prereg_a = repo_dir / "a.md"
+        prereg_a.write_text("# A\n\nSeeds 1/2/3.\n")
+        _git(repo_dir, "add", "a.md")
+        _git(repo_dir, "commit", "-q", "-m", "freeze a")
+        commit_a = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo_dir,
+                                  capture_output=True, text=True, check=True).stdout.strip()
+
+        prereg_b = repo_dir / "b.md"
+        prereg_b.write_text("# B\n\nSeeds 4/5/6.\n")
+        _git(repo_dir, "add", "b.md")
+        _git(repo_dir, "commit", "-q", "-m", "freeze b")
+        commit_b = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo_dir,
+                                  capture_output=True, text=True, check=True).stdout.strip()
+
+        commit_from_a, digest_from_a = mod._prereg_freeze(repo_dir, prereg_a)
+        commit_from_b, digest_from_b = mod._prereg_freeze(repo_dir, prereg_b)
+
+        assert commit_from_a == commit_a
+        assert commit_from_b == commit_b
+        assert commit_from_a != commit_from_b
+        assert digest_from_a != digest_from_b

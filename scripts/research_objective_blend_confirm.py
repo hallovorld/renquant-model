@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import subprocess
 import sys
 import time
@@ -126,20 +127,81 @@ def _git_revision_parents(repo_dir: Path) -> list[str]:
         return []
 
 
-def _prereg_commit(repo_dir: Path) -> str | None:
-    """Immutable commit that last froze the prereg text (model#73 review
-    BLOCKER 2: "no immutable prereg_commit ... binding"). `prereg_digest`
-    proves *which* text; this proves *which commit* froze it, so a reviewer
-    can check the run happened after the freeze by git ancestry, not just a
-    wall-clock timestamp (a wall-clock claim is exactly what BLOCKER 1
-    caught being wrong)."""
+_RESULTS_SPLIT_RE = re.compile(rb"\n+(?:-{3,}\s*\n+)?## RESULTS")
+
+
+def _frozen_prereg_bytes(raw: bytes) -> bytes:
+    """The prereg's frozen decision-rule text only, excluding any
+    `## RESULTS` section appended in place after the run (this repo's
+    convention for preregs that record their own results, e.g. the
+    blend-construction screen). The append also inserts a `---` horizontal
+    rule directly above the heading as a visual separator (model#74 review,
+    round 2): a plain `\\n## RESULTS` split leaves that rule attached to the
+    "frozen" side, so its bytes differ from the pre-append file and
+    `_prereg_freeze` misidentifies the append commit as a new freeze. The
+    regex consumes an optional `---` rule (and its surrounding blank lines)
+    together with the heading. Preregs that stay unmodified after freeze (no
+    such heading — the confirmatory preregs, whose results land in a
+    separate file) return their content unchanged."""
+    m = _RESULTS_SPLIT_RE.search(raw)
+    return raw if m is None else raw[:m.start()].rstrip() + b"\n"
+
+
+def _is_shallow_repo(repo_dir: Path) -> bool:
+    """True if `repo_dir` is a shallow clone (`actions/checkout@v4`'s
+    default, fetch-depth 1) — model#74 review round 5 P1: a shallow clone
+    can only ever show the checked-out boundary commit for a file's
+    history, so `_prereg_freeze`'s self-consistency check (frozen-at-commit
+    == frozen-on-disk) is trivially satisfied by that single commit even
+    when the true freeze happened earlier and fell outside the shallow
+    window. Unknown (git error) is treated as NOT shallow — this helper
+    only widens the set of runs that fail closed, never narrows it."""
+    proc = subprocess.run(["git", "rev-parse", "--is-shallow-repository"], cwd=repo_dir,
+                          capture_output=True, text=True)
+    return proc.returncode == 0 and proc.stdout.strip() == "true"
+
+
+def _prereg_freeze(repo_dir: Path, prereg_path: Path = PREREG_PATH) -> tuple[str | None, str | None]:
+    """(commit, digest) of the prereg's pre-run freeze — model#74 review
+    BLOCKER: `git log -1` over the whole file picks up a LATER commit that
+    only appended a `## RESULTS` section, stamping the manifest with the
+    post-run edit instead of the actual pre-run freeze. This walks the
+    file's full history and returns the last commit at which the FROZEN
+    section (text before `## RESULTS`) changed — the true freeze point —
+    with the digest of that frozen text only, not the whole (possibly
+    RESULTS-amended) current file. Returns (None, None) if the frozen text
+    at that commit doesn't match the frozen text on disk right now (history
+    inconsistent with the working copy), or if `repo_dir` is a shallow
+    clone (round 5 P1: truncated history must fail closed, never stamp a
+    boundary commit as the freeze)."""
+    if _is_shallow_repo(repo_dir):
+        return None, None
+    try:
+        rel = str(prereg_path.relative_to(repo_dir))
+    except ValueError:
+        return None, None
     try:
         proc = subprocess.run(
-            ["git", "log", "-1", "--format=%H", "--", str(PREREG_PATH.relative_to(repo_dir))],
+            ["git", "log", "--format=%H", "--reverse", "--", rel],
             cwd=repo_dir, capture_output=True, text=True, check=True)
-        return proc.stdout.strip() or None
-    except (OSError, subprocess.CalledProcessError, ValueError):
-        return None
+    except (OSError, subprocess.CalledProcessError):
+        return None, None
+    commits = proc.stdout.split()
+    if not commits or not prereg_path.exists():
+        return None, None
+    current_frozen = _frozen_prereg_bytes(prereg_path.read_bytes())
+    freeze_commit, freeze_frozen = None, None
+    for sha in commits:
+        show = subprocess.run(["git", "show", f"{sha}:{rel}"], cwd=repo_dir,
+                              capture_output=True)
+        if show.returncode != 0:
+            continue
+        frozen = _frozen_prereg_bytes(show.stdout)
+        if frozen != freeze_frozen:
+            freeze_commit, freeze_frozen = sha, frozen
+    if freeze_frozen != current_frozen:
+        return None, None
+    return freeze_commit, hashlib.sha256(freeze_frozen).hexdigest()
 
 
 def _is_ancestor(ancestor: str | None, descendant: str | None, repo_dir: Path) -> bool | None:
@@ -169,7 +231,8 @@ def _producing_script_revision() -> str | None:
 
 
 def build_manifest(*, data_dir: Path, argv: list[str], run_started_at: str,
-                    run_finished_at: str, panel: pd.DataFrame) -> dict:
+                    run_finished_at: str, panel: pd.DataFrame,
+                    prereg_path: Path = PREREG_PATH) -> dict:
     """Reproducibility + pre-run-freeze manifest (model#68 review rounds
     3-4; model#73 review HIGH). `prereg_digest` proves which frozen
     decision-rule text the run executed against; a results PR is only an
@@ -177,15 +240,27 @@ def build_manifest(*, data_dir: Path, argv: list[str], run_started_at: str,
     frozen commit and this digest matches the prereg file at that commit.
     `row_count`/`date_range` plus `producing_script.git_revision` are a
     durable fingerprint for the input panel, independent of the
-    workstation-absolute `data_path`."""
+    workstation-absolute `data_path`. `prereg_path` defaults to this
+    executor's own frozen 10-seed confirmatory prereg but is overridable
+    (model#74/#75 review: a pre-registered replay under a different frozen
+    seed set — a screen or a fresh-seed confirmatory — must stamp digest/
+    commit against the prereg text actually governing that run, not this
+    file's default)."""
     from renquant_model_gbdt.panel_data import PANEL_FILE
     repo_dir = Path(__file__).resolve().parents[1]
     panel_path = data_dir / PANEL_FILE
     data_digest = _sha256_file(panel_path)
-    prereg_digest = _sha256_file(PREREG_PATH)
     dates = pd.to_datetime(panel["date"])
     code_revision = _git_revision(repo_dir)
-    prereg_commit = _prereg_commit(repo_dir)
+    prereg_commit, prereg_digest = _prereg_freeze(repo_dir, prereg_path)
+    if prereg_commit is None or prereg_digest is None:
+        raise RuntimeError(
+            f"cannot resolve the pre-run freeze for {prereg_path} — the repo "
+            "is a shallow clone or the file's git history is inconsistent "
+            "with the working copy (model#74 review round 6 BLOCKER: a null "
+            "prereg_commit/prereg_digest must never reach a written bundle). "
+            "Remediation: re-checkout with full history, e.g. "
+            "`git fetch --unshallow`, then re-run.")
     return {
         "data_path": str(panel_path),
         "data_digest": f"sha256:{data_digest}" if data_digest else None,
@@ -196,7 +271,7 @@ def build_manifest(*, data_dir: Path, argv: list[str], run_started_at: str,
             "path": _PANEL_BUILDER_SCRIPT,
             "git_revision": _producing_script_revision(),
         },
-        "prereg_path": str(PREREG_PATH),
+        "prereg_path": str(prereg_path),
         "prereg_digest": f"sha256:{prereg_digest}" if prereg_digest else None,
         "prereg_commit": prereg_commit,
         "code_revision": code_revision,
@@ -280,11 +355,25 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--data-dir", default="/Users/renhao/git/github/RenQuant/data")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--seeds", default=None,
+                    help="comma-separated seed override, e.g. '42,43,44'. Default is "
+                         "the frozen 10-seed confirmatory SEEDS constant. For a "
+                         "pre-registered replay under a different frozen seed set "
+                         "(a screen or a fresh-seed confirmatory), this is the reviewed, "
+                         "immutable run input the prereg cites — nothing else in the "
+                         "executor may change.")
+    ap.add_argument("--prereg-path", default=None,
+                    help="override PREREG_PATH so the manifest's prereg_digest/"
+                         "prereg_commit stamp against the prereg text actually "
+                         "governing this run, instead of the default confirmatory prereg")
     args = ap.parse_args()
     out_path = Path(args.out)
     for bad in _FORBIDDEN:
         if bad in str(out_path.resolve()):
             raise SystemExit(f"refusing output near production: {bad!r}")
+    seeds = tuple(int(s) for s in args.seeds.split(",")) if args.seeds else SEEDS
+    repo_dir = Path(__file__).resolve().parents[1]
+    prereg_path = Path(args.prereg_path).resolve() if args.prereg_path else PREREG_PATH
     run_started_at = datetime.now(timezone.utc).isoformat()
 
     import xgboost as xgb
@@ -302,7 +391,7 @@ def main() -> int:
         e = int(vi[0]) - EMBARGO
         if e > 0 and len(vi):
             folds.append({"tr": set(dates[:e]), "va": set(dates[vi])})
-    print(f"panel {len(panel):,} · {len(folds)} folds · {len(SEEDS)} seeds", flush=True)
+    print(f"panel {len(panel):,} · {len(folds)} folds · {len(seeds)} seeds", flush=True)
 
     def predict(tr, va, arm, seed):
         if arm == "rank60":
@@ -362,7 +451,7 @@ def main() -> int:
     clean_series = {}
     for arm in ("rank60", "blend"):
         seed_clean, seed_clean_w = {}, {}
-        for seed in SEEDS:
+        for seed in seeds:
             t0 = time.time()
             rc = {d_: gs for d_, gs in run(arm, False, seed).items()}
             pc = {d_: gs for d_, gs in run(arm, True, seed).items()}
@@ -397,7 +486,7 @@ def main() -> int:
     by_seed_a = clean_series["blend_by_seed"]
     by_seed_b = clean_series["rank60_by_seed"]
     seed_signs = []
-    for s in SEEDS:
+    for s in seeds:
         ca = by_seed_a[s].dropna()
         cb = by_seed_b[s].dropna()
         cc = ca.index.intersection(cb.index)
@@ -412,17 +501,23 @@ def main() -> int:
     print(f"  blend clean spread : {a.mean():+.4f}/60d", flush=True)
     print(f"  rank60 clean spread: {b_.mean():+.4f}/60d", flush=True)
     print(f"  paired diff        : {diff.mean():+.4f}  90% CI [{lo:+.4f},{hi:+.4f}]", flush=True)
-    print(f"  guard: seeds positive {n_pos}/10 (need ≥{MIN_SEEDS_POSITIVE})", flush=True)
+    print(f"  guard: seeds positive {n_pos}/{len(seeds)} (need ≥{MIN_SEEDS_POSITIVE})", flush=True)
     print(f"  guard: winsorized ±50% diff {wins_diff:+.4f} (need ≥ 0)", flush=True)
     print(f"  VERDICT: {verdict}", flush=True)
 
     run_finished_at = datetime.now(timezone.utc).isoformat()
     manifest = build_manifest(data_dir=dd, argv=sys.argv, run_started_at=run_started_at,
-                               run_finished_at=run_finished_at, panel=panel)
+                               run_finished_at=run_finished_at, panel=panel,
+                               prereg_path=prereg_path)
+
+    try:
+        prereg_label = str(prereg_path.relative_to(repo_dir))
+    except ValueError:
+        prereg_label = str(prereg_path)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    json.dump({"prereg": "doc/research/2026-07-25-objective-blend-confirmatory-prereg.md",
-               "seeds": list(SEEDS), "diff_mean": float(diff.mean()),
+    json.dump({"prereg": prereg_label,
+               "seeds": list(seeds), "diff_mean": float(diff.mean()),
                "ci90": [lo, hi], "seeds_positive": n_pos,
                "winsorized_w50_diff": wins_diff, "verdict": verdict,
                "blend_clean": float(a.mean()), "rank60_clean": float(b_.mean()),
