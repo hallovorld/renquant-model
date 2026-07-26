@@ -278,6 +278,36 @@ def test_prereg_freeze_matches_whole_file_when_never_amended():
         assert digest == mod.hashlib.sha256(prereg.read_bytes()).hexdigest()
 
 
+def test_prereg_freeze_fails_closed_on_shallow_clone():
+    """model#74 review round 5 P1: `actions/checkout@v4`'s default (depth 1,
+    what this repo's CI actually uses) makes a shallow clone where the
+    checked-out boundary commit is the ONLY commit `git log -- <path>` can
+    see. Without a shallow guard, `_prereg_freeze`'s self-consistency check
+    is trivially satisfied by that single commit, so it would silently
+    stamp the post-run RESULTS-append commit as the "freeze" here — exactly
+    the bug `test_prereg_freeze_ignores_a_later_results_append` exists to
+    catch on full history. A shallow clone must fail closed instead."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        repo_dir, prereg, freeze_sha = _make_prereg_repo(Path(td))
+        with open(prereg, "a") as f:
+            f.write("\n\n---\n\n## RESULTS\n\nran fine\n")
+        _git(repo_dir, "add", "prereg.md")
+        _git(repo_dir, "commit", "-q", "-m", "amend with results")
+
+        # `file://` forces the network-style transport for the clone; a bare
+        # local path triggers git's local-clone hardlink optimization, which
+        # ignores `--depth` and produces a full (non-shallow) clone instead.
+        shallow_dir = Path(td) / "shallow"
+        subprocess.run(["git", "clone", "-q", "--depth", "1", f"file://{repo_dir}", str(shallow_dir)],
+                      capture_output=True, text=True, check=True)
+        assert mod._is_shallow_repo(shallow_dir) is True
+
+        commit, digest = mod._prereg_freeze(shallow_dir, shallow_dir / "prereg.md")
+        assert commit is None
+        assert digest is None
+
+
 # --- manifest binding: --seeds/--prereg-path override path (model#74/#75 review) ---
 def test_build_manifest_binds_to_overridden_prereg_path(tmp_path):
     """A `--prereg-path` override (a screen or fresh-seed confirmatory replay

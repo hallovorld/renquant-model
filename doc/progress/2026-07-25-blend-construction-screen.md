@@ -1,12 +1,22 @@
 # 2026-07-25 — blend-construction screen: provenance repair, PASS
 
 STATUS:    screen prereg frozen (commit 2175e36) then run; evidence committed;
-           provenance repaired in two rounds after model#74 review: round 1
-           (commit 9c97907) moved the run off an uncommitted scratchpad
-           runner; round 2 (commits d8641a4, c054934) fixed the manifest's
-           prereg_commit/prereg_digest, which round 1 was still stamping
-           from the later in-place RESULTS append (88809c9) instead of the
-           true pre-run freeze (2175e36)
+           provenance repaired across several rounds of model#74 review:
+           round 1 (commit 9c97907) moved the run off an uncommitted
+           scratchpad runner; round 2 (commits d8641a4, c054934) fixed the
+           manifest's prereg_commit/prereg_digest, which round 1 was still
+           stamping from the later in-place RESULTS append (88809c9)
+           instead of the true pre-run freeze (2175e36); a further review
+           pass flagged that `_prereg_freeze()` was still unsafe under
+           CI's actual shallow (`actions/checkout@v4` default depth-1)
+           checkout — a shallow clone trivially satisfies the
+           frozen-at-commit-equals-frozen-on-disk self-consistency check
+           with its single visible commit, so it could silently stamp a
+           post-run append as the freeze; fixed by making `_prereg_freeze`
+           fail closed (return None, None) whenever `git
+           rev-parse --is-shallow-repository` is true, with a regression
+           test that reproduces the exact silent-wrong-stamp failure mode
+           on a real `--depth 1` clone
 WHAT:      the exact blend construction screened with committed replayable
            evidence — the hole the model#73 downgrade identified.
 WHY/DIR:   model#73 downgraded the objective-blend result to EXPLORATORY/

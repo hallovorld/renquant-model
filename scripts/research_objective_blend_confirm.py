@@ -147,6 +147,20 @@ def _frozen_prereg_bytes(raw: bytes) -> bytes:
     return raw if m is None else raw[:m.start()].rstrip() + b"\n"
 
 
+def _is_shallow_repo(repo_dir: Path) -> bool:
+    """True if `repo_dir` is a shallow clone (`actions/checkout@v4`'s
+    default, fetch-depth 1) — model#74 review round 5 P1: a shallow clone
+    can only ever show the checked-out boundary commit for a file's
+    history, so `_prereg_freeze`'s self-consistency check (frozen-at-commit
+    == frozen-on-disk) is trivially satisfied by that single commit even
+    when the true freeze happened earlier and fell outside the shallow
+    window. Unknown (git error) is treated as NOT shallow — this helper
+    only widens the set of runs that fail closed, never narrows it."""
+    proc = subprocess.run(["git", "rev-parse", "--is-shallow-repository"], cwd=repo_dir,
+                          capture_output=True, text=True)
+    return proc.returncode == 0 and proc.stdout.strip() == "true"
+
+
 def _prereg_freeze(repo_dir: Path, prereg_path: Path = PREREG_PATH) -> tuple[str | None, str | None]:
     """(commit, digest) of the prereg's pre-run freeze — model#74 review
     BLOCKER: `git log -1` over the whole file picks up a LATER commit that
@@ -157,7 +171,11 @@ def _prereg_freeze(repo_dir: Path, prereg_path: Path = PREREG_PATH) -> tuple[str
     with the digest of that frozen text only, not the whole (possibly
     RESULTS-amended) current file. Returns (None, None) if the frozen text
     at that commit doesn't match the frozen text on disk right now (history
-    inconsistent with the working copy)."""
+    inconsistent with the working copy), or if `repo_dir` is a shallow
+    clone (round 5 P1: truncated history must fail closed, never stamp a
+    boundary commit as the freeze)."""
+    if _is_shallow_repo(repo_dir):
+        return None, None
     try:
         rel = str(prereg_path.relative_to(repo_dir))
     except ValueError:
