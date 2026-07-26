@@ -253,6 +253,14 @@ def build_manifest(*, data_dir: Path, argv: list[str], run_started_at: str,
     dates = pd.to_datetime(panel["date"])
     code_revision = _git_revision(repo_dir)
     prereg_commit, prereg_digest = _prereg_freeze(repo_dir, prereg_path)
+    if prereg_commit is None or prereg_digest is None:
+        raise RuntimeError(
+            f"cannot resolve the pre-run freeze for {prereg_path} — the repo "
+            "is a shallow clone or the file's git history is inconsistent "
+            "with the working copy (model#74 review round 6 BLOCKER: a null "
+            "prereg_commit/prereg_digest must never reach a written bundle). "
+            "Remediation: re-checkout with full history, e.g. "
+            "`git fetch --unshallow`, then re-run.")
     return {
         "data_path": str(panel_path),
         "data_digest": f"sha256:{data_digest}" if data_digest else None,

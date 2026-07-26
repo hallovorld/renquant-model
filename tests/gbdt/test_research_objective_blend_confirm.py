@@ -222,6 +222,27 @@ def test_build_manifest_missing_data_file_reports_none_digest_not_a_crash(tmp_pa
     assert manifest["prereg_digest"] is not None
 
 
+def test_build_manifest_raises_when_prereg_freeze_unresolved(tmp_path, monkeypatch):
+    """model#74 review round 6 BLOCKER: `_prereg_freeze` returning
+    `(None, None)` (shallow clone, inconsistent history) is not itself
+    fail-closed — the round-5 fix stopped there, but `build_manifest()` just
+    serialized the nulls and `main()` still wrote the bundle. `build_manifest`
+    must raise before any manifest is produced, so `main()` can never reach
+    the `json.dump` that persists a bundle with null provenance."""
+    from renquant_model_gbdt.panel_data import PANEL_FILE
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / PANEL_FILE).write_bytes(b"fake panel bytes")
+
+    monkeypatch.setattr(mod, "_prereg_freeze", lambda *a, **k: (None, None))
+
+    with pytest.raises(RuntimeError, match="cannot resolve the pre-run freeze"):
+        mod.build_manifest(
+            data_dir=data_dir, argv=["x"],
+            run_started_at="t0", run_finished_at="t1", panel=_fake_panel())
+
+
 # --- prereg freeze: a post-run "## RESULTS" append must NOT move the stamp ---
 def _git(repo_dir, *args):
     subprocess.run(["git", *args], cwd=repo_dir, capture_output=True, text=True, check=True)

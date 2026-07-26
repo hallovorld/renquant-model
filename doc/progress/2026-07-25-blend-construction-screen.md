@@ -16,7 +16,12 @@ STATUS:    screen prereg frozen (commit 2175e36) then run; evidence committed;
            fail closed (return None, None) whenever `git
            rev-parse --is-shallow-repository` is true, with a regression
            test that reproduces the exact silent-wrong-stamp failure mode
-           on a real `--depth 1` clone
+           on a real `--depth 1` clone; round 6 closed the remaining gap —
+           `(None, None)` alone wasn't fail-closed, since `build_manifest()`
+           serialized the nulls and `main()` still wrote the bundle;
+           `build_manifest()` now raises before any manifest is produced
+           whenever the pre-run freeze can't be resolved, with a regression
+           test that forces the unresolved path and asserts the raise
 WHAT:      the exact blend construction screened with committed replayable
            evidence — the hole the model#73 downgrade identified.
 WHY/DIR:   model#73 downgraded the objective-blend result to EXPLORATORY/
