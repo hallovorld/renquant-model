@@ -1,6 +1,8 @@
 # 2026-07-25 — blend-construction screen: provenance repair, PASS
 
-STATUS:    screen prereg frozen (commit 2175e36) then run; evidence committed
+STATUS:    screen prereg frozen (commit 2175e36) then run; evidence committed;
+           provenance repaired (commit 9c97907) after model#74 review found the
+           first bundle's manifest bound to an uncommitted scratchpad runner
 WHAT:      the exact blend construction screened with committed replayable
            evidence — the hole the model#73 downgrade identified.
 WHY/DIR:   model#73 downgraded the objective-blend result to EXPLORATORY/
@@ -18,10 +20,16 @@ WHY/DIR:   model#73 downgraded the objective-blend result to EXPLORATORY/
            (PR model#75, fresh seeds 60-69, an independent draw).
 EVIDENCE:
   artifact:      doc/research/evidence/2026-07-25-blend-construction-screen/screen-bundle.json
-  prod or exp:   EXPERIMENT, read-only; merged executor, screen seeds 42-44
+  prod or exp:   EXPERIMENT, read-only; committed in-repo executor
+                 (scripts/research_objective_blend_confirm.py), screen seeds 42-44
+                 via its --seeds/--prereg-path overrides (commit 9c97907)
   existing data: outcome previously observed informally — disclosed in the frozen
                  prereg; this run's sole role is durable provenance
-  best-known?:   deterministic executor; manifest carries data+prereg sha256
+  best-known?:   deterministic executor; re-run from committed source reproduced
+                 byte-identical statistics to the original (uncommitted-runner)
+                 pass; manifest now carries a real code_revision (9c97907, parent
+                 d9aeeab) and non-null prereg_digest/prereg_commit with
+                 prereg_commit_is_ancestor_of_code_revision: true
   scope:         "screen-grade PASS (+0.0627, 3/3 seeds); carries NO verdict; its
                  only consequence is unlocking the step-2 confirmatory prereg with
                  fresh seeds 60-69"

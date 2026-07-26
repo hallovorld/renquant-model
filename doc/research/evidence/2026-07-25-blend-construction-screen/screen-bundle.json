@@ -1,5 +1,5 @@
 {
-  "prereg": "doc/research/2026-07-25-objective-blend-confirmatory-prereg.md",
+  "prereg": "doc/research/2026-07-25-blend-construction-screen-prereg.md",
   "seeds": [
     42,
     43,
@@ -33,15 +33,17 @@
       "path": "src/renquant_base_data/alpha158_fund_panel.py",
       "git_revision": "3aa6bff0d9628660cd4df86c7c997a7348322fd7"
     },
-    "prereg_path": "/private/tmp/claude-502/-Users-renhao-git-github-renquant-orchestrator/428feb92-8ee7-4b4f-afed-1e4fa82ef367/doc/research/2026-07-25-objective-blend-confirmatory-prereg.md",
-    "prereg_digest": null,
-    "prereg_commit": null,
-    "code_revision": "unknown",
-    "code_revision_parents": [],
-    "prereg_commit_is_ancestor_of_code_revision": null,
-    "command": "/private/tmp/claude-502/-Users-renhao-git-github-renquant-orchestrator/428feb92-8ee7-4b4f-afed-1e4fa82ef367/scratchpad/blend_screen_runner.py --out /private/tmp/claude-502/-Users-renhao-git-github-renquant-orchestrator/428feb92-8ee7-4b4f-afed-1e4fa82ef367/scratchpad/blend_screen_bundle.json",
-    "run_started_at": "2026-07-26T05:54:26.928885+00:00",
-    "run_finished_at": "2026-07-26T06:00:55.233178+00:00"
+    "prereg_path": "/Users/renhao/git/github/renquant-model/doc/research/2026-07-25-blend-construction-screen-prereg.md",
+    "prereg_digest": "sha256:c98d97b3fd5b5f4ab982cdf9fc7d9b15f8487fb129c62fd481d293dbf666bd75",
+    "prereg_commit": "88809c976a8101eb6b51b0f0186fbe18a1fa5e7b",
+    "code_revision": "9c97907c29e0f9dd3f938a3aa13de6caa5f30ffb",
+    "code_revision_parents": [
+      "d9aeeabcea5e583d12e5fce45216fcdd31f81fa1"
+    ],
+    "prereg_commit_is_ancestor_of_code_revision": true,
+    "command": "scripts/research_objective_blend_confirm.py --seeds 42,43,44 --prereg-path doc/research/2026-07-25-blend-construction-screen-prereg.md --out doc/research/evidence/2026-07-25-blend-construction-screen/screen-bundle.json",
+    "run_started_at": "2026-07-26T06:29:36.520800+00:00",
+    "run_finished_at": "2026-07-26T06:36:49.518204+00:00"
   },
   "series": {
     "blend_clean_by_date": {

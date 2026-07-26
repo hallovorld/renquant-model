@@ -48,6 +48,18 @@ the frozen screen seeds (42/43/44); full replayable bundle committed at
 `doc/research/evidence/2026-07-25-blend-construction-screen/screen-bundle.json`
 (freeze manifest carries data + prereg digests).
 
+**Provenance repair (model#74 review):** the numbers below were first
+produced by an uncommitted local copy of the executor, so the initial
+committed bundle's manifest could not stamp `code_revision`/`prereg_digest`/
+`prereg_commit` — the exact provenance this screen exists to establish.
+Re-run from the actually-committed `scripts/research_objective_blend_confirm.py`
+(via its new `--seeds`/`--prereg-path` overrides, model#74) reproduces
+**byte-identical statistics** — confirming the original run was faithful to
+this construction, just unprovable from committed source. The bundle now
+in the repo is this re-run's output, with a manifest carrying a real
+`code_revision` (parented on the pre-run freeze history), a non-null
+`prereg_digest`/`prereg_commit`, and `prereg_commit_is_ancestor_of_code_revision: true`.
+
 | statistic | value |
 |---|---|
 | blend clean top-10 spread | +0.3135/60d |
