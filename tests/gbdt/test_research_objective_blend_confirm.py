@@ -13,6 +13,7 @@ for the exact w50 guard and decision branches").
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import sys
 from pathlib import Path
 
@@ -219,3 +220,56 @@ def test_build_manifest_missing_data_file_reports_none_digest_not_a_crash(tmp_pa
     assert manifest["data_digest"] is None
     # the prereg file itself is real (committed in this repo) -> always present
     assert manifest["prereg_digest"] is not None
+
+
+# --- prereg freeze: a post-run "## RESULTS" append must NOT move the stamp ---
+def _git(repo_dir, *args):
+    subprocess.run(["git", *args], cwd=repo_dir, capture_output=True, text=True, check=True)
+
+
+def _make_prereg_repo(tmp_path):
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    _git(repo_dir, "init", "-q")
+    _git(repo_dir, "config", "user.email", "test@example.com")
+    _git(repo_dir, "config", "user.name", "Test")
+    prereg = repo_dir / "prereg.md"
+    prereg.write_text("# Frozen spec\n\nSeeds 1/2/3.\n")
+    _git(repo_dir, "add", "prereg.md")
+    _git(repo_dir, "commit", "-q", "-m", "freeze prereg")
+    freeze_sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo_dir,
+                                capture_output=True, text=True, check=True).stdout.strip()
+    return repo_dir, prereg, freeze_sha
+
+
+def test_prereg_freeze_ignores_a_later_results_append():
+    """model#74 review BLOCKER: `git log -1` on the whole file picked up a
+    RESULTS-append commit made AFTER the run, not the actual pre-run freeze
+    — defeating the manifest's pre-run-freeze guarantee. The freeze commit
+    and digest must track the frozen section only, unmoved by that append."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        repo_dir, prereg, freeze_sha = _make_prereg_repo(Path(td))
+        frozen_bytes = prereg.read_bytes()
+
+        # Post-run amendment: append a RESULTS section, as this repo's own
+        # screen-prereg convention does (in-place evidence commit).
+        with open(prereg, "a") as f:
+            f.write("\n## RESULTS\n\nran fine\n")
+        _git(repo_dir, "add", "prereg.md")
+        _git(repo_dir, "commit", "-q", "-m", "amend with results")
+
+        commit, digest = mod._prereg_freeze(repo_dir, prereg)
+        assert commit == freeze_sha
+        assert digest == mod.hashlib.sha256(frozen_bytes).hexdigest()
+        # not the whole (now RESULTS-amended) current file
+        assert digest != mod.hashlib.sha256(prereg.read_bytes()).hexdigest()
+
+
+def test_prereg_freeze_matches_whole_file_when_never_amended():
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        repo_dir, prereg, freeze_sha = _make_prereg_repo(Path(td))
+        commit, digest = mod._prereg_freeze(repo_dir, prereg)
+        assert commit == freeze_sha
+        assert digest == mod.hashlib.sha256(prereg.read_bytes()).hexdigest()

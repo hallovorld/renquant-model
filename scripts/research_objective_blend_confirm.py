@@ -126,20 +126,57 @@ def _git_revision_parents(repo_dir: Path) -> list[str]:
         return []
 
 
-def _prereg_commit(repo_dir: Path, prereg_path: Path = PREREG_PATH) -> str | None:
-    """Immutable commit that last froze the prereg text (model#73 review
-    BLOCKER 2: "no immutable prereg_commit ... binding"). `prereg_digest`
-    proves *which* text; this proves *which commit* froze it, so a reviewer
-    can check the run happened after the freeze by git ancestry, not just a
-    wall-clock timestamp (a wall-clock claim is exactly what BLOCKER 1
-    caught being wrong)."""
+_RESULTS_MARKER = b"\n## RESULTS"
+
+
+def _frozen_prereg_bytes(raw: bytes) -> bytes:
+    """The prereg's frozen decision-rule text only, excluding any
+    `## RESULTS` section appended in place after the run (this repo's
+    convention for preregs that record their own results, e.g. the
+    blend-construction screen). Preregs that stay unmodified after freeze
+    (no such heading — the confirmatory preregs, whose results land in a
+    separate file) return their content unchanged."""
+    idx = raw.find(_RESULTS_MARKER)
+    return raw if idx == -1 else raw[:idx].rstrip() + b"\n"
+
+
+def _prereg_freeze(repo_dir: Path, prereg_path: Path = PREREG_PATH) -> tuple[str | None, str | None]:
+    """(commit, digest) of the prereg's pre-run freeze — model#74 review
+    BLOCKER: `git log -1` over the whole file picks up a LATER commit that
+    only appended a `## RESULTS` section, stamping the manifest with the
+    post-run edit instead of the actual pre-run freeze. This walks the
+    file's full history and returns the last commit at which the FROZEN
+    section (text before `## RESULTS`) changed — the true freeze point —
+    with the digest of that frozen text only, not the whole (possibly
+    RESULTS-amended) current file. Returns (None, None) if the frozen text
+    at that commit doesn't match the frozen text on disk right now (history
+    inconsistent with the working copy)."""
+    try:
+        rel = str(prereg_path.relative_to(repo_dir))
+    except ValueError:
+        return None, None
     try:
         proc = subprocess.run(
-            ["git", "log", "-1", "--format=%H", "--", str(prereg_path.relative_to(repo_dir))],
+            ["git", "log", "--format=%H", "--reverse", "--", rel],
             cwd=repo_dir, capture_output=True, text=True, check=True)
-        return proc.stdout.strip() or None
-    except (OSError, subprocess.CalledProcessError, ValueError):
-        return None
+    except (OSError, subprocess.CalledProcessError):
+        return None, None
+    commits = proc.stdout.split()
+    if not commits or not prereg_path.exists():
+        return None, None
+    current_frozen = _frozen_prereg_bytes(prereg_path.read_bytes())
+    freeze_commit, freeze_frozen = None, None
+    for sha in commits:
+        show = subprocess.run(["git", "show", f"{sha}:{rel}"], cwd=repo_dir,
+                              capture_output=True)
+        if show.returncode != 0:
+            continue
+        frozen = _frozen_prereg_bytes(show.stdout)
+        if frozen != freeze_frozen:
+            freeze_commit, freeze_frozen = sha, frozen
+    if freeze_frozen != current_frozen:
+        return None, None
+    return freeze_commit, hashlib.sha256(freeze_frozen).hexdigest()
 
 
 def _is_ancestor(ancestor: str | None, descendant: str | None, repo_dir: Path) -> bool | None:
@@ -188,10 +225,9 @@ def build_manifest(*, data_dir: Path, argv: list[str], run_started_at: str,
     repo_dir = Path(__file__).resolve().parents[1]
     panel_path = data_dir / PANEL_FILE
     data_digest = _sha256_file(panel_path)
-    prereg_digest = _sha256_file(prereg_path)
     dates = pd.to_datetime(panel["date"])
     code_revision = _git_revision(repo_dir)
-    prereg_commit = _prereg_commit(repo_dir, prereg_path)
+    prereg_commit, prereg_digest = _prereg_freeze(repo_dir, prereg_path)
     return {
         "data_path": str(panel_path),
         "data_digest": f"sha256:{data_digest}" if data_digest else None,
