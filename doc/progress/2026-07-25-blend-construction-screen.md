@@ -1,8 +1,12 @@
 # 2026-07-25 — blend-construction screen: provenance repair, PASS
 
 STATUS:    screen prereg frozen (commit 2175e36) then run; evidence committed;
-           provenance repaired (commit 9c97907) after model#74 review found the
-           first bundle's manifest bound to an uncommitted scratchpad runner
+           provenance repaired in two rounds after model#74 review: round 1
+           (commit 9c97907) moved the run off an uncommitted scratchpad
+           runner; round 2 (commits d8641a4, c054934) fixed the manifest's
+           prereg_commit/prereg_digest, which round 1 was still stamping
+           from the later in-place RESULTS append (88809c9) instead of the
+           true pre-run freeze (2175e36)
 WHAT:      the exact blend construction screened with committed replayable
            evidence — the hole the model#73 downgrade identified.
 WHY/DIR:   model#73 downgraded the objective-blend result to EXPLORATORY/
@@ -27,8 +31,12 @@ EVIDENCE:
                  prereg; this run's sole role is durable provenance
   best-known?:   deterministic executor; re-run from committed source reproduced
                  byte-identical statistics to the original (uncommitted-runner)
-                 pass; manifest now carries a real code_revision (9c97907, parent
-                 d9aeeab) and non-null prereg_digest/prereg_commit with
+                 pass; manifest now carries a real code_revision (c054934, parent
+                 d8641a4) and prereg_digest/prereg_commit bound to the true
+                 pre-run freeze commit (2175e36) via _prereg_freeze(), which
+                 walks the prereg file's full history for the last commit at
+                 which the text BEFORE `## RESULTS` changed, rather than
+                 `git log -1` on the whole (RESULTS-amended) file; with
                  prereg_commit_is_ancestor_of_code_revision: true
   scope:         "screen-grade PASS (+0.0627, 3/3 seeds); carries NO verdict; its
                  only consequence is unlocking the step-2 confirmatory prereg with

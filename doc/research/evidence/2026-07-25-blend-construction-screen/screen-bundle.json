@@ -34,16 +34,16 @@
       "git_revision": "3aa6bff0d9628660cd4df86c7c997a7348322fd7"
     },
     "prereg_path": "/Users/renhao/git/github/renquant-model/doc/research/2026-07-25-blend-construction-screen-prereg.md",
-    "prereg_digest": "sha256:c98d97b3fd5b5f4ab982cdf9fc7d9b15f8487fb129c62fd481d293dbf666bd75",
-    "prereg_commit": "88809c976a8101eb6b51b0f0186fbe18a1fa5e7b",
-    "code_revision": "9c97907c29e0f9dd3f938a3aa13de6caa5f30ffb",
+    "prereg_digest": "sha256:e23eea3a7fe33ebbc01f41d908c506272485ddf7a584d6689d44fc28e3cda4fe",
+    "prereg_commit": "2175e36ec3f0957b87976566e3a0488136304ba3",
+    "code_revision": "c054934e43ca4891020f4723f8b7216d3027fdf6",
     "code_revision_parents": [
-      "d9aeeabcea5e583d12e5fce45216fcdd31f81fa1"
+      "d8641a430a86223189030e49026d93004f1665f3"
     ],
     "prereg_commit_is_ancestor_of_code_revision": true,
     "command": "scripts/research_objective_blend_confirm.py --seeds 42,43,44 --prereg-path doc/research/2026-07-25-blend-construction-screen-prereg.md --out doc/research/evidence/2026-07-25-blend-construction-screen/screen-bundle.json",
-    "run_started_at": "2026-07-26T06:29:36.520800+00:00",
-    "run_finished_at": "2026-07-26T06:36:49.518204+00:00"
+    "run_started_at": "2026-07-26T07:26:29.038408+00:00",
+    "run_finished_at": "2026-07-26T07:33:48.379891+00:00"
   },
   "series": {
     "blend_clean_by_date": {
