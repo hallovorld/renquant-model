@@ -230,6 +230,34 @@ def _producing_script_revision() -> str | None:
         return None
 
 
+def _repo_relative(path: Path, repo_dir: Path) -> str:
+    """POSIX-relative form of `path` under `repo_dir`, else the absolute
+    string unchanged (model#76 review round 2: the manifest's `prereg_path`/
+    `command` must record the same repo-relative form the prereg's frozen
+    invocation uses — a workstation-absolute path fails a literal comparison
+    against the frozen command string even when the target file is
+    identical)."""
+    try:
+        return path.resolve().relative_to(repo_dir).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def _canonicalize_command(argv: list[str], repo_dir: Path) -> str:
+    """Repo-relative form of every in-repo absolute path token in `argv`, so
+    `manifest["command"]` matches the prereg's frozen invocation regardless
+    of whether the run happened to be launched with absolute or relative
+    arguments. Tokens outside `repo_dir` (e.g. a cross-repo `--data-dir`)
+    are left as-is — `data_path`/`data_dir` are workstation-local by design
+    (model#73 review HIGH: `data_digest` + `producing_script.git_revision`
+    are the portable proxies for that input, not the raw path)."""
+    tokens = []
+    for tok in argv:
+        p = Path(tok)
+        tokens.append(_repo_relative(p, repo_dir) if p.is_absolute() else tok)
+    return " ".join(tokens)
+
+
 def build_manifest(*, data_dir: Path, argv: list[str], run_started_at: str,
                     run_finished_at: str, panel: pd.DataFrame,
                     prereg_path: Path = PREREG_PATH) -> dict:
@@ -271,14 +299,14 @@ def build_manifest(*, data_dir: Path, argv: list[str], run_started_at: str,
             "path": _PANEL_BUILDER_SCRIPT,
             "git_revision": _producing_script_revision(),
         },
-        "prereg_path": str(prereg_path),
+        "prereg_path": _repo_relative(prereg_path, repo_dir),
         "prereg_digest": f"sha256:{prereg_digest}" if prereg_digest else None,
         "prereg_commit": prereg_commit,
         "code_revision": code_revision,
         "code_revision_parents": _git_revision_parents(repo_dir),
         "prereg_commit_is_ancestor_of_code_revision":
             _is_ancestor(prereg_commit, code_revision, repo_dir),
-        "command": " ".join(argv),
+        "command": _canonicalize_command(argv, repo_dir),
         "run_started_at": run_started_at,
         "run_finished_at": run_finished_at,
     }
@@ -510,10 +538,7 @@ def main() -> int:
                                run_finished_at=run_finished_at, panel=panel,
                                prereg_path=prereg_path)
 
-    try:
-        prereg_label = str(prereg_path.relative_to(repo_dir))
-    except ValueError:
-        prereg_label = str(prereg_path)
+    prereg_label = _repo_relative(prereg_path, repo_dir)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     json.dump({"prereg": prereg_label,

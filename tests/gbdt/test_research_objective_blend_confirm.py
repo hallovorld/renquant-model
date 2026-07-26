@@ -201,6 +201,8 @@ def test_build_manifest_digests_command_and_timestamps(tmp_path):
     assert manifest["data_digest"] == "sha256:" + mod._sha256_file(data_dir / PANEL_FILE)
     assert manifest["prereg_digest"] == "sha256:" + mod._sha256_file(mod.PREREG_PATH)
     assert manifest["command"] == "research_objective_blend_confirm.py --out x.json"
+    # repo-relative, not the workstation-absolute PREREG_PATH (model#76 review round 2)
+    assert manifest["prereg_path"] == "doc/research/2026-07-25-objective-blend-confirmatory-prereg.md"
     assert manifest["code_revision"]  # non-empty: a real SHA inside this repo's checkout
     assert manifest["code_revision_parents"]  # non-empty: HEAD has >=1 parent in this repo
     assert manifest["prereg_commit"]  # non-empty: the prereg file is committed in this repo
@@ -211,6 +213,36 @@ def test_build_manifest_digests_command_and_timestamps(tmp_path):
     assert manifest["date_range"] == ["2026-01-02", "2026-01-06"]
     assert manifest["producing_script"]["repo"] == "renquant-base-data"
     assert manifest["producing_script"]["path"] == mod._PANEL_BUILDER_SCRIPT
+
+
+# --- path canonicalization: manifest.command/prereg_path must be repo-relative ---
+def test_repo_relative_converts_an_in_repo_absolute_path():
+    repo_dir = _SPEC_PATH.resolve().parents[1]
+    abs_path = repo_dir / "doc" / "research" / "2026-07-25-objective-blend-confirmatory-prereg.md"
+    assert mod._repo_relative(abs_path, repo_dir) == "doc/research/2026-07-25-objective-blend-confirmatory-prereg.md"
+
+
+def test_repo_relative_leaves_an_out_of_repo_path_absolute():
+    # cross-repo paths (e.g. --data-dir into the sibling RenQuant repo) have no
+    # repo-relative form here — left unchanged rather than mangled.
+    repo_dir = _SPEC_PATH.resolve().parents[1]
+    out_of_repo = Path("/Users/renhao/git/github/RenQuant/data/panel.parquet")
+    assert mod._repo_relative(out_of_repo, repo_dir) == str(out_of_repo)
+
+
+def test_canonicalize_command_relativizes_only_in_repo_absolute_tokens():
+    repo_dir = _SPEC_PATH.resolve().parents[1]
+    argv = [str(repo_dir / "scripts" / "research_objective_blend_confirm.py"),
+            "--seeds", "60,61,62",
+            "--prereg-path", str(repo_dir / "doc" / "research" / "prereg.md"),
+            "--data-dir", "/Users/renhao/git/github/RenQuant/data",
+            "--out", str(repo_dir / "doc" / "research" / "evidence" / "bundle.json")]
+    command = mod._canonicalize_command(argv, repo_dir)
+    assert command == (
+        "scripts/research_objective_blend_confirm.py --seeds 60,61,62 "
+        "--prereg-path doc/research/prereg.md "
+        "--data-dir /Users/renhao/git/github/RenQuant/data "
+        "--out doc/research/evidence/bundle.json")
 
 
 def test_build_manifest_missing_data_file_reports_none_digest_not_a_crash(tmp_path):
@@ -353,19 +385,24 @@ def test_build_manifest_binds_to_overridden_prereg_path(tmp_path):
         run_finished_at="2026-07-25T09:00:00+00:00", panel=_fake_panel(),
         prereg_path=override_prereg)
 
-    assert manifest["prereg_path"] == str(override_prereg)
+    # repo-relative, not the workstation-absolute override_prereg (model#76 review
+    # round 2: the manifest must match the prereg's frozen repo-relative invocation)
+    repo_dir = _SPEC_PATH.resolve().parents[1]
+    rel_override = str(override_prereg.relative_to(repo_dir))
+    assert manifest["prereg_path"] == rel_override
     # The contract (model#74 review round 4): the manifest must equal the
     # _prereg_freeze ground truth FOR THE OVERRIDDEN PATH — not merely differ
     # from the default's. (Asserting inequality of the two freeze commits was
     # a false assumption: two preregs can legitimately be frozen in the same
     # commit, and a shallow CI checkout can collapse their histories.)
-    repo_dir = _SPEC_PATH.resolve().parents[1]
     ov_commit, ov_digest = mod._prereg_freeze(repo_dir, override_prereg)
     assert manifest["prereg_commit"] == ov_commit
     assert manifest["prereg_digest"] == (f"sha256:{ov_digest}" if ov_digest
                                          and not str(ov_digest).startswith("sha256:")
                                          else ov_digest)
-    assert manifest["command"] == " ".join(argv)
+    expected_argv = ["research_objective_blend_confirm.py", "--seeds", "42,43,44",
+                      "--prereg-path", rel_override, "--out", "x.json"]
+    assert manifest["command"] == " ".join(expected_argv)
 
 
 def test_prereg_freeze_keys_off_the_path_argument_not_silently_ignored():
