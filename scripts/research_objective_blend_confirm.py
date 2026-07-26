@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import subprocess
 import sys
 import time
@@ -126,18 +127,24 @@ def _git_revision_parents(repo_dir: Path) -> list[str]:
         return []
 
 
-_RESULTS_MARKER = b"\n## RESULTS"
+_RESULTS_SPLIT_RE = re.compile(rb"\n+(?:-{3,}\s*\n+)?## RESULTS")
 
 
 def _frozen_prereg_bytes(raw: bytes) -> bytes:
     """The prereg's frozen decision-rule text only, excluding any
     `## RESULTS` section appended in place after the run (this repo's
     convention for preregs that record their own results, e.g. the
-    blend-construction screen). Preregs that stay unmodified after freeze
-    (no such heading — the confirmatory preregs, whose results land in a
+    blend-construction screen). The append also inserts a `---` horizontal
+    rule directly above the heading as a visual separator (model#74 review,
+    round 2): a plain `\\n## RESULTS` split leaves that rule attached to the
+    "frozen" side, so its bytes differ from the pre-append file and
+    `_prereg_freeze` misidentifies the append commit as a new freeze. The
+    regex consumes an optional `---` rule (and its surrounding blank lines)
+    together with the heading. Preregs that stay unmodified after freeze (no
+    such heading — the confirmatory preregs, whose results land in a
     separate file) return their content unchanged."""
-    idx = raw.find(_RESULTS_MARKER)
-    return raw if idx == -1 else raw[:idx].rstrip() + b"\n"
+    m = _RESULTS_SPLIT_RE.search(raw)
+    return raw if m is None else raw[:m.start()].rstrip() + b"\n"
 
 
 def _prereg_freeze(repo_dir: Path, prereg_path: Path = PREREG_PATH) -> tuple[str | None, str | None]:

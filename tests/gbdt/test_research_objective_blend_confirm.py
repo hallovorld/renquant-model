@@ -252,10 +252,13 @@ def test_prereg_freeze_ignores_a_later_results_append():
         repo_dir, prereg, freeze_sha = _make_prereg_repo(Path(td))
         frozen_bytes = prereg.read_bytes()
 
-        # Post-run amendment: append a RESULTS section, as this repo's own
-        # screen-prereg convention does (in-place evidence commit).
+        # Post-run amendment: append a "---" rule + RESULTS section, exactly
+        # as this repo's own screen-prereg convention does (round 2: the
+        # first fix attempt only tested a bare "\n## RESULTS" append with no
+        # separator and missed that the "---" rule leaks into the "frozen"
+        # side of a naive split).
         with open(prereg, "a") as f:
-            f.write("\n## RESULTS\n\nran fine\n")
+            f.write("\n\n---\n\n## RESULTS\n\nran fine\n")
         _git(repo_dir, "add", "prereg.md")
         _git(repo_dir, "commit", "-q", "-m", "amend with results")
 
@@ -273,3 +276,35 @@ def test_prereg_freeze_matches_whole_file_when_never_amended():
         commit, digest = mod._prereg_freeze(repo_dir, prereg)
         assert commit == freeze_sha
         assert digest == mod.hashlib.sha256(prereg.read_bytes()).hexdigest()
+
+
+# --- manifest binding: --seeds/--prereg-path override path (model#74/#75 review) ---
+def test_build_manifest_binds_to_overridden_prereg_path(tmp_path):
+    """A `--prereg-path` override (a screen or fresh-seed confirmatory replay
+    under a different frozen prereg) must stamp digest/commit/command against
+    THAT file, not silently fall back to the default confirmatory PREREG_PATH."""
+    from renquant_model_gbdt.panel_data import PANEL_FILE
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / PANEL_FILE).write_bytes(b"fake panel bytes")
+
+    override_prereg = (mod.PREREG_PATH.parent
+                        / "2026-07-25-blend-construction-screen-prereg.md")
+    assert override_prereg != mod.PREREG_PATH
+    assert override_prereg.exists()  # a different real committed prereg in this repo
+
+    argv = ["research_objective_blend_confirm.py", "--seeds", "42,43,44",
+            "--prereg-path", str(override_prereg), "--out", "x.json"]
+    manifest = mod.build_manifest(
+        data_dir=data_dir, argv=argv,
+        run_started_at="2026-07-25T08:00:00+00:00",
+        run_finished_at="2026-07-25T09:00:00+00:00", panel=_fake_panel(),
+        prereg_path=override_prereg)
+
+    assert manifest["prereg_path"] == str(override_prereg)
+    assert manifest["prereg_digest"] != "sha256:" + mod._sha256_file(mod.PREREG_PATH)
+    repo_dir = _SPEC_PATH.resolve().parents[1]
+    default_commit, _ = mod._prereg_freeze(repo_dir, mod.PREREG_PATH)
+    assert manifest["prereg_commit"] != default_commit
+    assert manifest["command"] == " ".join(argv)
