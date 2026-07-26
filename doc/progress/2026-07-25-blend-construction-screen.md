@@ -21,7 +21,23 @@ STATUS:    screen prereg frozen (commit 2175e36) then run; evidence committed;
            serialized the nulls and `main()` still wrote the bundle;
            `build_manifest()` now raises before any manifest is produced
            whenever the pre-run freeze can't be resolved, with a regression
-           test that forces the unresolved path and asserts the raise
+           test that forces the unresolved path and asserts the raise;
+           round 7 closed the CI consequence of round 5/6's fail-closed
+           behavior — CI's `actions/checkout@v4` model checkout is a
+           depth-1 shallow clone, so the now-strict `_prereg_freeze()`
+           correctly raised inside the real (non-mocked) manifest tests
+           that exercise this repo's own live prereg history. The direct
+           fix (`fetch-depth: 0` on that checkout step) needs the
+           `workflow` PAT scope, which this agent's token deliberately
+           lacks (`doc/ops/agent-token-storage.md` lists Workflows R&W as
+           opt-in only) — rather than reach for a broader-scoped
+           credential to push around that restriction, added
+           `tests/gbdt/conftest.py`, a session-scoped autouse fixture that
+           runs `git fetch --unshallow` before these tests execute if the
+           checkout is shallow. Verified against a real `--depth 1` clone
+           of this repo: the 3 tests that were failing there now pass and
+           the clone reports non-shallow afterward. `.github/workflows/
+           ci.yml` is untouched.
 WHAT:      the exact blend construction screened with committed replayable
            evidence — the hole the model#73 downgrade identified.
 WHY/DIR:   model#73 downgraded the objective-blend result to EXPLORATORY/
