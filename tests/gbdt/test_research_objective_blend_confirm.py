@@ -315,3 +315,43 @@ def test_build_manifest_binds_to_overridden_prereg_path(tmp_path):
                                          and not str(ov_digest).startswith("sha256:")
                                          else ov_digest)
     assert manifest["command"] == " ".join(argv)
+
+
+def test_prereg_freeze_keys_off_the_path_argument_not_silently_ignored():
+    """model#74 review round 4 P1: the equality check above compares the
+    manifest to `_prereg_freeze(repo, override_prereg)` — a tautology if
+    `_prereg_freeze` (or the `prereg_path` plumbing into it) silently ignored
+    its argument and always resolved the default file, since both sides of
+    the comparison would then drift identically. Close that gap directly: on
+    a synthetic repo where two files are frozen in two DISTINCT commits,
+    `_prereg_freeze` must return each file's own commit/digest, not the same
+    pair for both."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        repo_dir = Path(td) / "repo"
+        repo_dir.mkdir()
+        _git(repo_dir, "init", "-q")
+        _git(repo_dir, "config", "user.email", "test@example.com")
+        _git(repo_dir, "config", "user.name", "Test")
+
+        prereg_a = repo_dir / "a.md"
+        prereg_a.write_text("# A\n\nSeeds 1/2/3.\n")
+        _git(repo_dir, "add", "a.md")
+        _git(repo_dir, "commit", "-q", "-m", "freeze a")
+        commit_a = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo_dir,
+                                  capture_output=True, text=True, check=True).stdout.strip()
+
+        prereg_b = repo_dir / "b.md"
+        prereg_b.write_text("# B\n\nSeeds 4/5/6.\n")
+        _git(repo_dir, "add", "b.md")
+        _git(repo_dir, "commit", "-q", "-m", "freeze b")
+        commit_b = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo_dir,
+                                  capture_output=True, text=True, check=True).stdout.strip()
+
+        commit_from_a, digest_from_a = mod._prereg_freeze(repo_dir, prereg_a)
+        commit_from_b, digest_from_b = mod._prereg_freeze(repo_dir, prereg_b)
+
+        assert commit_from_a == commit_a
+        assert commit_from_b == commit_b
+        assert commit_from_a != commit_from_b
+        assert digest_from_a != digest_from_b
