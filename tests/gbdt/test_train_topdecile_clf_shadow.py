@@ -100,14 +100,44 @@ def test_stamp_contract_adds_fingerprint_and_smoke():
 
 
 def test_stamp_contract_must_run_before_shadow_only_fields():
-    """Regression guard: shadow-only bookkeeping fields (shadow_role etc.) are
-    NOT classified in renquant-common's fingerprint tables, so stamping the
-    contract after they're added must hard-fail — pinning the required call
-    order in main() (stamp_contract, then add shadow_role/blend_spec/
-    classifier_label_spec)."""
+    """Regression guard: a BARE top-level shadow-only key (shadow_role etc.)
+    is NOT classified in renquant-common's fingerprint tables, so it must
+    stay nested under the OPERATIONAL ``metadata`` envelope, never added as
+    its own top-level key — this pins that a reintroduced bare top-level
+    field (e.g. reverting main()'s ``artifact["metadata"][...]`` nesting
+    back to ``artifact[...]``) is caught immediately by a hard failure
+    rather than silently producing an unfingerprintable artifact."""
     from renquant_common.model_fingerprint import UnclassifiedKeyError
 
     artifact, booster, feat_cols = _toy_artifact()
     artifact["shadow_role"] = "blend_clf_leg"
     with pytest.raises(UnclassifiedKeyError):
         mod.stamp_contract(artifact, booster, feat_cols)
+
+
+def test_full_artifact_with_shadow_fields_is_fingerprint_verifiable():
+    """End-to-end contract test (Codex P1): main()'s actual sequence —
+    stamp_contract, then nest shadow_role/blend_spec/classifier_label_spec
+    under artifact["metadata"] (OPERATIONAL, not new top-level keys) — must
+    leave the FINAL artifact hashable and round-trippable through the shared
+    fingerprint contract, not just pin a failure on the unfixed shape."""
+    from renquant_common.model_fingerprint import model_content_sha256, stamp, verify
+
+    artifact, booster, feat_cols = _toy_artifact()
+    mod.stamp_contract(artifact, booster, feat_cols)
+    artifact["metadata"]["shadow_role"] = "blend_clf_leg"
+    artifact["metadata"]["blend_spec"] = {
+        "formula": "z(prod_score) + z(clf_score) per date",
+        "prereg": "model#75 doc/research/2026-07-25-blend-confirmatory-v2-prereg.md"}
+    artifact["metadata"]["classifier_label_spec"] = {
+        "kind": "top_decile_membership", "base_label": "fwd_60d_excess",
+        "threshold_pct": 0.9}
+
+    # No UnclassifiedKeyError: every top-level key (incl. "metadata", whose
+    # nested shadow fields are now present) is classified.
+    fp = model_content_sha256(artifact)
+    assert fp == artifact["config_fingerprint"]
+
+    stamped = stamp(artifact)
+    artifact.update(stamped)
+    verify(artifact, stamped["model_content_fingerprint"], stamped["fingerprint_schema_version"])

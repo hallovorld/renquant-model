@@ -81,10 +81,13 @@ def stamp_contract(artifact: dict, booster, feat_cols: list[str]) -> dict:
     shadow-slot fingerprint check sees the same ``config_fingerprint`` /
     ``metadata`` fields a production artifact carries.
 
-    Must run BEFORE any shadow-only bookkeeping field (``shadow_role`` etc.)
-    is added: ``model_content_sha256`` hard-errors on any top-level key that
-    is not classified PREDICTIVE/OPERATIONAL in renquant-common, and the
-    shadow-only fields are deliberately unclassified there.
+    Must run BEFORE any shadow-only bookkeeping is added: this is what
+    creates ``artifact["metadata"]`` (via ``attach_inference_smoke``), the
+    OPERATIONAL-classified envelope the shadow-only fields nest into (see
+    ``main()`` below) — new UNNESTED top-level keys are refused by
+    ``model_content_sha256`` (``UnclassifiedKeyError``) because they are not
+    in renquant-common's PREDICTIVE_KEYS/OPERATIONAL_KEYS tables, and that
+    table is a modeling-contract change owned by that repo, not this script.
     """
     artifact["config_fingerprint"] = model_content_sha256(artifact)
     attach_inference_smoke(artifact, booster, feat_cols)
@@ -132,12 +135,19 @@ def main() -> int:
             "frozen forward readout."),
     )
     stamp_contract(artifact, booster, feat_cols)
-    artifact["shadow_role"] = "blend_clf_leg"
-    artifact["blend_spec"] = {"formula": "z(prod_score) + z(clf_score) per date",
-                              "prereg": "model#75 doc/research/2026-07-25-blend-confirmatory-v2-prereg.md"}
-    artifact["classifier_label_spec"] = {"kind": "top_decile_membership",
-                                         "base_label": LABEL,
-                                         "threshold_pct": TOP_DECILE}
+    # Nested under the already-OPERATIONAL "metadata" envelope (schema-v1
+    # classifies TOP-LEVEL keys and treats a nested value as one atomic unit
+    # of its parent's classification) — NOT new top-level keys, which
+    # renquant-common's total-classification hasher refuses outright
+    # (Codex P1: a bare shadow_role/blend_spec/classifier_label_spec made
+    # the artifact permanently unfingerprintable).
+    artifact["metadata"]["shadow_role"] = "blend_clf_leg"
+    artifact["metadata"]["blend_spec"] = {
+        "formula": "z(prod_score) + z(clf_score) per date",
+        "prereg": "model#75 doc/research/2026-07-25-blend-confirmatory-v2-prereg.md"}
+    artifact["metadata"]["classifier_label_spec"] = {
+        "kind": "top_decile_membership", "base_label": LABEL,
+        "threshold_pct": TOP_DECILE}
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(artifact))
     pos_rate = float(y.mean())

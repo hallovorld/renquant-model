@@ -1,6 +1,6 @@
 # 2026-07-26 — shadow artifact trainer: top-decile classifier (pipeline#213 step 3)
 
-STATUS:    trainer script + tests; NO artifact produced by this PR
+STATUS:    delivered
 WHAT:      scripts/train_topdecile_clf_shadow.py — trains the clf leg of the
            CONFIRMED blend (frozen construction: per-date top-decile membership
            of fwd_60d_excess, frozen CLF params, production normalization stamped
@@ -56,3 +56,24 @@ and `/tmp/production-shadow/model.json` bypassed).
 Verified: `pytest -q tests/gbdt/test_train_topdecile_clf_shadow.py` -> 6
 passed; `pytest -q tests/gbdt/` -> 113 passed, no regressions. No
 production-path writes in the diff.
+
+ROUND-3 FIX (Codex MED 1 + P1, both fixed): (1) `STATUS:` above used
+freeform text instead of a C5-canonical value (`delivered | in-progress |
+planned | rejected`) — normalized to `delivered` (the doc's own WHY/DIR
+already states this PR is code-only, no artifact produced). (2)
+`stamp_contract()` fixes `config_fingerprint`/`metadata` before `main()`
+added `shadow_role`/`blend_spec`/`classifier_label_spec` as bare NEW
+top-level keys — those three keys are absent from renquant-common's
+`PREDICTIVE_KEYS`/`OPERATIONAL_KEYS`, so every later
+`model_content_sha256()`/`verify()` of the written artifact hard-failed with
+`UnclassifiedKeyError`, making the artifact permanently unfingerprintable.
+Fixed by nesting all three fields under `artifact["metadata"]` instead
+(already OPERATIONAL-classified; schema v1 treats a nested value as one
+atomic unit of its parent key's classification, so no renquant-common table
+change is needed). Added
+`test_full_artifact_with_shadow_fields_is_fingerprint_verifiable`, an
+end-to-end test that runs the actual `stamp_contract` + metadata-nesting
+sequence and round-trips the final artifact through
+`model_content_sha256()`/`stamp()`/`verify()`.
+Verified: `pytest -q tests/gbdt/test_train_topdecile_clf_shadow.py` -> 7
+passed; `pytest -q tests/gbdt/` -> 114 passed, no regressions.
