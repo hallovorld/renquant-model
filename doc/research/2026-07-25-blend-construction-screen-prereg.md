@@ -38,3 +38,29 @@ informal screen into the durable record.
   `doc/research/evidence/2026-07-25-blend-construction-screen/`.
 - Pass bar (for proceeding to step 2 only): point estimate > 0 and ≥2/3
   seeds positive. Anything else closes the reopening chain as REFUTED.
+
+---
+
+## RESULTS (evidence commit — the frozen section above is unamended)
+
+Run completed same day via the merged guard-faithful executor restricted to
+the frozen screen seeds (42/43/44); full replayable bundle committed at
+`doc/research/evidence/2026-07-25-blend-construction-screen/screen-bundle.json`
+(freeze manifest carries data + prereg digests).
+
+| statistic | value |
+|---|---|
+| blend clean top-10 spread | +0.3135/60d |
+| rank60 clean top-10 spread | +0.2508/60d |
+| paired diff | **+0.0627**, block-bootstrap 90% CI [+0.0027, +0.1305] |
+| seeds positive | **3/3** |
+| winsorized ±50% diff | +0.0096 ≥ 0 |
+
+**Screen bar (frozen above): point estimate > 0 AND ≥2/3 seeds positive →
+PASS.** (The executor also prints its 10-seed confirmatory verdict line —
+INCONCLUSIVE at n=3 — which does not apply to this screen and is quoted
+here only for transparency.)
+
+Consequence per the reopening chain: step 2 proceeds — a re-frozen
+confirmatory prereg citing THIS committed evidence, with fresh seeds 60-69
+(an independent draw, not a replay).
