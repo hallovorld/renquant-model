@@ -303,8 +303,15 @@ def test_build_manifest_binds_to_overridden_prereg_path(tmp_path):
         prereg_path=override_prereg)
 
     assert manifest["prereg_path"] == str(override_prereg)
-    assert manifest["prereg_digest"] != "sha256:" + mod._sha256_file(mod.PREREG_PATH)
+    # The contract (model#74 review round 4): the manifest must equal the
+    # _prereg_freeze ground truth FOR THE OVERRIDDEN PATH — not merely differ
+    # from the default's. (Asserting inequality of the two freeze commits was
+    # a false assumption: two preregs can legitimately be frozen in the same
+    # commit, and a shallow CI checkout can collapse their histories.)
     repo_dir = _SPEC_PATH.resolve().parents[1]
-    default_commit, _ = mod._prereg_freeze(repo_dir, mod.PREREG_PATH)
-    assert manifest["prereg_commit"] != default_commit
+    ov_commit, ov_digest = mod._prereg_freeze(repo_dir, override_prereg)
+    assert manifest["prereg_commit"] == ov_commit
+    assert manifest["prereg_digest"] == (f"sha256:{ov_digest}" if ov_digest
+                                         and not str(ov_digest).startswith("sha256:")
+                                         else ov_digest)
     assert manifest["command"] == " ".join(argv)
