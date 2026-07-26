@@ -47,7 +47,7 @@
       "path": "src/renquant_base_data/alpha158_fund_panel.py",
       "git_revision": "3aa6bff0d9628660cd4df86c7c997a7348322fd7"
     },
-    "prereg_path": "/Users/renhao/git/github/renquant-model/doc/research/2026-07-25-blend-confirmatory-v2-prereg.md",
+    "prereg_path": "doc/research/2026-07-25-blend-confirmatory-v2-prereg.md",
     "prereg_digest": "sha256:230bff930aacf765222abf9d88a12b360c330d36ba2042821a8dacc064106fc0",
     "prereg_commit": "4a040a97aa338112cbcad53475d63ae86723fc36",
     "code_revision": "ac2a5fe0235ea8aba9f3ecf1de541dcdb33d8773",
@@ -56,7 +56,7 @@
       "4a040a97aa338112cbcad53475d63ae86723fc36"
     ],
     "prereg_commit_is_ancestor_of_code_revision": true,
-    "command": "/Users/renhao/git/github/renquant-model/scripts/research_objective_blend_confirm.py --seeds 60,61,62,63,64,65,66,67,68,69 --prereg-path /Users/renhao/git/github/renquant-model/doc/research/2026-07-25-blend-confirmatory-v2-prereg.md --out /Users/renhao/git/github/renquant-model/doc/research/evidence/2026-07-25-blend-confirmatory-v2/confirmatory-bundle.json",
+    "command": "scripts/research_objective_blend_confirm.py --seeds 60,61,62,63,64,65,66,67,68,69 --prereg-path doc/research/2026-07-25-blend-confirmatory-v2-prereg.md --out doc/research/evidence/2026-07-25-blend-confirmatory-v2/confirmatory-bundle.json",
     "run_started_at": "2026-07-26T11:48:22.918421+00:00",
     "run_finished_at": "2026-07-26T12:09:56.141781+00:00"
   },
