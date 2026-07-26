@@ -6,10 +6,16 @@ SEPARATE PR that may not amend this document.
 Chain: step 2 of the model#73 reopening condition. Screen (step 1, PASS,
 committed evidence): `doc/research/2026-07-25-blend-construction-screen-prereg.md`
 + `evidence/2026-07-25-blend-construction-screen/screen-bundle.json`. Step
-1's provenance was repaired in #74 (commit `b3a8a39`): the evidence bundle
-now carries a real `code_revision`/`prereg_digest`/`prereg_commit` bound to
-committed source, not an uncommitted scratchpad runner — the durable-
-provenance prerequisite this step-2 prereg cites is now provenance-valid.
+1's provenance was repaired in #74 across two rounds: round 1 (commit
+`b3a8a39`) moved the run off an uncommitted scratchpad runner but still
+stamped the manifest's `prereg_commit`/`prereg_digest` from a later
+in-place RESULTS-append commit (`88809c9`), not the actual pre-run freeze;
+round 2 (commits `d8641a4`, `c054934`) fixed the freeze-binding itself, and
+the evidence bundle now carries a real `code_revision` (`c054934`) and
+`prereg_commit`/`prereg_digest` bound to the true pre-run freeze
+(`2175e36`), with `prereg_commit_is_ancestor_of_code_revision: true` — the
+durable-provenance prerequisite this step-2 prereg cites is now
+provenance-valid.
 
 ## What makes this an independent confirmation
 
