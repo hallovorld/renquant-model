@@ -126,7 +126,7 @@ def _git_revision_parents(repo_dir: Path) -> list[str]:
         return []
 
 
-def _prereg_commit(repo_dir: Path) -> str | None:
+def _prereg_commit(repo_dir: Path, prereg_path: Path = PREREG_PATH) -> str | None:
     """Immutable commit that last froze the prereg text (model#73 review
     BLOCKER 2: "no immutable prereg_commit ... binding"). `prereg_digest`
     proves *which* text; this proves *which commit* froze it, so a reviewer
@@ -135,7 +135,7 @@ def _prereg_commit(repo_dir: Path) -> str | None:
     caught being wrong)."""
     try:
         proc = subprocess.run(
-            ["git", "log", "-1", "--format=%H", "--", str(PREREG_PATH.relative_to(repo_dir))],
+            ["git", "log", "-1", "--format=%H", "--", str(prereg_path.relative_to(repo_dir))],
             cwd=repo_dir, capture_output=True, text=True, check=True)
         return proc.stdout.strip() or None
     except (OSError, subprocess.CalledProcessError, ValueError):
@@ -169,7 +169,8 @@ def _producing_script_revision() -> str | None:
 
 
 def build_manifest(*, data_dir: Path, argv: list[str], run_started_at: str,
-                    run_finished_at: str, panel: pd.DataFrame) -> dict:
+                    run_finished_at: str, panel: pd.DataFrame,
+                    prereg_path: Path = PREREG_PATH) -> dict:
     """Reproducibility + pre-run-freeze manifest (model#68 review rounds
     3-4; model#73 review HIGH). `prereg_digest` proves which frozen
     decision-rule text the run executed against; a results PR is only an
@@ -177,15 +178,20 @@ def build_manifest(*, data_dir: Path, argv: list[str], run_started_at: str,
     frozen commit and this digest matches the prereg file at that commit.
     `row_count`/`date_range` plus `producing_script.git_revision` are a
     durable fingerprint for the input panel, independent of the
-    workstation-absolute `data_path`."""
+    workstation-absolute `data_path`. `prereg_path` defaults to this
+    executor's own frozen 10-seed confirmatory prereg but is overridable
+    (model#74/#75 review: a pre-registered replay under a different frozen
+    seed set — a screen or a fresh-seed confirmatory — must stamp digest/
+    commit against the prereg text actually governing that run, not this
+    file's default)."""
     from renquant_model_gbdt.panel_data import PANEL_FILE
     repo_dir = Path(__file__).resolve().parents[1]
     panel_path = data_dir / PANEL_FILE
     data_digest = _sha256_file(panel_path)
-    prereg_digest = _sha256_file(PREREG_PATH)
+    prereg_digest = _sha256_file(prereg_path)
     dates = pd.to_datetime(panel["date"])
     code_revision = _git_revision(repo_dir)
-    prereg_commit = _prereg_commit(repo_dir)
+    prereg_commit = _prereg_commit(repo_dir, prereg_path)
     return {
         "data_path": str(panel_path),
         "data_digest": f"sha256:{data_digest}" if data_digest else None,
@@ -196,7 +202,7 @@ def build_manifest(*, data_dir: Path, argv: list[str], run_started_at: str,
             "path": _PANEL_BUILDER_SCRIPT,
             "git_revision": _producing_script_revision(),
         },
-        "prereg_path": str(PREREG_PATH),
+        "prereg_path": str(prereg_path),
         "prereg_digest": f"sha256:{prereg_digest}" if prereg_digest else None,
         "prereg_commit": prereg_commit,
         "code_revision": code_revision,
@@ -280,11 +286,25 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--data-dir", default="/Users/renhao/git/github/RenQuant/data")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--seeds", default=None,
+                    help="comma-separated seed override, e.g. '42,43,44'. Default is "
+                         "the frozen 10-seed confirmatory SEEDS constant. For a "
+                         "pre-registered replay under a different frozen seed set "
+                         "(a screen or a fresh-seed confirmatory), this is the reviewed, "
+                         "immutable run input the prereg cites — nothing else in the "
+                         "executor may change.")
+    ap.add_argument("--prereg-path", default=None,
+                    help="override PREREG_PATH so the manifest's prereg_digest/"
+                         "prereg_commit stamp against the prereg text actually "
+                         "governing this run, instead of the default confirmatory prereg")
     args = ap.parse_args()
     out_path = Path(args.out)
     for bad in _FORBIDDEN:
         if bad in str(out_path.resolve()):
             raise SystemExit(f"refusing output near production: {bad!r}")
+    seeds = tuple(int(s) for s in args.seeds.split(",")) if args.seeds else SEEDS
+    repo_dir = Path(__file__).resolve().parents[1]
+    prereg_path = Path(args.prereg_path).resolve() if args.prereg_path else PREREG_PATH
     run_started_at = datetime.now(timezone.utc).isoformat()
 
     import xgboost as xgb
@@ -302,7 +322,7 @@ def main() -> int:
         e = int(vi[0]) - EMBARGO
         if e > 0 and len(vi):
             folds.append({"tr": set(dates[:e]), "va": set(dates[vi])})
-    print(f"panel {len(panel):,} · {len(folds)} folds · {len(SEEDS)} seeds", flush=True)
+    print(f"panel {len(panel):,} · {len(folds)} folds · {len(seeds)} seeds", flush=True)
 
     def predict(tr, va, arm, seed):
         if arm == "rank60":
@@ -362,7 +382,7 @@ def main() -> int:
     clean_series = {}
     for arm in ("rank60", "blend"):
         seed_clean, seed_clean_w = {}, {}
-        for seed in SEEDS:
+        for seed in seeds:
             t0 = time.time()
             rc = {d_: gs for d_, gs in run(arm, False, seed).items()}
             pc = {d_: gs for d_, gs in run(arm, True, seed).items()}
@@ -397,7 +417,7 @@ def main() -> int:
     by_seed_a = clean_series["blend_by_seed"]
     by_seed_b = clean_series["rank60_by_seed"]
     seed_signs = []
-    for s in SEEDS:
+    for s in seeds:
         ca = by_seed_a[s].dropna()
         cb = by_seed_b[s].dropna()
         cc = ca.index.intersection(cb.index)
@@ -412,17 +432,23 @@ def main() -> int:
     print(f"  blend clean spread : {a.mean():+.4f}/60d", flush=True)
     print(f"  rank60 clean spread: {b_.mean():+.4f}/60d", flush=True)
     print(f"  paired diff        : {diff.mean():+.4f}  90% CI [{lo:+.4f},{hi:+.4f}]", flush=True)
-    print(f"  guard: seeds positive {n_pos}/10 (need ≥{MIN_SEEDS_POSITIVE})", flush=True)
+    print(f"  guard: seeds positive {n_pos}/{len(seeds)} (need ≥{MIN_SEEDS_POSITIVE})", flush=True)
     print(f"  guard: winsorized ±50% diff {wins_diff:+.4f} (need ≥ 0)", flush=True)
     print(f"  VERDICT: {verdict}", flush=True)
 
     run_finished_at = datetime.now(timezone.utc).isoformat()
     manifest = build_manifest(data_dir=dd, argv=sys.argv, run_started_at=run_started_at,
-                               run_finished_at=run_finished_at, panel=panel)
+                               run_finished_at=run_finished_at, panel=panel,
+                               prereg_path=prereg_path)
+
+    try:
+        prereg_label = str(prereg_path.relative_to(repo_dir))
+    except ValueError:
+        prereg_label = str(prereg_path)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    json.dump({"prereg": "doc/research/2026-07-25-objective-blend-confirmatory-prereg.md",
-               "seeds": list(SEEDS), "diff_mean": float(diff.mean()),
+    json.dump({"prereg": prereg_label,
+               "seeds": list(seeds), "diff_mean": float(diff.mean()),
                "ci90": [lo, hi], "seeds_positive": n_pos,
                "winsorized_w50_diff": wins_diff, "verdict": verdict,
                "blend_clean": float(a.mean()), "rank60_clean": float(b_.mean()),
