@@ -27,19 +27,43 @@ on the exact environment (§3).**
 
 | item | frozen value |
 |---|---|
-| config derivation (NEW, per-batch step 0) | derive the prod-semantic WF config with the gate's own builder: `build_wf_config_from_prod(prod_config=<worktree runtime strategy-104 configs/strategy_config.json @5c3eae9d>, manifest_path='artifacts/sim/walkforward_manifest_gbdt_prod_recipe_v2.calibrated.json', strategy_dir=<WT>/backtesting/renquant_104)` → written to `artifacts/diagnostics/wf_eval_configs/strategy_config.sim_g4rerun_prod_semantic.json`; its sha256 recorded in the batch report. This is the SAME mechanism the continuously-verified weekly WF gate uses (`--derive-config-from-prod`); it inherits the QP-satisfying prod ranking block, engages the 43-fold calibrated manifest (start-eligible from 2023-12-26), and strips `shadow_models` (builder-documented, no trade-decision effect) |
+| config (FROZEN CONTENT, not launch-generated) | the prod-semantic WF config derived DURING THE SMOKE with the gate's own builder (`build_wf_config_from_prod`, the weekly gate's `--derive-config-from-prod` mechanism: QP-strict prod ranking block inherited, 43-fold calibrated manifest engaged, `shadow_models` stripped) is itself part of the frozen input bundle (§2) at `backtesting/renquant_104/artifacts/diagnostics/wf_eval_configs/strategy_config.sim_g4rerun_prod_semantic.json`; the launch consumes the bundle copy verbatim — nothing is generated at launch time |
 | per-seed invocation | `python -m renquant_backtesting.wf_gate.sim_driver --repo-root <WT> --strategy-config-name artifacts/diagnostics/wf_eval_configs/strategy_config.sim_g4rerun_prod_semantic.json --start 2024-01-02 --end 2026-03-28 --no-compare --seed <S> --sim-db-path data/sim_runs_seed<S>.db --skip-preflight` (env: worktree-runtime PYTHONPATH, `RENQUANT_REPO_ROOT=<WT>`, cwd `<WT>`) |
 | single authority leg | `--no-compare` (driver-native; supersedes the `--compare-to` same-name mechanism of the original §2 — same effect, explicit flag). One `run_backtest` ⇒ one `sim_run_id` ⇒ one DB ⇒ one ledger |
 | post-steps per seed (NEW) | (a) `python -m renquant_backtesting.analysis.backfill_forward_returns --repo-root <WT> --db data/sim_runs_seed<S>.db --source sim` — without it admissibility is 0/N ("no realized labels"); (b) model#65 converter with `--provenance-ledger <that seed's JSONL> --manifest-file <the 43-fold manifest> --expert-name xgb --score-column raw_panel` over the full window |
 | per-seed validity tripwires (NEW) | `SimAdapter init: models=N>0` and `score_distribution>0` — the stale-models failure mode exits 0 with an EMPTY universe; an empty leg is VOID and, being an environment defect, batch-voids per §5 |
 | wall-clock (measured, supersedes the ~3 h estimate) | ~24 min/leg measured at 2.4 s/bar × ≈562 bars + 72 s init; budget 45 min/leg; 5 seeds sequential ≈ 2–4 h local CPU |
 
-## 2. Amended §4 additions — environment provisioning (hard precondition)
+## 2. Amended §4 additions — the FROZEN INPUT BUNDLE (content-addressed,
+## immutable, verified before seed 101)
 
 A fresh worktree assembled from git alone CANNOT run this sim: four input
-groups are untracked or exist only as uncommitted live-tree state. Frozen
-provisioning (copy live tree → worktree, same relpaths; per-file manifests
-with size/mtime/sha256 archived with the batch report):
+groups are untracked or exist only as uncommitted live-tree state. Per the
+round-1 review, these are frozen NOW, pre-merge, as an immutable
+content-addressed bundle built from the SMOKE-PROVEN worktree snapshot
+(never re-copied from the mutable live tree):
+
+- **Bundle location:** `/Users/renhao/renquant_bundles/g4-rerun-inputs-20260727/`
+  (read-only, `chmod -R a-w`), 4,430 files, ~1.6 GB.
+- **Manifest:** `MANIFEST.sha256` inside the bundle — one line per file:
+  `sha256  size  relpath` — committed VERBATIM in this PR at
+  `doc/research/evidence/2026-07-27-g4-rerun-input-bundle.MANIFEST.sha256`.
+- **Frozen root digest** (sha256 of the manifest file itself):
+  `de72caaff96c3dbaa3da0dc8b43e8a5af970fea0381af82fcdc8e0a9df062df8`
+- **Launch preflight (MANDATORY, aborts before seed 101 on ANY mismatch):**
+  (a) recompute the bundle manifest file's sha256 and require equality with
+  the frozen root digest; (b) verify EVERY manifest-listed file exists in
+  the worktree with a matching sha256 (provisioning = copy bundle →
+  worktree); (c) file-set membership BOTH directions within the covered
+  groups — a file present in a covered directory but absent from the
+  manifest is a mismatch; (d) the derived config's digest must equal its
+  manifest entry. `revision_pins` still attest the CODE; the bundle
+  manifest attests the DATA/ARTIFACT inputs, closing the
+  uncommitted-live-state gap.
+
+The bundle covers (original live→worktree copy manifests retained in the
+batch archive as staging evidence only — the bundle is the sole
+authoritative source):
 
 1. `data/ohlcv/` (~250 MB, 2788 files) — the full price store; the smoke
    proved the self-fetched fallback covers only ~1 year and yields 0 bars.
@@ -61,8 +85,9 @@ with size/mtime/sha256 archived with the batch report):
    `data/news_sentiment_alpaca/` (~48 MB) — absent ⇒ fail-closed
    `panel_fundamentals_missing`, zero buys.
 
-Reads from the live tree are copy-only (cp), never git, never writes; the
-displaced worktree originals are preserved in the scratchpad.
+The live tree was read (cp) exactly once, during the smoke's staging; from
+this amendment on, ONLY the bundle is consumed. Displaced worktree
+originals are preserved in the scratchpad.
 
 ## 3. The completed end-to-end smoke (the §0 process rule, satisfied)
 
