@@ -1,48 +1,61 @@
-"""Convert a walk-forward sim DB + its WF manifest into Phase A ensemble inputs.
+"""Convert a walk-forward sim DB + its ``wf_sim_provenance.v1`` ledger into
+Phase A ensemble inputs.
 
 The Phase A runner (:mod:`phase_a_runner`) consumes, per expert, a *score
 directory* of per-date ``YYYY-MM-DD.json`` files that pass the Stage-0
 admissibility ledger (:mod:`admissibility_ledger`), plus one shared
-forward-returns CSV. The daily/backtest pipeline persists walk-forward-sim
-scores to a sim DB (``score_distribution``) and forward-return labels to
-``ticker_forward_returns``, but never exports them in that per-date schema.
-This converter bridges the gap for ANY single scorer's walk-forward-sim run.
+forward-returns CSV. The walk-forward sim persists per-date scores to a sim
+DB (``score_distribution``) and — since renquant-pipeline's provenance sink
+landed (design ``doc/design/2026-07-27-wf-sim-provenance-contract.md``,
+"#215") — appends generation-time provenance records to a
+``data/wf_provenance/<sim_run_id>.jsonl`` ledger. This converter bridges the
+gap for ANY single scorer's walk-forward-sim run.
 
-Why this exists (and why it is not :mod:`backfill_scores`): the retired
-``backfill_scores`` read ``runs.alpaca.db``, which does NOT persist a model's
-training cutoff or a content fingerprint, so every record honestly carried
-``training_cutoff="MISSING"`` and was correctly rejected by the canonical
-validator. A *walk-forward sim*, by contrast, is driven by a WF manifest whose
-per-fold provenance (``cutoff_date``, ``lookahead_days``, ``artifact_uri``) is
-exactly the missing point-in-time vintage. This converter stamps that real
-provenance, so the produced scores are genuinely admissible — not fabricated.
+Provenance model (design #215 §2.5 — extraction is a READ + VERIFY;
+reconstruction is only a CROSS-CHECK):
 
-Point-in-time correctness (addresses Codex feedback on model#64):
+* The ``wf_sim_provenance.v1`` JSONL ledger (``--provenance-ledger``,
+  REQUIRED) is the ONLY source of fold/artifact identity. Per prediction
+  date the converter requires the complete ``fold_resolved`` +
+  ``score_committed`` pair with matching keys and a matching
+  ``artifact_digest`` echo. Orphaned records (either kind alone),
+  non-identical duplicates, ``persisted: false``, ``pit_violation: true``,
+  and ``is_real_content_digest: false`` are all INADMISSIBLE — each
+  rejection is recorded with a machine-readable reason in the build
+  manifest.
+* The converter reads the score rows AT the recorded
+  ``score_observation_key`` (``(run_id, date, run_type)``) from the sim DB,
+  recomputes the canonical ``score_payload_digest`` over exactly what it
+  read back, and requires equality with the recorded digest plus an
+  ``n_rows`` match — proving the observation it consumes IS the one the sim
+  committed.
+* ``select_pit_fold`` + ``resolve_artifact_digest`` (the previous
+  post-hoc reconstruction path, kept in this module) now run ONLY as
+  independent cross-checks. ANY disagreement between the ledger's recorded
+  identity and the re-derived identity is a HARD error
+  (:class:`CrossCheckMismatchError`): the date's evidence is quarantined
+  and the build aborts before writing any output. Reconstruction is NEVER
+  a fallback for a missing/failed ledger fact.
+* Output stamping uses LEDGER facts verbatim: ``training_cutoff`` =
+  ``fold_resolved.cutoff_date``; ``model_content_sha256`` =
+  ``fold_resolved.artifact_digest``; ``score_timestamp`` =
+  ``score_committed.score_timestamp`` (the SIMULATED decision instant, per
+  design §2.2); ``as_of_date``/``data_watermark`` =
+  ``score_committed.input_watermark``. Nothing time- or identity-shaped is
+  recomputed at extraction time. A record with a null ``input_watermark``
+  is rejected (the emit-side PIT check could not run; extraction owns that
+  judgement and fails closed rather than fabricating a watermark).
 
-* A sim date ``D``'s PIT-clean model vintage is the walk-forward fold whose
-  ``cutoff_date + BUSINESS-DAYS(lookahead_days)`` is **strictly before** ``D``.
-  The offset is ``pandas.tseries.offsets.BDay`` (business days), NOT a calendar
-  ``timedelta`` — this matches the real ``effective_train_cutoff_date`` /
-  ``WalkForwardModelLoader.entry_as_of`` semantics (a fold's labels use data
-  through ``cutoff + lookahead`` business days, so the model only becomes
-  usable for prediction dates strictly after that effective cutoff). The
-  selected fold is the LATEST such eligible fold (the entry active as-of ``D``).
-* ``training_cutoff`` is stamped as the selected fold's real ``cutoff_date``
-  (never ``"MISSING"``). The model content fingerprint is the SHA-256 of the
-  fold's resolved ``artifact_uri`` file when readable (a genuine content
-  digest). When the artifact cannot be resolved on disk, the date is
-  EXCLUDED from output entirely -- a provenance-bound surrogate digest is
-  computed internally only to decide this exclusion; it is never written to
-  a score file, since the canonical validator checks digest SYNTAX only and
-  cannot otherwise distinguish a real digest from an unverified one.
-* A sim date before the first fold's effective cutoff has NO PIT-clean vintage
-  and is EXCLUDED (leakage-correct), never stamped with a leaky model.
+Consequence, stated plainly: sim history generated BEFORE the provenance
+sink existed has no ledger and is therefore permanently inadmissible
+through this converter. That is the point of the redesign (codex review on
+model#64/#65/#66), not a regression — admissible Phase-A evidence arrives
+only from post-#531 preregistered reruns that emit the ledger at
+generation time.
 
-Scorer-agnostic by construction: the sim DB path, the WF manifest, and the
-score column are all parameters. The XGB expert runs it against the GBDT
-walk-forward sim DB now; the PatchTST expert reuses the SAME converter later
-against the sim DB produced by re-running the sim driver with the fresh
-PatchTST WF manifest.
+Scorer-agnostic by construction: the sim DB path, the provenance ledger,
+the WF manifest (cross-check input), and the score column are all
+parameters.
 
 All output goes to an experiment-specific directory, never to production
 paths. Source DBs are opened read-only. Records carry an EXPLORATORY_ONLY
@@ -52,6 +65,7 @@ Usage::
 
     python -m experiments.ensemble_phase0.build_phase_a_inputs \\
         --sim-db /path/to/sim_runs.db \\
+        --provenance-ledger /path/to/wf_provenance/<sim_run_id>.jsonl \\
         --manifest-file /path/to/walkforward_manifest_<recipe>.json \\
         --output-dir experiments/ensemble_phase0/output/phase_a \\
         --expert-name xgb \\
@@ -63,6 +77,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sqlite3
 import sys
 from dataclasses import asdict, dataclass, field
@@ -77,8 +92,6 @@ from experiments.ensemble_phase0.admissibility_ledger import (
     US_EQUITY_CLOSE,
     DecisionSchedule,
     ExpertSpec,
-    SessionCalendar,
-    _decision_ts_from_schedule,
     build_calendar_evidence,
     build_exchange_session_calendar,
     build_ledger,
@@ -89,15 +102,14 @@ from experiments.ensemble_phase0.admissibility_ledger import (
 )
 
 #: Query/schema-version tag persisted in every provenance record. Bump when
-#: the extraction SQL or the PIT fold-selection semantics change.
-QUERY_SCHEMA_VERSION = "build_phase_a_inputs.wf_sim_db.v1_bday_pit"
+#: the extraction SQL or the admissibility semantics change. ``v2``: the
+#: wf_sim_provenance.v1 ledger became the ONLY identity source (design #215
+#: §2.5); manifest replay demoted to a cross-check.
+QUERY_SCHEMA_VERSION = "build_phase_a_inputs.wf_sim_provenance_ledger.v2"
 
 #: The real numeric per-ticker score columns in ``score_distribution``.
 #: ``--score-column`` is validated against this FIXED allowlist BEFORE it ever
-#: reaches a SQL string (a SQL-injection guard). Bookkeeping / labelling
-#: columns (``regime``, ``is_holding``, ``run_type``, ``model_type``,
-#: ``sector``, ``blocked_by``, ``*_horizon_days``) are deliberately excluded —
-#: they are not "the panel score" this converter extracts.
+#: reaches a SQL string (a SQL-injection guard).
 ALLOWED_SCORE_COLUMNS = frozenset({"raw_panel", "mu", "rank_score", "sigma"})
 
 
@@ -122,7 +134,403 @@ def validate_score_column(score_column: str) -> str:
 
 
 # =====================================================================
-# Walk-forward fold provenance
+# Canonical score-payload digest (wf_sim_provenance.v1 binding group)
+# =====================================================================
+#: Fixed per-row field order of the canonical score-payload serialization.
+#: Mirrors ``renquant_pipeline.kernel.walk_forward.provenance
+#: .SCORE_PAYLOAD_FIELDS`` — do not reorder.
+SCORE_PAYLOAD_FIELDS = ("ticker", "raw_panel", "mu", "rank_score", "sigma")
+
+
+def _vendored_canonical_value(value: Any) -> str | None:
+    """Float canonicalization: ``repr(float(v))``; ``None`` stays null."""
+    if value is None:
+        return None
+    return repr(float(value))
+
+
+def _vendored_canonical_score_payload(rows: Any) -> bytes:
+    """Canonical serialization of a persisted score series.
+
+    KEEP IN SYNC — vendored byte-for-byte from
+    ``renquant_pipeline/src/renquant_pipeline/kernel/walk_forward/provenance.py``
+    (``canonical_score_payload``, renquant-pipeline origin/main
+    ``ac98b5027c37052291e1091c368bbbddc8ced766``). The vendoring exists
+    because the model repo's test/CLI environment does not import
+    renquant_pipeline; when it IS importable the pipeline implementation is
+    used instead (see the try/except below), and
+    ``tests/test_build_phase_a_inputs.py`` cross-tests this copy against
+    known vectors computed from the pipeline module. Rules (all
+    load-bearing — extraction requires byte-equality with the emit side):
+
+    * rows sorted by ``str(ticker)``;
+    * fixed field order ``(ticker, raw_panel, mu, rank_score, sigma)``;
+    * numeric values via ``repr(float(v))`` (``None`` -> JSON null);
+    * one compact JSON array per row, newline-joined, UTF-8.
+    """
+    lines = []
+    for row in sorted(rows, key=lambda r: str(r["ticker"])):
+        lines.append(json.dumps(
+            [str(row["ticker"])]
+            + [_vendored_canonical_value(row.get(f)) for f in SCORE_PAYLOAD_FIELDS[1:]],
+            separators=(",", ":"),
+            ensure_ascii=True,
+        ))
+    return "\n".join(lines).encode("utf-8")
+
+
+def _vendored_score_payload_digest(rows: Any) -> str:
+    """``sha256:<64 hex>`` over :func:`_vendored_canonical_score_payload`."""
+    return "sha256:" + hashlib.sha256(_vendored_canonical_score_payload(rows)).hexdigest()
+
+
+try:  # Prefer the producer's own implementation when importable.
+    from renquant_pipeline.kernel.walk_forward.provenance import (  # type: ignore
+        canonical_score_payload,
+        score_payload_digest,
+    )
+    PIPELINE_PROVENANCE_IMPORTED = True
+except ImportError:  # Model-repo environments do not ship renquant_pipeline.
+    canonical_score_payload = _vendored_canonical_score_payload
+    score_payload_digest = _vendored_score_payload_digest
+    PIPELINE_PROVENANCE_IMPORTED = False
+
+
+# =====================================================================
+# wf_sim_provenance.v1 ledger — read + verify (design #215 §2.5)
+# =====================================================================
+PROVENANCE_SCHEMA_VERSION = "wf_sim_provenance.v1"
+RECORD_KIND_FOLD_RESOLVED = "fold_resolved"
+RECORD_KIND_SCORE_COMMITTED = "score_committed"
+
+#: Full digest grammar (admissibility-ledger family) — the producer never
+#: abbreviates (design #215 §2.2).
+DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+
+#: Keys excluded from the duplicate-identity comparison: the audit-write
+#: clock legitimately differs across idempotent re-emits (e.g. a sink
+#: restarted for the same ``sim_run_id`` re-appends the same content with a
+#: fresh ``emitted_at_utc``). Mirrors the sink's own ``_AUDIT_ONLY_KEYS``.
+AUDIT_ONLY_KEYS = frozenset({"emitted_at_utc"})
+
+
+class ProvenanceLedgerError(ValueError):
+    """A structurally invalid ledger file (unparsable/mixed-run/bad schema).
+
+    File-level corruption is a HARD error for the whole build — per-DATE
+    problems are per-date rejections instead (see
+    :func:`evaluate_provenance_dates`).
+    """
+
+
+class CrossCheckMismatchError(RuntimeError):
+    """Generation-time ledger identity disagrees with independent replay.
+
+    Raised when ``select_pit_fold`` / ``resolve_artifact_digest`` re-derive
+    a DIFFERENT fold/artifact identity than the ledger recorded (or cannot
+    re-derive one at all). This is a HARD error: the affected dates'
+    evidence is quarantined and the build aborts before writing output —
+    the reconstruction is never used as a fallback, and the ledger is never
+    silently trusted over a failed independent check (design #215 §2.5.3).
+    """
+
+    def __init__(self, quarantined: dict[str, list[str]]) -> None:
+        self.quarantined = dict(quarantined)
+        lines = "; ".join(
+            f"{d}: {', '.join(reasons)}" for d, reasons in sorted(quarantined.items())
+        )
+        super().__init__(
+            f"cross-check mismatch — evidence quarantined for "
+            f"{len(quarantined)} date(s): {lines}"
+        )
+
+
+@dataclass(frozen=True)
+class ProvenancePair:
+    """One prediction date's validated ``fold_resolved``/``score_committed``."""
+
+    fold: dict
+    committed: dict
+
+
+@dataclass
+class ProvenanceLedger:
+    """Parsed ``wf_sim_provenance.v1`` JSONL ledger for ONE sim run."""
+
+    path: str
+    ledger_digest: str
+    sim_run_id: str
+    fold_records: dict[str, list[dict]]
+    committed_records: dict[str, list[dict]]
+
+    def dates(self) -> set[str]:
+        return set(self.fold_records) | set(self.committed_records)
+
+
+def _record_content_id(record: dict) -> str:
+    """Duplicate-identity key: full content minus audit-only keys."""
+    return json.dumps(
+        {k: v for k, v in record.items() if k not in AUDIT_ONLY_KEYS},
+        sort_keys=True, separators=(",", ":"), default=str,
+    )
+
+
+def load_provenance_ledger(path: Path) -> ProvenanceLedger:
+    """Parse a ``wf_sim_provenance.v1`` JSONL ledger file.
+
+    Hard errors (:class:`ProvenanceLedgerError`) — these mean the FILE is
+    not a well-formed single-run ledger, so no per-date disposition is
+    possible: unparsable JSON line, wrong/missing ``schema_version``,
+    unknown ``record_kind``, missing ``prediction_date`` or ``sim_run_id``,
+    or records from more than one ``sim_run_id`` in one file (the sink
+    writes ``<sim_run_id>.jsonl`` and refuses cross-run emits).
+    """
+    raw = path.read_bytes()
+    ledger_digest = "sha256:" + hashlib.sha256(raw).hexdigest()
+    fold_records: dict[str, list[dict]] = {}
+    committed_records: dict[str, list[dict]] = {}
+    sim_run_id: str | None = None
+    for lineno, line in enumerate(raw.decode("utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ProvenanceLedgerError(
+                f"{path}:{lineno}: unparsable JSONL line ({exc})"
+            ) from exc
+        if not isinstance(record, dict):
+            raise ProvenanceLedgerError(
+                f"{path}:{lineno}: record is not a JSON object"
+            )
+        if record.get("schema_version") != PROVENANCE_SCHEMA_VERSION:
+            raise ProvenanceLedgerError(
+                f"{path}:{lineno}: schema_version "
+                f"{record.get('schema_version')!r} != {PROVENANCE_SCHEMA_VERSION!r}"
+            )
+        kind = record.get("record_kind")
+        if kind not in (RECORD_KIND_FOLD_RESOLVED, RECORD_KIND_SCORE_COMMITTED):
+            raise ProvenanceLedgerError(
+                f"{path}:{lineno}: unknown record_kind {kind!r}"
+            )
+        run_id = record.get("sim_run_id")
+        pred_date = record.get("prediction_date")
+        if not run_id or not pred_date:
+            raise ProvenanceLedgerError(
+                f"{path}:{lineno}: record missing sim_run_id/prediction_date"
+            )
+        if sim_run_id is None:
+            sim_run_id = str(run_id)
+        elif str(run_id) != sim_run_id:
+            raise ProvenanceLedgerError(
+                f"{path}:{lineno}: mixed sim_run_ids in one ledger file "
+                f"({sim_run_id!r} vs {run_id!r}) — one file per sim run"
+            )
+        bucket = (fold_records if kind == RECORD_KIND_FOLD_RESOLVED
+                  else committed_records)
+        bucket.setdefault(str(pred_date), []).append(record)
+    if sim_run_id is None:
+        raise ProvenanceLedgerError(f"{path}: ledger contains no records")
+    return ProvenanceLedger(
+        path=str(path),
+        ledger_digest=ledger_digest,
+        sim_run_id=sim_run_id,
+        fold_records=fold_records,
+        committed_records=committed_records,
+    )
+
+
+def _reject(code: str, detail: str) -> dict[str, str]:
+    """A machine-readable rejection record."""
+    return {"reason_code": code, "detail": detail}
+
+
+def evaluate_provenance_dates(
+    ledger: ProvenanceLedger,
+) -> tuple[dict[str, ProvenancePair], dict[str, dict[str, str]]]:
+    """Per-date pair validation (design #215 §2.5 step 1).
+
+    Returns ``(pairs, rejections)``: dates with a COMPLETE, self-consistent
+    ``fold_resolved`` + ``score_committed`` pair, and every other ledger
+    date mapped to a machine-readable rejection reason. Duplicate records
+    whose content is identical modulo the audit clock are accepted as
+    idempotent re-emits; differing content for the same key is a conflict.
+    """
+    pairs: dict[str, ProvenancePair] = {}
+    rejections: dict[str, dict[str, str]] = {}
+    for pred_date in sorted(ledger.dates()):
+        folds = ledger.fold_records.get(pred_date, [])
+        commits = ledger.committed_records.get(pred_date, [])
+        if folds and not commits:
+            rejections[pred_date] = _reject(
+                "orphaned_fold_resolved",
+                "fold_resolved present without its score_committed pair",
+            )
+            continue
+        if commits and not folds:
+            rejections[pred_date] = _reject(
+                "orphaned_score_committed",
+                "score_committed present without its fold_resolved pair",
+            )
+            continue
+        if len({_record_content_id(r) for r in folds}) > 1:
+            rejections[pred_date] = _reject(
+                "duplicate_fold_resolved_conflict",
+                f"{len(folds)} fold_resolved records with differing content "
+                f"for one (sim_run_id, prediction_date) key",
+            )
+            continue
+        if len({_record_content_id(r) for r in commits}) > 1:
+            rejections[pred_date] = _reject(
+                "duplicate_score_committed_conflict",
+                f"{len(commits)} score_committed records with differing "
+                f"content for one (sim_run_id, prediction_date) key",
+            )
+            continue
+        fold, committed = folds[0], commits[0]
+
+        reason = _validate_pair(fold, committed)
+        if reason is not None:
+            rejections[pred_date] = reason
+            continue
+        pairs[pred_date] = ProvenancePair(fold=fold, committed=committed)
+    return pairs, rejections
+
+
+def _validate_pair(fold: dict, committed: dict) -> dict[str, str] | None:
+    """Content checks on one deduplicated pair; None = pass."""
+    if committed.get("persisted") is not True:
+        return _reject(
+            "persisted_false",
+            "score_committed.persisted is not true — the sim did not persist "
+            "this observation to the DB Phase-A reads (design #215 §2.1)",
+        )
+    if committed.get("pit_violation") is True:
+        return _reject(
+            "pit_violation",
+            "score_committed.pit_violation is true — input_watermark exceeded "
+            "the simulated decision instant (design #215 §2.2)",
+        )
+    for fld in ("cutoff_date", "lookahead_days", "artifact_uri"):
+        if fold.get(fld) in (None, ""):
+            return _reject(
+                "fold_record_incomplete",
+                f"fold_resolved.{fld} missing/empty",
+            )
+    if fold.get("is_real_content_digest") is not True:
+        return _reject(
+            "artifact_digest_not_real_content",
+            "fold_resolved.is_real_content_digest is not true — no genuine "
+            "model-content identity; inadmissible for GO/KILL evidence",
+        )
+    fold_digest = fold.get("artifact_digest")
+    if not isinstance(fold_digest, str) or not DIGEST_RE.match(fold_digest):
+        return _reject(
+            "artifact_digest_missing",
+            f"fold_resolved.artifact_digest {fold_digest!r} is not a full "
+            f"sha256:<64 hex> digest",
+        )
+    if committed.get("artifact_digest") != fold_digest:
+        return _reject(
+            "artifact_digest_echo_mismatch",
+            f"score_committed.artifact_digest "
+            f"{committed.get('artifact_digest')!r} != fold_resolved."
+            f"artifact_digest {fold_digest!r} — pair integrity broken",
+        )
+    payload_digest = committed.get("score_payload_digest")
+    if not isinstance(payload_digest, str) or not DIGEST_RE.match(payload_digest):
+        return _reject(
+            "malformed_score_payload_digest",
+            f"score_committed.score_payload_digest {payload_digest!r} is not "
+            f"a full sha256:<64 hex> digest",
+        )
+    key = committed.get("score_observation_key")
+    if not isinstance(key, (list, tuple)) or len(key) != 3:
+        return _reject(
+            "malformed_score_observation_key",
+            f"score_committed.score_observation_key {key!r} is not the "
+            f"(run_id, date, run_type) triple",
+        )
+    n_rows = committed.get("n_rows")
+    if not isinstance(n_rows, int) or isinstance(n_rows, bool) or n_rows < 0:
+        return _reject(
+            "malformed_n_rows",
+            f"score_committed.n_rows {n_rows!r} is not a non-negative integer",
+        )
+    if not committed.get("score_timestamp"):
+        return _reject(
+            "score_timestamp_missing",
+            "score_committed.score_timestamp missing — no simulated decision "
+            "instant (design #215 §2.2)",
+        )
+    if committed.get("input_watermark") in (None, ""):
+        return _reject(
+            "input_watermark_missing",
+            "score_committed.input_watermark is null — the emit-side PIT "
+            "check could not run; extraction owns that judgement and fails "
+            "closed rather than fabricating a watermark (design #215 §2.2)",
+        )
+    return None
+
+
+def read_observation_rows(
+    db_path: Path, score_observation_key: Any
+) -> list[dict[str, Any]]:
+    """Read ALL ``score_distribution`` rows at one observation key.
+
+    The key is the recorded ``(run_id, date, run_type)`` triple; ``IS ?``
+    keeps a null ``run_type`` matchable. Every canonical-payload field is
+    selected, with NO null filtering — the digest binds the FULL persisted
+    series, not the score-column subset.
+    """
+    run_id, date_str, run_type = score_observation_key
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            """
+            SELECT ticker, raw_panel, mu, rank_score, sigma
+            FROM score_distribution
+            WHERE run_id = ? AND date = ? AND run_type IS ?
+            """,
+            (run_id, date_str, run_type),
+        ).fetchall()
+    finally:
+        conn.close()
+    return [dict(r) for r in rows]
+
+
+def verify_committed_observation(
+    db_path: Path, pair: ProvenancePair
+) -> tuple[list[dict[str, Any]] | None, dict[str, str] | None]:
+    """Design #215 §2.5 step 2: read-back + digest/n_rows equality.
+
+    Returns ``(rows, None)`` when the sim DB observation at the recorded
+    ``score_observation_key`` matches the committed ``score_payload_digest``
+    and ``n_rows``; otherwise ``(None, rejection)``.
+    """
+    committed = pair.committed
+    rows = read_observation_rows(db_path, committed["score_observation_key"])
+    if len(rows) != int(committed["n_rows"]):
+        return None, _reject(
+            "n_rows_mismatch",
+            f"score_distribution has {len(rows)} row(s) at "
+            f"{committed['score_observation_key']!r}, ledger committed "
+            f"n_rows={committed['n_rows']}",
+        )
+    recomputed = score_payload_digest(rows)
+    if recomputed != committed["score_payload_digest"]:
+        return None, _reject(
+            "score_payload_digest_mismatch",
+            f"recomputed {recomputed} != committed "
+            f"{committed['score_payload_digest']} — the DB observation is "
+            f"not the one the sim committed",
+        )
+    return rows, None
+
+
+# =====================================================================
+# Walk-forward fold reconstruction — CROSS-CHECK ONLY (design #215 §2.5.3)
 # =====================================================================
 @dataclass(frozen=True)
 class WalkForwardFold:
@@ -187,17 +595,17 @@ def load_folds(manifest_path: Path) -> list[WalkForwardFold]:
 def select_pit_fold(
     folds: list[WalkForwardFold], prediction_date: str
 ) -> WalkForwardFold | None:
-    """Select the PIT-clean walk-forward fold for a prediction date.
+    """Re-derive the PIT-clean walk-forward fold for a prediction date.
+
+    CROSS-CHECK ONLY (design #215 §2.5.3): the ledger's ``fold_resolved``
+    record is the identity of record; this replay exists to catch a
+    corrupted/mistargeted ledger, and a disagreement is a HARD error —
+    never a fallback.
 
     Returns the LATEST fold whose ``cutoff_date + BDay(lookahead_days)`` is
-    STRICTLY before ``prediction_date`` (the entry active as-of that date).
-    Returns ``None`` when no fold is PIT-clean (the date precedes all
-    coverage) -- such a date has no admissible model vintage and must be
-    excluded, never stamped with a leaky (future) model.
-
-    ``folds`` must be sorted ascending by ``cutoff_date`` (as returned by
-    :func:`load_folds`); the effective cutoff is then monotonic, so the last
-    eligible fold in iteration order is the latest eligible fold.
+    STRICTLY before ``prediction_date`` (the entry active as-of that date),
+    or ``None`` when no fold is PIT-clean. ``folds`` must be sorted
+    ascending by ``cutoff_date`` (as returned by :func:`load_folds`).
     """
     pred = pd.Timestamp(prediction_date)
     chosen: WalkForwardFold | None = None
@@ -216,24 +624,17 @@ def select_pit_fold(
 def resolve_artifact_digest(
     fold: WalkForwardFold, artifact_base_dir: Path | None
 ) -> tuple[str, str, bool]:
-    """Resolve a fold's model content fingerprint.
+    """Re-hash a fold's model artifact. CROSS-CHECK ONLY (design #215 §2.5.3).
 
     Returns ``(fingerprint, locator, is_real_content_digest)``.
 
     When the fold's ``artifact_uri`` resolves to a readable file under
-    ``artifact_base_dir``, the fingerprint is the SHA-256 of that file's exact
-    bytes -- a genuine model-content digest, and ``is_real_content_digest`` is
-    True. Otherwise it is a deterministic digest bound to the fold's immutable
-    provenance (cutoff + artifact_uri + trained_date), clearly distinguishable
-    via ``is_real_content_digest=False`` and the ``provenance_bound:`` locator.
-
-    The canonical validator only checks digest SYNTAX, so it cannot tell a
-    real digest from this fallback -- ``run_build`` therefore uses
-    ``is_real_content_digest`` to EXCLUDE any date whose selected fold
-    resolves to the fallback, rather than writing a score file the validator
-    would admit on unverified provenance. This function itself still returns
-    the fallback tuple (never raises) so callers can make that fail-closed
-    decision explicitly.
+    ``artifact_base_dir``, the fingerprint is the SHA-256 of that file's
+    exact bytes and ``is_real_content_digest`` is True. Otherwise a
+    deterministic provenance-bound surrogate is returned with
+    ``is_real_content_digest=False`` — the caller treats that as a FAILED
+    cross-check (the independent re-hash could not run), never as an
+    identity and never as a fallback.
     """
     if artifact_base_dir is not None and fold.artifact_uri:
         candidate = artifact_base_dir / fold.artifact_uri
@@ -248,6 +649,57 @@ def resolve_artifact_digest(
     return f"sha256:{digest}", f"provenance_bound:{fold.artifact_uri}", False
 
 
+def cross_check_date(
+    pred_date: str,
+    pair: ProvenancePair,
+    folds: list[WalkForwardFold],
+    artifact_base_dir: Path | None,
+) -> list[str]:
+    """Independent replay vs the ledger identity; returns mismatch details.
+
+    An empty list = the cross-check PASSED. Any entry = quarantine the
+    date (the caller aggregates into :class:`CrossCheckMismatchError`).
+    """
+    mismatches: list[str] = []
+    fold_rec = pair.fold
+    derived = select_pit_fold(folds, pred_date)
+    if derived is None:
+        mismatches.append(
+            f"select_pit_fold re-derived NO PIT-clean fold, ledger recorded "
+            f"cutoff_date={fold_rec['cutoff_date']!r}"
+        )
+        return mismatches
+    if derived.cutoff_date != str(fold_rec["cutoff_date"]):
+        mismatches.append(
+            f"cutoff_date: re-derived {derived.cutoff_date!r} != ledger "
+            f"{fold_rec['cutoff_date']!r}"
+        )
+    if int(derived.lookahead_days) != int(fold_rec["lookahead_days"]):
+        mismatches.append(
+            f"lookahead_days: re-derived {derived.lookahead_days} != ledger "
+            f"{fold_rec['lookahead_days']}"
+        )
+    if derived.artifact_uri != str(fold_rec["artifact_uri"]):
+        mismatches.append(
+            f"artifact_uri: re-derived {derived.artifact_uri!r} != ledger "
+            f"{fold_rec['artifact_uri']!r}"
+        )
+    if mismatches:
+        return mismatches
+    fp, locator, is_real = resolve_artifact_digest(derived, artifact_base_dir)
+    if not is_real:
+        mismatches.append(
+            f"resolve_artifact_digest could not re-hash the artifact "
+            f"({locator}) — the independent content check cannot run"
+        )
+    elif fp != fold_rec["artifact_digest"]:
+        mismatches.append(
+            f"artifact_digest: re-hashed {fp} != ledger "
+            f"{fold_rec['artifact_digest']} ({locator})"
+        )
+    return mismatches
+
+
 # =====================================================================
 # Sim DB extraction
 # =====================================================================
@@ -256,39 +708,20 @@ def db_digest(db_path: Path) -> str:
     return f"sha256:{hashlib.sha256(db_path.read_bytes()).hexdigest()}"
 
 
-def read_scores_by_date(
-    db_path: Path,
-    *,
-    score_column: str,
-    start_date: str,
-    end_date: str,
-) -> dict[str, dict[str, float]]:
-    """Read per-date ``{ticker: score}`` from ``score_distribution``.
-
-    Only rows with a non-NULL score in the validated ``score_column`` are
-    returned. ``score_column`` MUST already be validated
-    (:func:`validate_score_column`).
-    """
-    validate_score_column(score_column)  # defence in depth
+def read_db_dates(db_path: Path, *, start_date: str, end_date: str) -> list[str]:
+    """Distinct ``score_distribution`` dates in range (honesty reporting)."""
     conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-    conn.row_factory = sqlite3.Row
     try:
         rows = conn.execute(
-            f"""
-            SELECT date, ticker, {score_column} AS score
-            FROM score_distribution
-            WHERE date >= ? AND date <= ?
-              AND {score_column} IS NOT NULL
-            ORDER BY date, ticker
+            """
+            SELECT DISTINCT date FROM score_distribution
+            WHERE date >= ? AND date <= ? ORDER BY date
             """,
             (start_date, end_date),
         ).fetchall()
     finally:
         conn.close()
-    out: dict[str, dict[str, float]] = {}
-    for r in rows:
-        out.setdefault(r["date"], {})[r["ticker"]] = float(r["score"])
-    return out
+    return [r[0] for r in rows]
 
 
 def read_forward_returns(
@@ -354,45 +787,46 @@ def build_score_payload(
     scores: dict[str, float],
     *,
     expert_name: str,
-    fold: WalkForwardFold,
-    artifact_fingerprint: str,
-    artifact_is_real_digest: bool,
-    artifact_locator: str,
-    decision_ts: str,
+    pair: ProvenancePair,
+    sim_run_id: str,
     labels: LabelContext,
     score_column: str,
     source_db_digest: str,
     source_db_path: str,
     manifest_path: str,
+    provenance_ledger_path: str,
+    provenance_ledger_digest: str,
 ) -> dict[str, Any]:
     """Build one date's score payload in the admissibility-ledger schema.
 
-    The top-level keys (``as_of_date``, ``data_watermark``,
-    ``score_timestamp``, ``training_cutoff``, ``model_content_sha256``,
-    ``has_realized_labels``, ``label_artifact_ref``, ``label_observation_end``)
-    are exactly the fields
-    :func:`admissibility_ledger.extract_metadata_from_score` reads.
+    EVERY identity/time field is copied VERBATIM from the generation-time
+    ``wf_sim_provenance.v1`` records — nothing is recomputed here (design
+    #215 §2.5):
 
-    ``as_of_date`` / ``data_watermark`` / ``score_timestamp`` are stamped as
-    the prediction date's real NYSE session-close timestamp (``decision_ts``,
-    holiday/early-close aware, computed with the SAME primitive the validator
-    uses). A walk-forward sim scores date ``D`` from data available through
-    ``D``'s close, so the feature/data available-time equals the decision
-    close -- this sits exactly on the causal boundary
-    ``feature_data_cutoff <= decision_timestamp`` and admits, whereas a
-    naive date-only ``as_of_date`` would parse to end-of-day (23:59:59 UTC)
-    and be rejected as post-decision look-ahead.
+    * ``training_cutoff`` = ``fold_resolved.cutoff_date``;
+    * ``model_content_sha256`` = ``fold_resolved.artifact_digest`` (a real
+      content digest — enforced upstream by pair validation);
+    * ``score_timestamp`` = ``score_committed.score_timestamp`` (the
+      SIMULATED decision instant, design §2.2 — not the audit clock, not a
+      recomputed session close);
+    * ``as_of_date`` / ``data_watermark`` =
+      ``score_committed.input_watermark`` (the max event time of the
+      feature store actually served; the emit-side PIT invariant
+      ``input_watermark <= score_timestamp`` held, or the date was
+      rejected before reaching here).
     """
+    fold = pair.fold
+    committed = pair.committed
     return {
         "date": dt_str,
         "expert": expert_name,
         "scores": scores,
         # -- fields read by admissibility_ledger.extract_metadata_from_score --
-        "as_of_date": decision_ts,
-        "data_watermark": decision_ts,
-        "score_timestamp": decision_ts,
-        "training_cutoff": fold.cutoff_date,
-        "model_content_sha256": artifact_fingerprint,
+        "as_of_date": committed["input_watermark"],
+        "data_watermark": committed["input_watermark"],
+        "score_timestamp": committed["score_timestamp"],
+        "training_cutoff": fold["cutoff_date"],
+        "model_content_sha256": fold["artifact_digest"],
         "has_realized_labels": labels.has_realized_labels_by_date.get(dt_str, False),
         "label_artifact_ref": labels.label_artifact_ref_by_date.get(dt_str, "MISSING"),
         "label_observation_end": labels.label_observation_end_by_date.get(dt_str, "MISSING"),
@@ -402,22 +836,38 @@ def build_score_payload(
             "score_column": score_column,
             "n_tickers": len(scores),
             "query_schema_version": QUERY_SCHEMA_VERSION,
-            "walkforward_fold": {
-                "cutoff_date": fold.cutoff_date,
-                "lookahead_days": fold.lookahead_days,
-                "effective_train_cutoff_date": fold.effective_train_cutoff_date(),
-                "artifact_uri": fold.artifact_uri,
-                "trained_date": fold.trained_date,
-                "calibrator_uri": fold.calibrator_uri,
+            "provenance": {
+                "schema_version": PROVENANCE_SCHEMA_VERSION,
+                "sim_run_id": sim_run_id,
+                "score_observation_key": list(committed["score_observation_key"]),
+                "score_payload_digest": committed["score_payload_digest"],
+                "n_observation_rows": int(committed["n_rows"]),
+                "ledger_path": provenance_ledger_path,
+                "ledger_digest": provenance_ledger_digest,
+                "seed": fold.get("seed"),
+                "revision_pins": fold.get("revision_pins"),
             },
-            "model_fingerprint_is_real_content_digest": artifact_is_real_digest,
-            "model_artifact_locator": artifact_locator,
+            "walkforward_fold": {
+                "cutoff_date": fold["cutoff_date"],
+                "lookahead_days": fold["lookahead_days"],
+                "effective_train_cutoff_date": fold.get("effective_train_cutoff_date"),
+                "artifact_uri": fold["artifact_uri"],
+                "trained_date": fold.get("trained_date"),
+                "calibrator_uri": fold.get("calibrator_uri"),
+                "calibrator_digest": fold.get("calibrator_digest"),
+                "manifest_path": fold.get("manifest_path"),
+                "manifest_digest": fold.get("manifest_digest"),
+                "family": fold.get("family"),
+                "fingerprint_schema": fold.get("fingerprint_schema"),
+            },
+            "model_fingerprint_is_real_content_digest": True,
             "pit_contract": (
-                "training_cutoff is the selected fold's real cutoff_date; the "
-                "fold is the latest whose cutoff_date + BDay(lookahead_days) is "
-                "strictly before this prediction date (business-day offset, not "
-                "calendar timedelta -- WalkForwardModelLoader.entry_as_of "
-                "semantics)."
+                "all identity/time fields are copied verbatim from "
+                "generation-time wf_sim_provenance.v1 records "
+                "(fold_resolved + score_committed, pair-validated, "
+                "score_payload_digest re-verified against the sim DB); "
+                "select_pit_fold/resolve_artifact_digest ran only as "
+                "independent cross-checks and agreed (design #215 §2.5)."
             ),
             "source_db_path": source_db_path,
             "source_db_digest": source_db_digest,
@@ -428,39 +878,37 @@ def build_score_payload(
 
 def write_score_files(
     scores_by_date: dict[str, dict[str, float]],
-    fold_by_date: dict[str, WalkForwardFold],
+    pair_by_date: dict[str, ProvenancePair],
     output_dir: Path,
     *,
     expert_name: str,
-    fingerprint_by_fold: dict[str, tuple[str, bool, str]],
-    decision_ts_by_date: dict[str, str],
+    sim_run_id: str,
     labels: LabelContext,
     score_column: str,
     source_db_digest: str,
     source_db_path: str,
     manifest_path: str,
+    provenance_ledger_path: str,
+    provenance_ledger_digest: str,
 ) -> dict[str, str]:
     """Write per-date score JSON files; return ``{date: file_digest}``."""
     score_dir = output_dir / expert_name
     score_dir.mkdir(parents=True, exist_ok=True)
     digests: dict[str, str] = {}
     for dt_str in sorted(scores_by_date):
-        fold = fold_by_date[dt_str]
-        fp, is_real, locator = fingerprint_by_fold[fold.cutoff_date]
         payload = build_score_payload(
             dt_str,
             scores_by_date[dt_str],
             expert_name=expert_name,
-            fold=fold,
-            artifact_fingerprint=fp,
-            artifact_is_real_digest=is_real,
-            artifact_locator=locator,
-            decision_ts=decision_ts_by_date[dt_str],
+            pair=pair_by_date[dt_str],
+            sim_run_id=sim_run_id,
             labels=labels,
             score_column=score_column,
             source_db_digest=source_db_digest,
             source_db_path=source_db_path,
             manifest_path=manifest_path,
+            provenance_ledger_path=provenance_ledger_path,
+            provenance_ledger_digest=provenance_ledger_digest,
         )
         raw = json.dumps(payload, indent=2, sort_keys=True).encode()
         out_path = score_dir / f"{dt_str}.json"
@@ -477,15 +925,20 @@ class BuildManifest:
     sim_db_path: str
     sim_db_digest: str
     wf_manifest_path: str
+    provenance_ledger_path: str
+    provenance_ledger_digest: str
+    sim_run_id: str
     score_column: str
     label_column: str
     start_date: str
     end_date: str
-    n_dates_with_scores: int
-    n_dates_excluded_no_pit_fold: int
-    excluded_no_pit_fold_dates: list[str]
-    n_dates_excluded_no_real_digest: int
-    excluded_no_real_digest_dates: list[str]
+    payload_digest_impl: str
+    n_ledger_dates: int
+    n_ledger_dates_in_range: int
+    n_dates_admissible: int
+    n_dates_rejected: int
+    n_db_dates_without_provenance: int
+    n_cross_checked: int
     n_dates_written: int
     n_folds: int
     universe_size: int
@@ -497,8 +950,8 @@ class BuildManifest:
     query_schema_version: str
     created_at: str
     output_dir: str
+    rejected_dates: dict[str, dict[str, str]] = field(default_factory=dict)
     score_file_digests: dict[str, str] = field(default_factory=dict)
-    fold_fingerprints: dict[str, dict[str, Any]] = field(default_factory=dict)
     ledger_admitted: int = 0
     ledger_rejected: int = 0
     ledger_fingerprint: str = ""
@@ -510,6 +963,7 @@ class BuildManifest:
 def run_build(
     *,
     sim_db: Path,
+    provenance_ledger: Path,
     manifest_file: Path,
     output_dir: Path,
     expert_name: str,
@@ -523,7 +977,13 @@ def run_build(
     decision_schedule: DecisionSchedule = US_EQUITY_CLOSE,
     build_admissibility_ledger: bool = True,
 ) -> BuildManifest:
-    """Build the Phase-A score-dir + returns CSV for one scorer's WF sim."""
+    """Build the Phase-A score-dir + returns CSV for one scorer's WF sim.
+
+    Identity source: the ``wf_sim_provenance.v1`` ledger, ONLY. The WF
+    manifest + artifact tree serve exclusively as the independent
+    cross-check (a disagreement raises :class:`CrossCheckMismatchError`
+    BEFORE any output is written).
+    """
     validate_score_column(score_column)
 
     # Default: resolve fold artifact_uris relative to the manifest's
@@ -533,89 +993,100 @@ def run_build(
 
     folds = load_folds(manifest_file)
     print(f"Loaded {len(folds)} walk-forward folds "
-          f"({folds[0].cutoff_date} .. {folds[-1].cutoff_date})")
+          f"({folds[0].cutoff_date} .. {folds[-1].cutoff_date}) "
+          f"[cross-check input only]")
 
-    scores_by_date = read_scores_by_date(
-        sim_db, score_column=score_column,
-        start_date=start_date, end_date=end_date,
-    )
-    print(f"Read {len(scores_by_date)} sim score date(s) for column "
-          f"'{score_column}' in [{start_date}, {end_date}]")
+    # ---- §2.5 step 1: ledger pair validation --------------------------------
+    ledger = load_provenance_ledger(provenance_ledger)
+    all_pairs, rejections = evaluate_provenance_dates(ledger)
+    n_ledger_dates = len(ledger.dates())
+    in_range = lambda d: start_date <= d <= end_date  # noqa: E731
+    pairs = {d: p for d, p in all_pairs.items() if in_range(d)}
+    rejections = {d: r for d, r in rejections.items() if in_range(d)}
+    n_ledger_dates_in_range = len(pairs) + len(rejections)
+    print(f"Provenance ledger {ledger.path} (sim_run_id={ledger.sim_run_id}): "
+          f"{n_ledger_dates} date(s), {n_ledger_dates_in_range} in "
+          f"[{start_date}, {end_date}], {len(pairs)} complete pair(s), "
+          f"{len(rejections)} rejected "
+          f"(payload digest impl: "
+          f"{'renquant_pipeline' if PIPELINE_PROVENANCE_IMPORTED else 'vendored'})")
 
-    # PIT fold selection per date (BDay contract). Dates before all coverage
-    # are excluded.
-    fold_by_date: dict[str, WalkForwardFold] = {}
-    excluded_no_fold: list[str] = []
-    for dt_str in sorted(scores_by_date):
-        fold = select_pit_fold(folds, dt_str)
-        if fold is None:
-            excluded_no_fold.append(dt_str)
+    # ---- §2.5 step 2: read-back + digest/n_rows verification ----------------
+    rows_by_date: dict[str, list[dict[str, Any]]] = {}
+    for pred_date in sorted(pairs):
+        rows, rejection = verify_committed_observation(sim_db, pairs[pred_date])
+        if rejection is not None:
+            rejections[pred_date] = rejection
+            del pairs[pred_date]
         else:
-            fold_by_date[dt_str] = fold
-    for dt_str in excluded_no_fold:
-        del scores_by_date[dt_str]
-    if excluded_no_fold:
-        print(f"Excluded {len(excluded_no_fold)} date(s) with no PIT-clean fold "
-              f"(before WF coverage): {excluded_no_fold[:5]}"
-              f"{'...' if len(excluded_no_fold) > 5 else ''}")
+            rows_by_date[pred_date] = rows
 
-    if not scores_by_date:
-        raise ValueError(
-            "no admissible-vintage dates: every date with scores precedes the "
-            "first walk-forward fold's effective cutoff (fail-closed)"
-        )
-
-    # Resolve one fingerprint per distinct fold (content digest when readable).
-    fingerprint_by_fold: dict[str, tuple[str, bool, str]] = {}
-    for fold in {f.cutoff_date: f for f in fold_by_date.values()}.values():
-        fp, locator, is_real = resolve_artifact_digest(fold, artifact_base_dir)
-        fingerprint_by_fold[fold.cutoff_date] = (fp, is_real, locator)
-    n_real = sum(1 for _, is_real, _ in fingerprint_by_fold.values() if is_real)
-    print(f"Resolved fingerprints for {len(fingerprint_by_fold)} distinct fold(s) "
-          f"({n_real} real content digest, "
-          f"{len(fingerprint_by_fold) - n_real} provenance-bound fallback)")
-
-    # Fail-closed: a fold whose artifact does not resolve to a real content
-    # digest has no genuine model identity. Such dates are excluded from
-    # output entirely -- the provenance-bound fallback is a syntactically
-    # valid but unverified surrogate that the canonical validator cannot
-    # distinguish from a real digest, so it must never reach a score file
-    # (Codex CR on model#65: "reject missing/unavailable artifact identity
-    # rather than emitting a synthetic digest").
-    excluded_no_real_digest = sorted(
-        dt_str for dt_str, fold in fold_by_date.items()
-        if not fingerprint_by_fold[fold.cutoff_date][1]
+    # Honesty reporting: sim-DB dates in range with NO ledger record are
+    # inadmissible by construction (no generation-time provenance exists —
+    # e.g. the entire pre-#531 sim history). Recorded, never silently skipped.
+    ledger_dates_in_range = {d for d in ledger.dates() if in_range(d)}
+    for db_date in read_db_dates(sim_db, start_date=start_date, end_date=end_date):
+        if db_date not in ledger_dates_in_range:
+            rejections[db_date] = _reject(
+                "no_provenance_record",
+                "score_distribution rows exist but the wf_sim_provenance.v1 "
+                "ledger has no record for this date — pre-provenance history "
+                "is permanently inadmissible through this converter",
+            )
+    n_db_dates_without_provenance = sum(
+        1 for r in rejections.values()
+        if r["reason_code"] == "no_provenance_record"
     )
-    for dt_str in excluded_no_real_digest:
-        del scores_by_date[dt_str]
-        del fold_by_date[dt_str]
-    if excluded_no_real_digest:
-        print(f"Excluded {len(excluded_no_real_digest)} date(s) whose selected "
-              f"fold's artifact could not be resolved to a real content digest "
-              f"(fail-closed, no provenance-bound fallback admitted): "
-              f"{excluded_no_real_digest[:5]}"
-              f"{'...' if len(excluded_no_real_digest) > 5 else ''}")
+
+    # ---- §2.5 step 3: independent cross-check (HARD; never a fallback) ------
+    quarantined: dict[str, list[str]] = {}
+    for pred_date in sorted(pairs):
+        mismatches = cross_check_date(
+            pred_date, pairs[pred_date], folds, artifact_base_dir
+        )
+        if mismatches:
+            quarantined[pred_date] = mismatches
+    if quarantined:
+        raise CrossCheckMismatchError(quarantined)
+    n_cross_checked = len(pairs)
+    print(f"Cross-check passed for {n_cross_checked} date(s) "
+          f"(select_pit_fold + resolve_artifact_digest agree with the ledger)")
+
+    # ---- score extraction from the VERIFIED observations --------------------
+    scores_by_date: dict[str, dict[str, float]] = {}
+    for pred_date in sorted(pairs):
+        scores = {
+            str(r["ticker"]): float(r[score_column])
+            for r in rows_by_date[pred_date]
+            if r[score_column] is not None
+        }
+        if not scores:
+            rejections[pred_date] = _reject(
+                "no_scores_in_column",
+                f"the verified observation has no non-null {score_column!r} "
+                f"values",
+            )
+            del pairs[pred_date]
+        else:
+            scores_by_date[pred_date] = scores
+
+    if rejections:
+        counts: dict[str, int] = {}
+        for r in rejections.values():
+            counts[r["reason_code"]] = counts.get(r["reason_code"], 0) + 1
+        print(f"Rejected {len(rejections)} date(s): "
+              + ", ".join(f"{c}x {code}" for code, c in sorted(counts.items())))
 
     if not scores_by_date:
         raise ValueError(
-            "no admissible-vintage dates: every PIT-clean date's selected "
-            "fold artifact failed to resolve to a real content digest "
-            "(fail-closed)"
+            "no admissible-vintage dates: no date in range has a complete, "
+            "verified wf_sim_provenance.v1 pair backed by a matching sim-DB "
+            "observation (fail-closed). Pre-provenance sim history is "
+            "inadmissible by design — rerun the sim with the provenance sink "
+            "enabled (post-#531) to produce admissible evidence."
         )
 
-    # Decision timestamps per date (holiday/early-close aware, SAME primitive
-    # the validator uses -> guarantees feature==decision boundary admits).
-    cal_start = (date.fromisoformat(min(scores_by_date)) - timedelta(days=7)).isoformat()
-    cal_end = (date.fromisoformat(max(scores_by_date)) + timedelta(days=7)).isoformat()
-    session_calendar = build_exchange_session_calendar(cal_start, cal_end)
-    decision_ts_by_date = {
-        dt_str: _decision_ts_from_schedule(
-            decision_schedule, dt_str, calendar=session_calendar
-        )
-        for dt_str in scores_by_date
-    }
-
-    # Forward-return labels -> shared CSV.
+    # ---- labels / returns ---------------------------------------------------
     output_dir.mkdir(parents=True, exist_ok=True)
     returns = read_forward_returns(
         sim_db, label_column=label_column,
@@ -647,15 +1118,16 @@ def run_build(
 
     src_db_digest = db_digest(sim_db)
     digests = write_score_files(
-        scores_by_date, fold_by_date, output_dir,
+        scores_by_date, pairs, output_dir,
         expert_name=expert_name,
-        fingerprint_by_fold=fingerprint_by_fold,
-        decision_ts_by_date=decision_ts_by_date,
+        sim_run_id=ledger.sim_run_id,
         labels=labels,
         score_column=score_column,
         source_db_digest=src_db_digest,
         source_db_path=str(sim_db),
         manifest_path=str(manifest_file),
+        provenance_ledger_path=ledger.path,
+        provenance_ledger_digest=ledger.ledger_digest,
     )
     print(f"Wrote {len(digests)} per-date score file(s) to "
           f"{output_dir / expert_name}")
@@ -686,17 +1158,23 @@ def run_build(
         sim_db_path=str(sim_db),
         sim_db_digest=src_db_digest,
         wf_manifest_path=str(manifest_file),
+        provenance_ledger_path=ledger.path,
+        provenance_ledger_digest=ledger.ledger_digest,
+        sim_run_id=ledger.sim_run_id,
         score_column=score_column,
         label_column=label_column,
         start_date=start_date,
         end_date=end_date,
-        n_dates_with_scores=(
-            len(scores_by_date) + len(excluded_no_fold) + len(excluded_no_real_digest)
+        payload_digest_impl=(
+            "renquant_pipeline.kernel.walk_forward.provenance"
+            if PIPELINE_PROVENANCE_IMPORTED else "vendored"
         ),
-        n_dates_excluded_no_pit_fold=len(excluded_no_fold),
-        excluded_no_pit_fold_dates=excluded_no_fold,
-        n_dates_excluded_no_real_digest=len(excluded_no_real_digest),
-        excluded_no_real_digest_dates=excluded_no_real_digest,
+        n_ledger_dates=n_ledger_dates,
+        n_ledger_dates_in_range=n_ledger_dates_in_range,
+        n_dates_admissible=len(scores_by_date),
+        n_dates_rejected=len(rejections),
+        n_db_dates_without_provenance=n_db_dates_without_provenance,
+        n_cross_checked=n_cross_checked,
         n_dates_written=len(digests),
         n_folds=len(folds),
         universe_size=len(universe_tickers),
@@ -708,15 +1186,8 @@ def run_build(
         query_schema_version=QUERY_SCHEMA_VERSION,
         created_at=datetime.now(timezone.utc).isoformat(),
         output_dir=str(output_dir),
+        rejected_dates=dict(sorted(rejections.items())),
         score_file_digests=digests,
-        fold_fingerprints={
-            cutoff: {
-                "fingerprint": fp,
-                "is_real_content_digest": is_real,
-                "locator": locator,
-            }
-            for cutoff, (fp, is_real, locator) in fingerprint_by_fold.items()
-        },
     )
 
     # Verify the produced score-dir loads through the CANONICAL validator.
@@ -724,6 +1195,9 @@ def run_build(
     # admissibility_ledger.build_ledger (the SAME loader/validator Phase A
     # uses). Reported counts are the validator's verdict.
     if build_admissibility_ledger:
+        cal_start = (date.fromisoformat(min(scores_by_date)) - timedelta(days=7)).isoformat()
+        cal_end = (date.fromisoformat(max(scores_by_date)) + timedelta(days=7)).isoformat()
+        session_calendar = build_exchange_session_calendar(cal_start, cal_end)
         expert_spec = ExpertSpec(name=expert_name, score_dir=output_dir / expert_name)
         cal_evidence = build_calendar_evidence(
             session_calendar, calendar_name="NYSE", query_range=(cal_start, cal_end),
@@ -749,7 +1223,7 @@ def run_build(
             }
 
         prediction_dates = sorted(digests)
-        ledger = build_ledger(
+        ledger_verdict = build_ledger(
             [expert_spec], prediction_dates, universe_tickers,
             score_loader=_loader,
             decision_schedule=decision_schedule,
@@ -759,15 +1233,15 @@ def run_build(
             require_realized_labels=True,
             label_horizon_days=label_horizon_days,
         )
-        write_ledger(ledger, output_dir)
-        stats = ledger.summary.get("per_expert", {}).get(expert_name, {})
+        write_ledger(ledger_verdict, output_dir)
+        stats = ledger_verdict.summary.get("per_expert", {}).get(expert_name, {})
         manifest.ledger_admitted = stats.get("admitted", 0)
         manifest.ledger_rejected = stats.get("rejected", 0)
-        manifest.ledger_fingerprint = ledger.ledger_fingerprint
+        manifest.ledger_fingerprint = ledger_verdict.ledger_fingerprint
         print(f"Canonical admissibility ledger: "
               f"{manifest.ledger_admitted} admitted / "
               f"{manifest.ledger_admitted + manifest.ledger_rejected} evaluated "
-              f"(fingerprint {ledger.ledger_fingerprint})")
+              f"(fingerprint {ledger_verdict.ledger_fingerprint})")
 
     manifest_out = output_dir / f"build_manifest_{expert_name}.json"
     manifest_out.write_text(json.dumps(asdict(manifest), indent=2, sort_keys=True) + "\n")
@@ -778,15 +1252,23 @@ def run_build(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Convert a walk-forward sim DB + its WF manifest into Phase A "
-            "ensemble inputs (per-date score-dir + shared returns CSV) with "
-            "real point-in-time fold provenance (BDay-correct training_cutoff)."
+            "Convert a walk-forward sim DB + its wf_sim_provenance.v1 ledger "
+            "into Phase A ensemble inputs (per-date score-dir + shared "
+            "returns CSV). The ledger is the ONLY fold/artifact identity "
+            "source; the WF manifest + artifact tree are independent "
+            "cross-checks (design #215 §2.5)."
         )
     )
     parser.add_argument("--sim-db", required=True, type=Path,
                         help="Path to the walk-forward sim DB (score_distribution)")
+    parser.add_argument("--provenance-ledger", required=True, type=Path,
+                        help="Path to the wf_sim_provenance.v1 JSONL ledger "
+                             "(data/wf_provenance/<sim_run_id>.jsonl) the sim "
+                             "emitted at generation time. REQUIRED — sim "
+                             "history without a ledger is inadmissible.")
     parser.add_argument("--manifest-file", required=True, type=Path,
-                        help="Path to the walk-forward manifest JSON (retrains[])")
+                        help="Path to the walk-forward manifest JSON "
+                             "(retrains[]) — cross-check input only")
     parser.add_argument("--output-dir", required=True, type=Path,
                         help="Output directory (never a production path)")
     parser.add_argument("--expert-name", required=True,
@@ -801,8 +1283,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--label-horizon-days", type=int, default=60,
                         help="Label horizon in calendar days (default: 60)")
     parser.add_argument("--artifact-base-dir", type=Path, default=None,
-                        help="Base dir to resolve fold artifact_uris (default: "
-                             "manifest's <root>/artifacts/sim -> <root>)")
+                        help="Base dir to resolve fold artifact_uris for the "
+                             "cross-check re-hash (default: manifest's "
+                             "<root>/artifacts/sim -> <root>)")
     parser.add_argument("--universe-file", type=Path, default=None,
                         help="Optional universe ticker list; default is the "
                              "union of scored tickers (a proxy)")
@@ -819,30 +1302,41 @@ def main(argv: list[str] | None = None) -> int:
     if not args.sim_db.exists():
         print(f"ERROR: sim DB not found: {args.sim_db}", file=sys.stderr)
         return 2
+    if not args.provenance_ledger.exists():
+        print(f"ERROR: provenance ledger not found: {args.provenance_ledger}. "
+              f"A wf_sim_provenance.v1 JSONL ledger is REQUIRED — sim runs "
+              f"predating the provenance sink are inadmissible by design.",
+              file=sys.stderr)
+        return 2
     if not args.manifest_file.exists():
         print(f"ERROR: manifest not found: {args.manifest_file}", file=sys.stderr)
         return 2
 
-    manifest = run_build(
-        sim_db=args.sim_db,
-        manifest_file=args.manifest_file,
-        output_dir=args.output_dir,
-        expert_name=args.expert_name,
-        score_column=args.score_column,
-        start_date=args.start_date,
-        end_date=args.end_date,
-        label_column=args.label_column,
-        label_horizon_days=args.label_horizon_days,
-        artifact_base_dir=args.artifact_base_dir,
-        universe_file=args.universe_file,
-        build_admissibility_ledger=not args.no_ledger,
-    )
+    try:
+        manifest = run_build(
+            sim_db=args.sim_db,
+            provenance_ledger=args.provenance_ledger,
+            manifest_file=args.manifest_file,
+            output_dir=args.output_dir,
+            expert_name=args.expert_name,
+            score_column=args.score_column,
+            start_date=args.start_date,
+            end_date=args.end_date,
+            label_column=args.label_column,
+            label_horizon_days=args.label_horizon_days,
+            artifact_base_dir=args.artifact_base_dir,
+            universe_file=args.universe_file,
+            build_admissibility_ledger=not args.no_ledger,
+        )
+    except (ProvenanceLedgerError, CrossCheckMismatchError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 3
 
     print(
         f"\nDONE: expert={manifest.expert_name} "
         f"wrote={manifest.n_dates_written} "
-        f"excluded_no_fold={manifest.n_dates_excluded_no_pit_fold} "
-        f"excluded_no_real_digest={manifest.n_dates_excluded_no_real_digest} "
+        f"rejected={manifest.n_dates_rejected} "
+        f"(no_provenance={manifest.n_db_dates_without_provenance}) "
         f"admitted={manifest.ledger_admitted}"
     )
     return 0
