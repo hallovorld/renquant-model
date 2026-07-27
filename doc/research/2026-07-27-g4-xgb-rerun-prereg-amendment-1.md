@@ -28,7 +28,7 @@ on the exact environment (§3).**
 | item | frozen value |
 |---|---|
 | config (FROZEN CONTENT, not launch-generated) | the prod-semantic WF config derived DURING THE SMOKE with the gate's own builder (`build_wf_config_from_prod`, the weekly gate's `--derive-config-from-prod` mechanism: QP-strict prod ranking block inherited, 43-fold calibrated manifest engaged, `shadow_models` stripped) is itself part of the frozen input bundle (§2) at `backtesting/renquant_104/artifacts/diagnostics/wf_eval_configs/strategy_config.sim_g4rerun_prod_semantic.json`; the launch consumes the bundle copy verbatim — nothing is generated at launch time |
-| per-seed invocation | `python -m renquant_backtesting.wf_gate.sim_driver --repo-root <WT> --strategy-config-name artifacts/diagnostics/wf_eval_configs/strategy_config.sim_g4rerun_prod_semantic.json --start 2024-01-02 --end 2026-03-28 --no-compare --seed <S> --sim-db-path data/sim_runs_seed<S>.db --skip-preflight` (env: worktree-runtime PYTHONPATH, `RENQUANT_REPO_ROOT=<WT>`, cwd `<WT>`) |
+| per-seed invocation | `python -m renquant_backtesting.wf_gate.sim_driver --repo-root <WT> --strategy-config-name artifacts/diagnostics/wf_eval_configs/strategy_config.sim_g4rerun_prod_semantic.json --start 2024-01-02 --end 2026-03-28 --no-compare --seed <S> --sim-db-path data/sim_runs_seed<S>.db --input-bundle <bundle> --input-bundle-root 8072ca77…aea1 --input-bundle-covered-root <each of the six frozen roots> --skip-preflight` (env: worktree-runtime PYTHONPATH, `RENQUANT_REPO_ROOT=<WT>`, offline proxy per §2, cwd `<WT>`) |
 | single authority leg | `--no-compare` (driver-native; supersedes the `--compare-to` same-name mechanism of the original §2 — same effect, explicit flag). One `run_backtest` ⇒ one `sim_run_id` ⇒ one DB ⇒ one ledger |
 | post-steps per seed (NEW) | (a) `python -m renquant_backtesting.analysis.backfill_forward_returns --repo-root <WT> --db data/sim_runs_seed<S>.db --source sim` — without it admissibility is 0/N ("no realized labels"); (b) model#65 converter with `--provenance-ledger <that seed's JSONL> --manifest-file <the 43-fold manifest> --expert-name xgb --score-column raw_panel` over the full window |
 | per-seed validity tripwires (NEW) | `SimAdapter init: models=N>0` and `score_distribution>0` — the stale-models failure mode exits 0 with an EMPTY universe; an empty leg is VOID and, being an environment defect, batch-voids per §5 |
@@ -53,23 +53,28 @@ content-addressed bundle built from the SMOKE-PROVEN worktree snapshot
   `doc/research/evidence/2026-07-27-g4-rerun-input-bundle.MANIFEST.sha256`.
 - **Frozen root digest** (sha256 of the manifest file itself):
   `8072ca771d0cab732687efdbca929dbacae34a0b72cb26ad423ccac6ade8aea1`
-- **Pinned executable checker (the load-bearing guard, committed in this
-  PR):** `doc/research/evidence/2026-07-27-verify_g4_input_bundle.py`
-  (v1). Invocation:
-  `python3 verify_g4_input_bundle.py <bundle> <worktree> --frozen-root
-  8072ca771d0cab732687efdbca929dbacae34a0b72cb26ad423ccac6ade8aea1`.
-  It enforces, in order: (a) root-digest equality; (b) every
-  manifest-listed file present in the worktree with matching sha256;
-  (c) bidirectional file-set membership within the covered groups
-  (missing, extra, or mismatched ⇒ `VOID` line + exit 4); (d) the derived
-  config's digest equals its manifest entry. Its captured run against the
-  seed-999 smoke snapshot is committed at
-  `doc/research/evidence/2026-07-27-verify_smoke_snapshot.out`
-  (`VERIFY OK: 4429 files`). The launcher MUST invoke this exact file,
-  MUST abort before seed 101 on nonzero exit, MUST re-run it after EVERY
-  seed (before that seed's conversion/archival), and MUST persist each
-  captured result (`logs/verify_seed<S>.txt`) in the batch archive. A
-  post-seed failure is an execution-time input mutation ⇒ batch VOID.
+- **The load-bearing guard lives WITH the driver (round-3 ruling) and is
+  enforced THROUGH the launched command:**
+  `renquant_backtesting.wf_gate.input_bundle_guard` at the frozen
+  backtesting revision `1bb24559` (backtesting#79, codex-approved). The
+  §1 invocation carries `--input-bundle <bundle> --input-bundle-root
+  8072ca771d0cab732687efdbca929dbacae34a0b72cb26ad423ccac6ade8aea1` plus
+  the six frozen `--input-bundle-covered-root` values (`data/ohlcv`,
+  `data/earnings_surprise`, `data/news_sentiment_alpaca`,
+  `backtesting/renquant_104/artifacts/walkforward_gbdt_prod_recipe_v2`,
+  `backtesting/renquant_104/artifacts/sim/walkforward_calibrators`,
+  `backtesting/renquant_104/models`); the DRIVER runs the guard before
+  any config/data loading (mismatch ⇒ exit 4, `run_backtest` never
+  reached) and again after the sim and all outputs (mismatch ⇒ exit 6,
+  execution-time input mutation ⇒ batch VOID). Covered roots are
+  EXPLICIT, caller-frozen values: the bundle-derived variant was
+  field-falsified (735 false VOIDs — a root-level singleton claimed all
+  of `data/`, flagging the sim's own outputs). The wrapper additionally
+  runs the standalone guard CLI once pre-batch and persists all captured
+  verdicts (`logs/verify_preflight.txt`, per-seed grep of the driver's
+  `INPUT BUNDLE ...` lines) in the batch archive. The model-repo file
+  `doc/research/evidence/2026-07-27-verify_g4_input_bundle.py` remains as
+  REFERENCE/evidence only — it is no longer the enforced guard.
 - **Offline enforcement (no refresh escape hatch):** the batch runs with
   `HTTP_PROXY=HTTPS_PROXY=ALL_PROXY=http://127.0.0.1:9` (unroutable) so
   NO network fetch can succeed: if the frozen OHLCV store is deemed fresh
@@ -108,9 +113,20 @@ The live tree was read (cp) exactly once, during the smoke's staging; from
 this amendment on, ONLY the bundle is consumed. Displaced worktree
 originals are preserved in the scratchpad.
 
-## 3. The completed end-to-end smoke (the §0 process rule, satisfied)
+## 3. The completed end-to-end smokes (the §0 process rule, satisfied)
 
-Executed 2026-07-27 ~09:23Z in the exact assembled worktree, seed 999
+TWO smokes, both seed 999 (non-batch), both quarantined as NON-EVIDENCE.
+
+**Smoke B — the ENFORCED command (round-3 requirement: the prior smoke
+cannot prove an enforcement path added after it ran):** executed 2026-07-27
+~11:52Z on the re-assembled worktree (backtesting at `1bb24559`), the §1
+invocation verbatim including the guard flags and the offline proxy:
+`INPUT BUNDLE PREFLIGHT OK: root=8072ca77…aea1` → 10 bars, models=121,
+walkforward engaged → `INPUT BUNDLE POST-RUN OK: root=8072ca77…aea1`,
+exit 0, final value byte-identical to Smoke A ($100,036 — deterministic
+replay under the frozen seed).
+
+**Smoke A — the original chain proof:** executed 2026-07-27 ~09:23Z, seed 999
 (non-batch seed), window 2024-01-02→2024-01-16, the §1 invocation verbatim:
 10 bars, models=121, WF folds engaged (cutoffs 2023-10-02 ×9 / 2023-10-23
 ×1, `is_real_content_digest: true`, revision pins recorded);
