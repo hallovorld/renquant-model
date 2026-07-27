@@ -68,7 +68,7 @@ rejected is a reported result, not a discarded one.
   | umbrella worktree base | `9d0dcad6bc64ad11fecd198ad890cbc9180377f3` |
   | renquant-pipeline (worktree-local advance, past #216) | `ac98b5027c37052291e1091c368bbbddc8ced766` |
   | renquant-backtesting (worktree-local advance, past #78) | `a4b525ce12d4cbaabfe00c16b325cb330a280a8d` |
-  | renquant-common (lock, unchanged) | `6f09cb99ae47` |
+  | renquant-common (worktree-local advance, past #33) | `591d8f70758bd64bb0f8024d0d59d7b6a1b5fe25` |
   | renquant-strategy-104 (lock, unchanged) | `5c3eae9d258b` |
   | renquant-model — SIM runtime (lock, unchanged) | `5ef1c2d94f64` |
   | renquant-execution (lock, unchanged) | `c41639840b2c` |
@@ -77,9 +77,12 @@ rejected is a reported result, not a discarded one.
   | renquant-orchestrator (lock, unchanged) | `ade07dd797b0` |
   | renquant-model — offline CONVERTER (#65) | `9b4970cb64564c4befde2dac154e53316141e32f` |
 
-  The worktree lock (uncommitted, worktree-local) advances exactly the two
-  marked pins; every other pin is verbatim from the umbrella base
-  revision's `subrepos.lock.json` (values listed above are that lock's).
+  The worktree lock (uncommitted, worktree-local) advances exactly the
+  THREE marked pins — pipeline (past #216), backtesting (past #78), and
+  common (past #33: pipeline `ac98b502` imports
+  `renquant_common.walk_forward_fold_selection`, so the lock's `6f09cb99ae47`
+  would ImportError before any provenance is emitted); every other pin is
+  verbatim from the umbrella base revision's `subrepos.lock.json`.
   The #531 PIN CAVEAT is why pipeline must advance: below #216 the sink is
   `None`, zero provenance is emitted, and the batch is VOID, not silently
   passed. The converter runs OFFLINE from the model revision listed, against
