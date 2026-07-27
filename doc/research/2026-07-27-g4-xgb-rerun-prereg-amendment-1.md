@@ -124,7 +124,18 @@ invocation verbatim including the guard flags and the offline proxy:
 `INPUT BUNDLE PREFLIGHT OK: root=8072ca77…aea1` → 10 bars, models=121,
 walkforward engaged → `INPUT BUNDLE POST-RUN OK: root=8072ca77…aea1`,
 exit 0, final value byte-identical to Smoke A ($100,036 — deterministic
-replay under the frozen seed).
+replay under the frozen seed). The §1 post-steps then ran on the Smoke-B
+DB/ledger (`sim_runs_smoke999b.db` +
+`wf_provenance/wfsim-20260727T115215Z-87eca98a.jsonl`, 20 records =
+10 `fold_resolved` + 10 `score_committed`) with the frozen bundle and the
+pinned backtesting revision: forward-return backfill wrote 1,170 rows;
+the model#65 converter at the frozen revision `9b4970cb` (git-archive
+export) reported **0 provenance rejects, exact ledger↔DB cover, 10/10
+admitted** (`DONE: expert=xgb wrote=10 rejected=0 (no_provenance=0)
+admitted=10`; canonical admissibility-ledger fingerprint
+`sha256:7eff7427c989e3da…bc69`). The full Smoke-B chain exits cleanly
+end-to-end; its outputs are archived with the smoke record and
+quarantined as NON-EVIDENCE.
 
 **Smoke A — the original chain proof:** executed 2026-07-27 ~09:23Z, seed 999
 (non-batch seed), window 2024-01-02→2024-01-16, the §1 invocation verbatim:
