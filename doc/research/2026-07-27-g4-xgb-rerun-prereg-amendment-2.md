@@ -55,7 +55,13 @@ invocation verbatim (guard flags + offline proxy), seed 999:
 `INPUT BUNDLE POST-RUN OK`, exit 0, final value identical to Smokes A/B
 ($100,036 — the tax fix is inert on this window, which contains no
 mixed-lot sell; the fix's own MA-case regression tests pin the changed
-arithmetic in both kernel repos). Quarantined as non-evidence.
+arithmetic in both kernel repos). The §1 post-steps then ran on the
+Smoke-C DB/ledger (`sim_runs_smoke999c.db` +
+`wf_provenance/wfsim-20260727T144822Z-02cc7fbc.jsonl`, 10 `fold_resolved`
++ 10 `score_committed`) under the NEW base with the frozen converter
+`9b4970cb`: backfill 1,170 rows; **0 provenance rejects, exact ledger↔DB
+cover, 10/10 admitted** (`DONE: expert=xgb wrote=10 rejected=0
+(no_provenance=0) admitted=10`). Quarantined as non-evidence.
 
 ## 3. Expectation binding future readers
 

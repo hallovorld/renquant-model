@@ -24,8 +24,10 @@ Batch-2 crash forensics (MA lot pair verified to 10 decimals; zero RNG on
 the decision path ⇒ deterministic); fix PRs merged with 16 pinned tests
 per repo incl. the exact MA case (tax must be 0.0); Smoke C on the new
 base: PREFLIGHT OK → 10 bars/121 models → POST-RUN OK, exit 0, value
-identical to Smokes A/B; guard also caught the intermediate re-provision
-state (337 mismatches) before any run.
+identical to Smokes A/B; post-steps on the Smoke-C DB/ledger under the
+new base: backfill 1,170 rows; converter @ frozen 9b4970cb: 0 provenance
+rejects, exact ledger↔DB cover, 10/10 admitted. Guard also caught the
+intermediate re-provision state (337 mismatches) before any run.
 
 ## NEXT
 Codex review → merge = freeze → launch batch 3 (5 seeds, ~2–4 h) →
