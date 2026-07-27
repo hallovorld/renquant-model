@@ -141,3 +141,64 @@ def test_full_artifact_with_shadow_fields_is_fingerprint_verifiable():
     stamped = stamp(artifact)
     artifact.update(stamped)
     verify(artifact, stamped["model_content_fingerprint"], stamped["fingerprint_schema_version"])
+
+
+def _synthetic_panel(n_dates: int = 10, n_labeled: int = 7) -> pd.DataFrame:
+    """Panel whose trailing ``n_dates - n_labeled`` dates have NaN labels —
+    the real fwd_60d shape (no forward label for the newest dates)."""
+    rng = np.random.default_rng(7)
+    dates = pd.date_range("2026-01-05", periods=n_dates, freq="B")
+    rows = []
+    for i, d in enumerate(dates):
+        lab = rng.normal(size=20) if i < n_labeled else np.full(20, np.nan)
+        rows.append(pd.DataFrame({"date": d, "ticker": [f"T{j}" for j in range(20)],
+                                  "fwd_60d_excess": lab}))
+    return pd.concat(rows, ignore_index=True)
+
+
+def test_effective_train_cutoff_is_max_labeled_date_not_panel_max():
+    """The honest cutoff = max date actually TRAINED on (post label-dropna),
+    NOT the raw panel max — a trailing unlabeled window must be excluded."""
+    panel = _synthetic_panel(n_dates=10, n_labeled=7)
+    expected = sorted(panel["date"].unique())[6]  # 7th date = last labeled one
+    got = mod.effective_train_cutoff(panel)
+    assert got == pd.Timestamp(expected).strftime("%Y-%m-%d")
+    assert got < pd.Timestamp(panel["date"].max()).strftime("%Y-%m-%d")
+    # fully-labeled panel: cutoff == panel max (dropna is a no-op)
+    full = _synthetic_panel(n_dates=5, n_labeled=5)
+    assert mod.effective_train_cutoff(full) == pd.Timestamp(
+        full["date"].max()).strftime("%Y-%m-%d")
+    # all-NaN labels: refuse rather than stamp NaT
+    with pytest.raises(SystemExit):
+        mod.effective_train_cutoff(_synthetic_panel(n_dates=3, n_labeled=0))
+
+
+def test_artifact_carries_top_level_effective_train_cutoff():
+    """main()'s stamping sequence must put ``effective_train_cutoff_date``
+    at the artifact TOP LEVEL — the runtime ``PanelScorer.load`` builds
+    ``scorer.metadata`` from top-level payload keys, which is where the
+    shadow health record reads it; nesting it under ``metadata`` instead
+    would leave the field visible only through a DEPRECATED flatten shim
+    (and, once that shim is removed, reproduce ``missing_train_cutoff``)."""
+    artifact, booster, feat_cols = _toy_artifact()
+    panel = _synthetic_panel()
+    artifact["effective_train_cutoff_date"] = mod.effective_train_cutoff(panel)
+    mod.stamp_contract(artifact, booster, feat_cols)
+    assert artifact["effective_train_cutoff_date"] == "2026-01-13"  # 7th B-day from 01-05
+    # top-level, not nested — the runtime reads top-level keys
+    assert "effective_train_cutoff_date" not in artifact["metadata"]
+
+
+def test_effective_train_cutoff_is_fingerprint_stable():
+    """``effective_train_cutoff_date`` is OPERATIONAL-classified in
+    renquant-common (training-window provenance), so stamping it must NOT
+    move ``model_content_sha256`` / ``config_fingerprint`` — the deployed
+    shadow artifact's fingerprint must survive the re-stamp unchanged."""
+    from renquant_common.model_fingerprint import model_content_sha256
+
+    artifact, booster, feat_cols = _toy_artifact()
+    fp_without = model_content_sha256(artifact)
+    artifact["effective_train_cutoff_date"] = "2026-04-28"
+    mod.stamp_contract(artifact, booster, feat_cols)
+    assert artifact["config_fingerprint"] == fp_without
+    assert model_content_sha256(artifact) == fp_without

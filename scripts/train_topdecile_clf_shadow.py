@@ -14,6 +14,13 @@ construction). Params: the confirmatory executor's frozen CLF params.
 Normalization: the production ``build_normalization`` pipeline, stamped
 into the artifact so serving normalizes identically to training.
 
+Provenance: stamps TOP-LEVEL ``effective_train_cutoff_date`` (the max
+panel date actually trained on, AFTER the label dropna — computed from
+the data) so the runtime shadow health record sees the training cutoff
+instead of degrading with ``missing_train_cutoff``; see the placement
+note in ``main()`` for why top-level (not metadata-nested) is required
+and fingerprint-safe.
+
 SHADOW-ONLY GUARD: refuses any output path whose resolved path components
 do not include a literal ``shadow`` component, or that include a
 production-marker component (fail-closed on path components, not a
@@ -72,6 +79,19 @@ def refuse_non_shadow(path: Path) -> Path:
 def top_decile_label(train: pd.DataFrame, label: str = LABEL) -> pd.Series:
     """1{row's label is in its date's top decile} — the frozen construction."""
     return (train.groupby("date")[label].rank(pct=True) >= TOP_DECILE).astype(float)
+
+
+def effective_train_cutoff(train: pd.DataFrame, label: str = LABEL) -> str:
+    """Honest training-data cutoff: the max panel date actually trained on,
+    computed AFTER the ``label`` dropna — rows with a NaN forward label are
+    never trained on, so when a trailing window of panel dates has no
+    ``fwd_60d`` label yet the raw panel max would overstate freshness by up
+    to the label lookahead. Computed from the data, never hardcoded."""
+    kept = train.dropna(subset=[label])
+    if kept.empty:
+        raise SystemExit(f"effective_train_cutoff: no rows with a non-NaN "
+                         f"{label!r} label — refusing to stamp a cutoff")
+    return pd.Timestamp(kept["date"].max()).strftime("%Y-%m-%d")
 
 
 def stamp_contract(artifact: dict, booster, feat_cols: list[str]) -> dict:
@@ -134,6 +154,21 @@ def main() -> int:
             "NOT a production scorer; deployment gated by pipeline#213's "
             "frozen forward readout."),
     )
+    # TOP-LEVEL, deliberately NOT nested under the "metadata" envelope: the
+    # serving runtime (renquant-pipeline ``PanelScorer.load``) builds
+    # ``scorer.metadata`` from TOP-LEVEL payload keys via
+    # ``stamp_artifact_metadata``, and the shadow health record reads
+    # ``scorer.metadata["effective_train_cutoff_date"]``
+    # (``shadow_scoring.py``; a missing value degrades the shadow with
+    # ``missing_train_cutoff``) — a metadata-nested copy would only surface
+    # through a DEPRECATED flatten shim. Unlike the shadow-only fields below,
+    # this key is SAFE at the top level: it is already classified OPERATIONAL
+    # in renquant-common's fingerprint tables ("training-window provenance"),
+    # so ``model_content_sha256`` / ``config_fingerprint`` are unchanged by
+    # it. Stamped BEFORE stamp_contract so the hasher's total-classification
+    # check validates the key at train time.
+    cutoff = effective_train_cutoff(train)
+    artifact["effective_train_cutoff_date"] = cutoff
     stamp_contract(artifact, booster, feat_cols)
     # Nested under the already-OPERATIONAL "metadata" envelope (schema-v1
     # classifies TOP-LEVEL keys and treats a nested value as one atomic unit
@@ -153,7 +188,8 @@ def main() -> int:
     pos_rate = float(y.mean())
     print(f"wrote {out}")
     print(f"rows={len(train):,} feats={len(feat_cols)} pos_rate={pos_rate:.3f} "
-          f"trained_date={artifact.get('trained_date')}")
+          f"trained_date={artifact.get('trained_date')} "
+          f"effective_train_cutoff_date={cutoff}")
     return 0
 
 
