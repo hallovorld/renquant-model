@@ -19,14 +19,19 @@ The converter consumes the ``wf_sim_provenance.v1`` JSONL ledger (design
    ``resolve_artifact_digest`` run only as independent cross-checks; any
    disagreement with the ledger is a HARD :class:`CrossCheckMismatchError`
    (evidence quarantined, nothing written), never a fallback.
-4. The vendored canonical-payload digest matches known vectors computed
-   from ``renquant_pipeline.kernel.walk_forward.provenance`` (KEEP IN SYNC
-   guard), and matches the imported implementation when available.
+4. The fixed vendored canonical-payload digest matches STORED vectors
+   computed once from ``renquant_pipeline.kernel.walk_forward.provenance``
+   at the pinned producer revision (KEEP IN SYNC guard). The vectors ARE
+   the producer/consumer compatibility contract — renquant-model never
+   imports renquant_pipeline (architecture boundary).
 5. BDay PIT semantics of the (now cross-check-only) fold replay, kept from
    the model#64 fix.
 6. An end-to-end build over a tiny synthetic sim DB + ledger, ADMITTED by
    the canonical validator, with every identity/time field stamped verbatim
    from the ledger records.
+7. Per-expert output isolation (folded in from model#66): a second expert
+   built into the same ``output_dir`` must not clobber the first expert's
+   admissibility ledger / calendar evidence.
 """
 from __future__ import annotations
 
@@ -42,16 +47,15 @@ from pandas.tseries.offsets import BDay
 
 from experiments.ensemble_phase0.build_phase_a_inputs import (
     ALLOWED_SCORE_COLUMNS,
-    PIPELINE_PROVENANCE_IMPORTED,
+    PAYLOAD_DIGEST_IMPL,
     CrossCheckMismatchError,
     LabelContext,
     ProvenanceLedgerError,
     ProvenancePair,
     ScoreColumnNotAllowedError,
     WalkForwardFold,
-    _vendored_canonical_score_payload,
-    _vendored_score_payload_digest,
     build_score_payload,
+    canonical_score_payload,
     evaluate_provenance_dates,
     load_folds,
     load_provenance_ledger,
@@ -283,12 +287,17 @@ def test_load_folds_requires_lookahead(tmp_path: Path):
 
 
 # ---------------------------------------------------------------------
-# 2. Canonical score-payload digest: vendored copy vs known vectors
+# 2. Canonical score-payload digest: fixed vendored copy vs STORED vectors
 # ---------------------------------------------------------------------
-# Known vectors computed from renquant_pipeline.kernel.walk_forward.provenance
-# (origin/main ac98b5027c37052291e1091c368bbbddc8ced766). If these fail, the
-# vendored copy in build_phase_a_inputs drifted from the producer -- re-sync
-# it (KEEP IN SYNC note in the module).
+# STORED vectors, computed ONCE from
+# renquant_pipeline.kernel.walk_forward.provenance at origin/main
+# ac98b5027c37052291e1091c368bbbddc8ced766 and frozen here. They ARE the
+# producer/consumer compatibility contract: renquant-model never imports
+# renquant_pipeline (architecture boundary — codex round-2 on model#65),
+# so byte-compatibility of the vendored digest is proven against these
+# fixed vectors, never by an import. If these fail, the vendored copy
+# drifted from the pinned producer revision -- re-sync it (KEEP IN SYNC
+# note in the module).
 VECTOR_1 = [
     {"ticker": "BBB", "raw_panel": -0.25, "mu": None, "rank_score": 0.5, "sigma": 0.05},
     {"ticker": "AAA", "raw_panel": 1, "mu": 0.1, "rank_score": None, "sigma": 2.5e-3},
@@ -303,27 +312,17 @@ VECTOR_3 = [
 VECTOR_3_DIGEST = "sha256:9943fbd2d4870ef5ff7d0e47105394f54eb8951c1e7726909d0f38332e3eecaf"
 
 
-def test_vendored_digest_matches_pipeline_known_vectors():
+def test_vendored_digest_matches_stored_producer_vectors():
     # Sorting by ticker + int-through-float normalization + None -> null.
-    assert _vendored_canonical_score_payload(VECTOR_1) == VECTOR_1_CANONICAL
-    assert _vendored_score_payload_digest(VECTOR_1) == VECTOR_1_DIGEST
+    assert canonical_score_payload(VECTOR_1) == VECTOR_1_CANONICAL
+    assert score_payload_digest(VECTOR_1) == VECTOR_1_DIGEST
     # Empty payload = sha256 of the empty byte string.
-    assert _vendored_score_payload_digest([]) == VECTOR_EMPTY_DIGEST
+    assert score_payload_digest([]) == VECTOR_EMPTY_DIGEST
     # repr()-fidelity floats (-0.0, 1e-17, 0.30000000000000004).
-    assert _vendored_score_payload_digest(VECTOR_3) == VECTOR_3_DIGEST
-
-
-@pytest.mark.skipif(
-    not PIPELINE_PROVENANCE_IMPORTED,
-    reason="renquant_pipeline not importable in this environment; the "
-           "known-vector test above pins the algorithm instead",
-)
-def test_vendored_matches_imported_pipeline_implementation():
-    from renquant_pipeline.kernel.walk_forward.provenance import (
-        score_payload_digest as pipeline_digest,
-    )
-    for vector in (VECTOR_1, [], VECTOR_3):
-        assert _vendored_score_payload_digest(vector) == pipeline_digest(vector)
+    assert score_payload_digest(VECTOR_3) == VECTOR_3_DIGEST
+    # The manifest stamps the vendored implementation's pinned identity.
+    assert PAYLOAD_DIGEST_IMPL.startswith("vendored:")
+    assert "@ac98b502" in PAYLOAD_DIGEST_IMPL
 
 
 # ---------------------------------------------------------------------
@@ -658,9 +657,7 @@ def test_end_to_end_ledger_build_is_admitted_by_canonical_validator(tmp_path: Pa
     assert result.ledger_admitted == 2
     assert result.ledger_rejected == 0
     assert result.sim_run_id == SIM_RUN_ID
-    assert result.payload_digest_impl in (
-        "vendored", "renquant_pipeline.kernel.walk_forward.provenance",
-    )
+    assert result.payload_digest_impl == PAYLOAD_DIGEST_IMPL
     # The ledgerless DB date was rejected with a machine-readable reason,
     # and no score file was written for it.
     assert result.rejected_dates["2025-09-17"]["reason_code"] == "no_provenance_record"
@@ -688,6 +685,86 @@ def test_end_to_end_ledger_build_is_admitted_by_canonical_validator(tmp_path: Pa
     # Shared returns CSV in the runner's expected schema.
     returns = (out / "returns.csv").read_text().splitlines()
     assert returns[0] == "date,ticker,fwd_return"
+
+    # Per-expert evidence isolation (model#66): the admissibility ledger
+    # lives under the expert dir, and the manifest records that path.
+    assert result.ledger_path == str(out / "xgb" / "admissibility_ledger.json")
+
+
+def test_second_expert_build_does_not_clobber_first_experts_root_artifacts(
+    tmp_path: Path,
+):
+    """Multi-expert output isolation regression (folded in from model#66).
+
+    Building a SECOND expert into the SAME ``output_dir`` must not destroy
+    the first expert's per-expert evidence. The admissibility ledger and its
+    calendar evidence are expert-specific; written to the shared
+    ``output_dir`` root (``output_dir/admissibility_ledger.json`` /
+    ``output_dir/calendar_evidence.json``) a patchtst build would clobber
+    the xgb build's evidence. They must live under ``output_dir/<expert>/``.
+    The forward-returns CSV is expert-independent label data and stays
+    shared at the root by design. Adapted to the wf_sim_provenance.v1
+    evidence schema: both experts consume the same generation-time ledger +
+    verified observations here (one synthetic sim run, two expert labels).
+    """
+    dates = ["2025-09-15", "2025-09-16"]
+    inputs = _e2e_inputs(tmp_path, dates)
+    _write_artifact(tmp_path)
+    out = tmp_path / "out"
+
+    def _build(expert: str):
+        return run_build(
+            sim_db=inputs["sim_db"],
+            provenance_ledger=inputs["ledger"],
+            manifest_file=inputs["manifest"],
+            output_dir=out,
+            expert_name=expert,
+            score_column="raw_panel",
+            start_date="2025-09-01",
+            end_date="2025-09-30",
+            artifact_base_dir=tmp_path,
+            build_admissibility_ledger=True,
+        )
+
+    # First expert.
+    result_xgb = _build("xgb")
+    assert result_xgb.ledger_admitted == 2
+    xgb_ledger = out / "xgb" / "admissibility_ledger.json"
+    xgb_cal = out / "xgb" / "calendar_evidence.json"
+    assert xgb_ledger.exists()
+    assert xgb_cal.exists()
+    # Manifest records the isolated per-expert ledger path.
+    assert result_xgb.ledger_path == str(xgb_ledger)
+    # Snapshot the first expert's evidence bytes to prove the second run
+    # leaves them untouched.
+    xgb_ledger_bytes = xgb_ledger.read_bytes()
+    xgb_cal_bytes = xgb_cal.read_bytes()
+
+    # Second expert into the SAME output_dir.
+    result_pt = _build("patchtst")
+    assert result_pt.ledger_admitted == 2
+
+    # 1) The first expert's per-expert evidence survived byte-for-byte.
+    assert xgb_ledger.read_bytes() == xgb_ledger_bytes, "xgb ledger was clobbered"
+    assert xgb_cal.read_bytes() == xgb_cal_bytes, "xgb calendar evidence was clobbered"
+
+    # 2) The second expert wrote its OWN isolated evidence.
+    assert (out / "patchtst" / "admissibility_ledger.json").exists()
+    assert (out / "patchtst" / "calendar_evidence.json").exists()
+
+    # 3) No expert-specific evidence leaked to the shared root (the pre-fix
+    #    clobber target). This assertion fails on the pre-fix code.
+    assert not (out / "admissibility_ledger.json").exists()
+    assert not (out / "calendar_evidence.json").exists()
+
+    # 4) Per-expert score dirs and build manifests coexist.
+    assert (out / "xgb" / "2025-09-15.json").exists()
+    assert (out / "patchtst" / "2025-09-15.json").exists()
+    assert (out / "build_manifest_xgb.json").exists()
+    assert (out / "build_manifest_patchtst.json").exists()
+
+    # 5) The forward-returns CSV is the single shared root artifact.
+    assert (out / "returns.csv").exists()
 
 
 def test_no_admissible_dates_fails_closed(tmp_path: Path):

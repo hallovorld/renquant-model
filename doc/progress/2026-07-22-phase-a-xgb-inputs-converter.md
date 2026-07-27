@@ -27,12 +27,15 @@ WHAT:      `experiments/ensemble_phase0/build_phase_a_inputs.py` — a
            `score_observation_key` (`(run_id, date, run_type)`) from the
            sim DB and the canonical `score_payload_digest` is recomputed
            over exactly what was read back — equality with the committed
-           digest plus an `n_rows` match is required. The digest uses the
-           pipeline's own `canonical_score_payload`/`score_payload_digest`
-           when `renquant_pipeline` is importable, else a vendored
-           byte-for-byte copy (KEEP IN SYNC note; cross-tested against
-           known vectors computed from pipeline origin/main `ac98b502`
-           AND against the imported implementation when available);
+           digest plus an `n_rows` match is required. **[round-2 P1-1,
+           this update]** The digest is a FIXED versioned vendored copy
+           ONLY (KEEP IN SYNC note pinned to pipeline origin/main
+           `ac98b502`, identity stamped as `PAYLOAD_DIGEST_IMPL` in the
+           build manifest) — renquant-model does not import
+           renquant_pipeline, not even guarded (architecture boundary);
+           the previous dynamic-import preference is REMOVED. The stored
+           test vectors (computed once from the pinned producer revision)
+           are the explicit producer/consumer compatibility contract;
            (iii) `select_pit_fold` + `resolve_artifact_digest` are DEMOTED
            to independent cross-checks: any disagreement with the ledger
            identity (including an artifact that cannot be re-hashed) is a
@@ -48,6 +51,16 @@ WHAT:      `experiments/ensemble_phase0/build_phase_a_inputs.py` — a
            no ledger record are rejected `no_provenance_record`. Every
            record still carries `classification: EXPLORATORY_ONLY` — the
            containment stays until real rerun evidence exists.
+           **[round-2 P1-2, this update]** model#66's per-expert output
+           isolation is FOLDED IN: the admissibility ledger + its calendar
+           evidence are written under `output_dir/<expert_name>/` (the
+           dir already holding that expert's score files + `universe.txt`)
+           instead of the shared root, so a second expert built into the
+           same `output_dir` cannot clobber the first expert's evidence;
+           `BuildManifest` records the isolated `ledger_path`; the shared
+           forward-returns CSV stays at the root by design
+           (expert-independent label data). #66 becomes superseded once
+           this PR lands.
            `tests/test_build_phase_a_inputs.py` — 30 tests: ledger fixtures
            (valid pair; orphaned resolved; orphaned committed; duplicate
            committed non-identical [rejected] / byte-identical +
@@ -57,10 +70,12 @@ WHAT:      `experiments/ensemble_phase0/build_phase_a_inputs.py` — a
            sim_run_ids; wrong schema_version), DB read-back verification
            (pass; digest mismatch; n_rows mismatch), verbatim-stamping
            unit test, cross-check quarantine (identity disagreement;
-           unresolvable artifact), vendored-digest known vectors +
-           imported-equivalence, BDay replay semantics (kept from
-           model#64), end-to-end synthetic sim DB + ledger ADMITTED by
-           the canonical validator, and the fail-closed empty case.
+           unresolvable artifact), vendored-digest STORED producer
+           vectors, BDay replay semantics (kept from model#64),
+           end-to-end synthetic sim DB + ledger ADMITTED by the canonical
+           validator, the two-expert no-clobber isolation regression
+           (adapted from #66 to the ledger-backed evidence schema), and
+           the fail-closed empty case.
 WHY/DIR:   Codex's blocking review on this PR: post-hoc reconstruction of
            which fold/artifact scored which date is inadmissible;
            provenance must be persisted at generation time and the
@@ -95,18 +110,25 @@ EVIDENCE:  artifact:      experiments/ensemble_phase0/build_phase_a_inputs.py
                           rerun emits a ledger"
            `python -m pytest tests/test_build_phase_a_inputs.py
            tests/test_phase_a_runner.py tests/test_admissibility_ledger.py`
-           -> 311 passed, 1 skipped (vendored-fallback env; the skip is
-           the imported-equivalence test) and 312 passed with
-           renquant_pipeline@ac98b502 importable; full repo suite 887
-           passed, 3 skipped (888/2 with pipeline importable). Codex's
-           baseline on the old head was 293 on the same three files — no
-           regression, +19 new tests. [VERIFIED]
-NEXT:      - umbrella #531 (sim emit wiring) merges; then the XGB
+           -> 312 passed, 0 skipped (the round-2 P1 pass removed the
+           conditional imported-equivalence test — the digest contract is
+           now import-free by design — and added the #66-derived
+           isolation regression); full repo suite 888 passed, 2 skipped.
+           Codex's baseline on the pre-rework head was 293 on the same
+           three files — no regression, +19 net new tests. [VERIFIED]
+NEXT:      - SANCTIONED FOLLOW-UP (separate PR, NOT this one; codex
+             round-2 P1-1): canonicalize the score-payload digest into
+             renquant-common (same pattern as
+             `walk_forward_fold_selection`) so pipeline#216's emit side
+             and this converter both consume ONE implementation instead
+             of producer + pinned vendored copy.
+           - umbrella #531 (sim emit wiring) merges; then the XGB
              multi-seed rerun runs under a frozen prereg doc (seeds +
              disposition rule BEFORE launch) producing the first
              admissible ledger-backed corpus; PatchTST rerun remains
              compute-gated (no-Modal rule stands).
-           - #66 (isolation harness) rebases on top of this converter.
+           - #66 is superseded by this PR (its isolation fix is folded in
+             per codex round-2 P1-2); it closes once this PR lands.
            - The `EXPLORATORY_ONLY` classification stays on every record
              this converter emits until that rerun evidence exists and is
              re-reviewed.

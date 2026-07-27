@@ -141,27 +141,41 @@ def validate_score_column(score_column: str) -> str:
 #: .SCORE_PAYLOAD_FIELDS`` — do not reorder.
 SCORE_PAYLOAD_FIELDS = ("ticker", "raw_panel", "mu", "rank_score", "sigma")
 
+#: The digest implementation identity stamped into the build manifest.
+#: This module deliberately does NOT import renquant_pipeline — the model
+#: factory never imports the runtime pipeline, not even guarded
+#: (architecture boundary; codex round-2 on model#65). The implementation
+#: below is a FIXED versioned vendored copy; producer/consumer
+#: compatibility is enforced by the fixed test vectors in
+#: ``tests/test_build_phase_a_inputs.py`` (computed once from the pinned
+#: producer revision), not by an import. Sanctioned follow-up (separate
+#: PR, NOT this one): canonicalize this digest into renquant-common (same
+#: pattern as ``walk_forward_fold_selection``) so pipeline#216 and this
+#: converter both consume ONE implementation.
+PAYLOAD_DIGEST_IMPL = (
+    "vendored:renquant_pipeline.kernel.walk_forward.provenance@ac98b502"
+)
 
-def _vendored_canonical_value(value: Any) -> str | None:
+
+def _canonical_value(value: Any) -> str | None:
     """Float canonicalization: ``repr(float(v))``; ``None`` stays null."""
     if value is None:
         return None
     return repr(float(value))
 
 
-def _vendored_canonical_score_payload(rows: Any) -> bytes:
+def canonical_score_payload(rows: Any) -> bytes:
     """Canonical serialization of a persisted score series.
 
     KEEP IN SYNC — vendored byte-for-byte from
     ``renquant_pipeline/src/renquant_pipeline/kernel/walk_forward/provenance.py``
     (``canonical_score_payload``, renquant-pipeline origin/main
-    ``ac98b5027c37052291e1091c368bbbddc8ced766``). The vendoring exists
-    because the model repo's test/CLI environment does not import
-    renquant_pipeline; when it IS importable the pipeline implementation is
-    used instead (see the try/except below), and
-    ``tests/test_build_phase_a_inputs.py`` cross-tests this copy against
-    known vectors computed from the pipeline module. Rules (all
-    load-bearing — extraction requires byte-equality with the emit side):
+    ``ac98b5027c37052291e1091c368bbbddc8ced766``). A FIXED versioned copy,
+    never an import (see :data:`PAYLOAD_DIGEST_IMPL`);
+    ``tests/test_build_phase_a_inputs.py`` pins it against known vectors
+    computed from that producer revision — those vectors ARE the
+    producer/consumer compatibility contract. Rules (all load-bearing —
+    extraction requires byte-equality with the emit side):
 
     * rows sorted by ``str(ticker)``;
     * fixed field order ``(ticker, raw_panel, mu, rank_score, sigma)``;
@@ -172,28 +186,16 @@ def _vendored_canonical_score_payload(rows: Any) -> bytes:
     for row in sorted(rows, key=lambda r: str(r["ticker"])):
         lines.append(json.dumps(
             [str(row["ticker"])]
-            + [_vendored_canonical_value(row.get(f)) for f in SCORE_PAYLOAD_FIELDS[1:]],
+            + [_canonical_value(row.get(f)) for f in SCORE_PAYLOAD_FIELDS[1:]],
             separators=(",", ":"),
             ensure_ascii=True,
         ))
     return "\n".join(lines).encode("utf-8")
 
 
-def _vendored_score_payload_digest(rows: Any) -> str:
-    """``sha256:<64 hex>`` over :func:`_vendored_canonical_score_payload`."""
-    return "sha256:" + hashlib.sha256(_vendored_canonical_score_payload(rows)).hexdigest()
-
-
-try:  # Prefer the producer's own implementation when importable.
-    from renquant_pipeline.kernel.walk_forward.provenance import (  # type: ignore
-        canonical_score_payload,
-        score_payload_digest,
-    )
-    PIPELINE_PROVENANCE_IMPORTED = True
-except ImportError:  # Model-repo environments do not ship renquant_pipeline.
-    canonical_score_payload = _vendored_canonical_score_payload
-    score_payload_digest = _vendored_score_payload_digest
-    PIPELINE_PROVENANCE_IMPORTED = False
+def score_payload_digest(rows: Any) -> str:
+    """``sha256:<64 hex>`` over :func:`canonical_score_payload`."""
+    return "sha256:" + hashlib.sha256(canonical_score_payload(rows)).hexdigest()
 
 
 # =====================================================================
@@ -955,6 +957,7 @@ class BuildManifest:
     ledger_admitted: int = 0
     ledger_rejected: int = 0
     ledger_fingerprint: str = ""
+    ledger_path: str = ""
 
 
 # =====================================================================
@@ -1008,8 +1011,7 @@ def run_build(
           f"{n_ledger_dates} date(s), {n_ledger_dates_in_range} in "
           f"[{start_date}, {end_date}], {len(pairs)} complete pair(s), "
           f"{len(rejections)} rejected "
-          f"(payload digest impl: "
-          f"{'renquant_pipeline' if PIPELINE_PROVENANCE_IMPORTED else 'vendored'})")
+          f"(payload digest impl: {PAYLOAD_DIGEST_IMPL})")
 
     # ---- §2.5 step 2: read-back + digest/n_rows verification ----------------
     rows_by_date: dict[str, list[dict[str, Any]]] = {}
@@ -1165,10 +1167,7 @@ def run_build(
         label_column=label_column,
         start_date=start_date,
         end_date=end_date,
-        payload_digest_impl=(
-            "renquant_pipeline.kernel.walk_forward.provenance"
-            if PIPELINE_PROVENANCE_IMPORTED else "vendored"
-        ),
+        payload_digest_impl=PAYLOAD_DIGEST_IMPL,
         n_ledger_dates=n_ledger_dates,
         n_ledger_dates_in_range=n_ledger_dates_in_range,
         n_dates_admissible=len(scores_by_date),
@@ -1198,11 +1197,25 @@ def run_build(
         cal_start = (date.fromisoformat(min(scores_by_date)) - timedelta(days=7)).isoformat()
         cal_end = (date.fromisoformat(max(scores_by_date)) + timedelta(days=7)).isoformat()
         session_calendar = build_exchange_session_calendar(cal_start, cal_end)
-        expert_spec = ExpertSpec(name=expert_name, score_dir=output_dir / expert_name)
+        # Per-expert output isolation (folded in from model#66). The
+        # admissibility ledger and its calendar evidence are expert-specific
+        # evidence (built from THIS expert's per-date score dir). Writing
+        # them to the shared output_dir ROOT means a second expert's build
+        # into the same output_dir clobbers the first expert's ledger (both
+        # -> output_dir/admissibility_ledger.json and
+        # output_dir/calendar_evidence.json). Co-locate them under the
+        # per-expert score dir so multiple experts can target one output_dir
+        # without cross-expert clobber; the ledger's calendar-evidence
+        # locator (a bare filename) stays valid because both files sit in
+        # the same directory. The shared forward-returns CSV stays at the
+        # root -- it is expert-independent label data by design.
+        expert_output_dir = output_dir / expert_name
+        expert_output_dir.mkdir(parents=True, exist_ok=True)
+        expert_spec = ExpertSpec(name=expert_name, score_dir=expert_output_dir)
         cal_evidence = build_calendar_evidence(
             session_calendar, calendar_name="NYSE", query_range=(cal_start, cal_end),
         )
-        cal_evidence_path = write_calendar_evidence(cal_evidence, output_dir)
+        cal_evidence_path = write_calendar_evidence(cal_evidence, expert_output_dir)
 
         def _loader(expert: ExpertSpec, dt: str) -> dict[str, Any]:
             candidate = expert.score_dir / f"{dt}.json"
@@ -1233,11 +1246,12 @@ def run_build(
             require_realized_labels=True,
             label_horizon_days=label_horizon_days,
         )
-        write_ledger(ledger_verdict, output_dir)
+        ledger_path = write_ledger(ledger_verdict, expert_output_dir)
         stats = ledger_verdict.summary.get("per_expert", {}).get(expert_name, {})
         manifest.ledger_admitted = stats.get("admitted", 0)
         manifest.ledger_rejected = stats.get("rejected", 0)
         manifest.ledger_fingerprint = ledger_verdict.ledger_fingerprint
+        manifest.ledger_path = str(ledger_path)
         print(f"Canonical admissibility ledger: "
               f"{manifest.ledger_admitted} admitted / "
               f"{manifest.ledger_admitted + manifest.ledger_rejected} evaluated "
