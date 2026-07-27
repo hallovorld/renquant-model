@@ -1,12 +1,19 @@
 # G4 XGB rerun batch — preregistration PR
 
 ## STATUS
-PREREG only; nothing runs before this PR merges (the freeze). No code.
+delivered
 
 ## WHAT
-`doc/research/2026-07-27-g4-xgb-rerun-prereg.md`: frozen 5-seed
+Preregistration document only — no code, and NOTHING RUNS BEFORE THIS PR
+MERGES (merge = the freeze). `doc/research/2026-07-27-g4-xgb-rerun-prereg.md`:
+frozen 5-seed
 {101–105} run matrix for the 27-month run_sim_104 replay in an isolated
-umbrella worktree with a worktree-local pipeline-pin advance past #216;
+umbrella worktree with worktree-local pin advances past pipeline#216 AND
+backtesting#78 (exact resolved revisions of every runtime repo listed in the
+batch report);
+single authority leg (`--compare-to strategy_config.json` disables the
+golden comparison leg — one run, one sim_run_id, one DB, one ledger, with an
+explicit ledger-to-DB pairing rule);
 admissibility judged solely by the merged #215/#216/#531/#78/#65 contract;
 fail-closed total reporting; batch-level abort-and-void on any
 pit_violation/digest-mismatch/cross-check failure; PatchTST explicitly NOT
@@ -28,6 +35,7 @@ ladder + cap, 07-16 data audit, #531 PIN CAVEAT, #78 seed surface,
 behavior claims — design/prereg only.
 
 ## NEXT
-Codex review → merge = freeze → assemble isolated worktree → launch 5 seeds
+Codex review → merge = freeze (no runs before merge) → assemble isolated
+worktree → launch 5 seeds
 (local CPU, ~15 h) → converter + ledger per seed → total report →
 model#64 re-review with end-to-end evidence.
