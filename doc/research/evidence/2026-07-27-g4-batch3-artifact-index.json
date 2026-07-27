@@ -1,0 +1,63 @@
+{
+ "schema": "g4_batch3_artifact_index.v1",
+ "frozen_revision_vector": {
+  "umbrella_base": "15c218e7bd669ab03f883300c883cf4035d7c4d5",
+  "renquant-pipeline": "dbcab26556a0db474038ea8f9f2a76d85f944c12",
+  "renquant-backtesting": "1bb245595691e3ab3d615d275219c3348427f0f6",
+  "renquant-common": "591d8f70758bd64bb0f8024d0d59d7b6a1b5fe25",
+  "renquant-model-sim-runtime": "5ef1c2d94f6452dfbdd2ca6b92591b05e07bed5c",
+  "renquant-strategy-104": "5c3eae9d258be31a2fcf26fad2bc891897708771",
+  "renquant-execution": "c41639840b2c",
+  "renquant-base-data": "021ca6474102",
+  "renquant-artifacts": "c09d66f8dd09",
+  "renquant-orchestrator": "ade07dd797b0",
+  "converter": "9b4970cb64564c4befde2dac154e53316141e32f"
+ },
+ "input_bundle": {
+  "path": "/Users/renhao/renquant_bundles/g4-rerun-inputs-20260727",
+  "root_digest": "8072ca771d0cab732687efdbca929dbacae34a0b72cb26ad423ccac6ade8aea1",
+  "files": 4429
+ },
+ "seeds": {
+  "101": {
+   "sim_db_sha256": "433f14f81e33ab82d029139c0c579ca0051d82921d212d9b4d9d5d82aaff3340",
+   "ledger": "wfsim-20260727T155125Z-3b2cba10.jsonl",
+   "ledger_sha256": "1b90b574ed4a6b58b03232bad56686d6bef69daa11b744901ad6457bc3eb1da2",
+   "build_manifest_sha256": "ca5f50acdad6ca1d1db79c9ed5eb71f37abd22f0f51b377a518f2ebc8227b645",
+   "converter_output_dir": "phase_a_batch3/seed101"
+  },
+  "102": {
+   "sim_db_sha256": "8d15eda1f8ec3f89f5f5896c393cb083983571bed6df13ce068d249480f38ac2",
+   "ledger": "wfsim-20260727T161556Z-3efa61db.jsonl",
+   "ledger_sha256": "ccd792fc4b81bed4c74987971bca1ae4148ad7e6c1ba8ecf558ff1f5eb07f6cb",
+   "build_manifest_sha256": "ac86e7c545e0942125e329a1a32bf301d37db9536f665eef205c23b1544fa624",
+   "converter_output_dir": "phase_a_batch3/seed102"
+  },
+  "103": {
+   "sim_db_sha256": "68111d9274d35a05faad7f398eac45c42e286a9180c966489d22c8ffac8b12c3",
+   "ledger": "wfsim-20260727T164024Z-0be23bef.jsonl",
+   "ledger_sha256": "fb6968d27f8ec8f9924386c4f2ef6f48f25d8e20fb7fe57c1148e58594ef743b",
+   "build_manifest_sha256": "5b4148d83abbe3d13aba8fd6800aea9f398d7c58fe1de7317be5a4434c6bf063",
+   "converter_output_dir": "phase_a_batch3/seed103"
+  },
+  "104": {
+   "sim_db_sha256": "848e3d294742b9f18c00b469fd75dbea8adfa8df535519977795f1f822297472",
+   "ledger": "wfsim-20260727T170448Z-0fa1c9ef.jsonl",
+   "ledger_sha256": "e93b1cf16a3a71e7300efb4242623d7702c5498883dc82a8fa1090ac5319878e",
+   "build_manifest_sha256": "7b3893e98a6ff9149dc0b2f2c6f60937e1c87875d4971bd92273e48aeda7fdec",
+   "converter_output_dir": "phase_a_batch3/seed104"
+  },
+  "105": {
+   "sim_db_sha256": "2243bee707fdbe1edcdafcd426ff9c51b1f3d5898c5b0e217bd9d68a4f9e9d58",
+   "ledger": "wfsim-20260727T172911Z-37bb3557.jsonl",
+   "ledger_sha256": "8dc4f03d8f34459244a83ef6e8b49e1d4464ad7e661dbe42f71737084099b565",
+   "build_manifest_sha256": "a1df7bd82c96e9e7866aacb18fd5f9974e3118dfe375593bc58e867f389da418",
+   "converter_output_dir": "phase_a_batch3/seed105_final"
+  }
+ },
+ "seed105_midrun_disposition": {
+  "quarantined_at": "/private/tmp/claude-502/-Users-renhao-git-github-renquant-orchestrator/428feb92-8ee7-4b4f-afed-1e4fa82ef367/scratchpad/phase_a_batch3/seed105_QUARANTINED_midrun",
+  "excluded_from_corpus": true,
+  "reason": "converter ran against the mid-run DB (sequencing mistake, disclosed); final output = seed105_final"
+ }
+}
