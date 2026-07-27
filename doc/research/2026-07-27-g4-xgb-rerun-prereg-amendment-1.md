@@ -44,22 +44,42 @@ content-addressed bundle built from the SMOKE-PROVEN worktree snapshot
 (never re-copied from the mutable live tree):
 
 - **Bundle location:** `/Users/renhao/renquant_bundles/g4-rerun-inputs-20260727/`
-  (read-only, `chmod -R a-w`), 4,430 files, ~1.6 GB.
+  (read-only, `chmod -R a-w`), 4,429 input files, ~1.6 GB. (The round-2
+  manifest superseded the round-1 one: the pinned checker itself caught a
+  build artifact — a since-deleted `MANIFEST.sha256.tmp` listed in the
+  round-1 manifest — proving the checker rejects manifest/file-set drift.)
 - **Manifest:** `MANIFEST.sha256` inside the bundle — one line per file:
   `sha256  size  relpath` — committed VERBATIM in this PR at
   `doc/research/evidence/2026-07-27-g4-rerun-input-bundle.MANIFEST.sha256`.
 - **Frozen root digest** (sha256 of the manifest file itself):
-  `de72caaff96c3dbaa3da0dc8b43e8a5af970fea0381af82fcdc8e0a9df062df8`
-- **Launch preflight (MANDATORY, aborts before seed 101 on ANY mismatch):**
-  (a) recompute the bundle manifest file's sha256 and require equality with
-  the frozen root digest; (b) verify EVERY manifest-listed file exists in
-  the worktree with a matching sha256 (provisioning = copy bundle →
-  worktree); (c) file-set membership BOTH directions within the covered
-  groups — a file present in a covered directory but absent from the
-  manifest is a mismatch; (d) the derived config's digest must equal its
-  manifest entry. `revision_pins` still attest the CODE; the bundle
-  manifest attests the DATA/ARTIFACT inputs, closing the
-  uncommitted-live-state gap.
+  `8072ca771d0cab732687efdbca929dbacae34a0b72cb26ad423ccac6ade8aea1`
+- **Pinned executable checker (the load-bearing guard, committed in this
+  PR):** `doc/research/evidence/2026-07-27-verify_g4_input_bundle.py`
+  (v1). Invocation:
+  `python3 verify_g4_input_bundle.py <bundle> <worktree> --frozen-root
+  8072ca771d0cab732687efdbca929dbacae34a0b72cb26ad423ccac6ade8aea1`.
+  It enforces, in order: (a) root-digest equality; (b) every
+  manifest-listed file present in the worktree with matching sha256;
+  (c) bidirectional file-set membership within the covered groups
+  (missing, extra, or mismatched ⇒ `VOID` line + exit 4); (d) the derived
+  config's digest equals its manifest entry. Its captured run against the
+  seed-999 smoke snapshot is committed at
+  `doc/research/evidence/2026-07-27-verify_smoke_snapshot.out`
+  (`VERIFY OK: 4429 files`). The launcher MUST invoke this exact file,
+  MUST abort before seed 101 on nonzero exit, MUST re-run it after EVERY
+  seed (before that seed's conversion/archival), and MUST persist each
+  captured result (`logs/verify_seed<S>.txt`) in the batch archive. A
+  post-seed failure is an execution-time input mutation ⇒ batch VOID.
+- **Offline enforcement (no refresh escape hatch):** the batch runs with
+  `HTTP_PROXY=HTTPS_PROXY=ALL_PROXY=http://127.0.0.1:9` (unroutable) so
+  NO network fetch can succeed: if the frozen OHLCV store is deemed fresh
+  by the kernel's rule, zero network is attempted; if it is deemed stale,
+  the refetch fails immediately and the sim aborts BEFORE scoring —
+  either way no unfrozen data can enter. The former "re-copy after the
+  daily fetch" language is REMOVED; a batch whose store goes stale is
+  re-frozen via a new amendment, never refreshed in place.
+  `revision_pins` still attest the CODE; the bundle manifest attests the
+  DATA/ARTIFACT inputs, closing the uncommitted-live-state gap.
 
 The bundle covers (original live→worktree copy manifests retained in the
 batch archive as staging evidence only — the bundle is the sole
@@ -67,9 +87,8 @@ authoritative source):
 
 1. `data/ohlcv/` (~250 MB, 2788 files) — the full price store; the smoke
    proved the self-fetched fallback covers only ~1 year and yields 0 bars.
-   Launch while the store is fresh relative to the last close, or re-copy
-   after the daily fetch (a stale store triggers a slow, abortable
-   yfinance refetch at init).
+   Under the offline enforcement above, a store deemed stale at init
+   aborts the batch before scoring; there is NO in-place refresh path.
 2. `backtesting/renquant_104/artifacts/walkforward_gbdt_prod_recipe_v2/` +
    `artifacts/sim/walkforward_calibrators/` — the M6 RE-STAMPED fold
    calibrators, which exist ONLY as uncommitted live-tree modifications;
