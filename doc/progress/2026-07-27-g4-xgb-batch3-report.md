@@ -46,6 +46,26 @@ five-round-reviewed frozen preregistration. The corpus is the XGB half of
 the Phase-A input requirement. All outputs remain `EXPLORATORY_ONLY`
 (hard cap); no G4 disposition is taken or implied.
 
+## ARTIFACT INDEX (independently auditable)
+
+Machine-readable index committed alongside this report:
+`doc/research/evidence/2026-07-27-g4-batch3-artifact-index.json`
+(schema `g4_batch3_artifact_index.v1`) carrying: the COMPLETE frozen
+revision vector (umbrella base `15c218e7bd669ab03f883300c883cf4035d7c4d5`;
+pipeline `dbcab26556a0db474038ea8f9f2a76d85f944c12`; backtesting
+`1bb245595691e3ab3d615d275219c3348427f0f6`; common
+`591d8f70758bd64bb0f8024d0d59d7b6a1b5fe25`; model sim-runtime `5ef1c2d9…`;
+strategy `5c3eae9d…`; converter `9b4970cb…`; execution/base-data/
+artifacts/orchestrator per the lock), the FULL input-bundle root digest
+`8072ca771d0cab732687efdbca929dbacae34a0b72cb26ad423ccac6ade8aea1`
+(4,429 files), and PER-SEED sha256 digests of the final sim DB, the
+provenance JSONL, and the converter build manifest, plus each converter
+output location. Seed-105 disposition is recorded in-index: the MID-RUN
+output is quarantined at `phase_a_batch3/seed105_QUARANTINED_midrun`
+(excluded from the corpus; `excluded_from_corpus: true`), and the FINAL
+seed-105 output identity is the indexed `seed105_final` build-manifest
+digest.
+
 ## EVIDENCE
 Archive (worktree + scratchpad, retained): per-seed
 `data/sim_runs_seed<S>.db`, `data/wf_provenance/wfsim-*.jsonl`
