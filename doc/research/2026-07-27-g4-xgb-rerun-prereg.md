@@ -34,7 +34,7 @@ remaining blocker requires. It is NOT a G4 disposition instrument:
 | driver | `renquant_backtesting.wf_gate.sim_driver` (run_sim_104 body), window fixed 2024-01-02 → 2026-03-28 (~27 months, driver constant) |
 | per-seed invocation | `--seed <S> --compare-to strategy_config.json --sim-db-path data/sim_runs_seed<S>.db --equity-json out/equity_seed<S>.json --trade-log-csv out/trades_seed<S>.csv` |
 | single authority leg | `--compare-to strategy_config.json` equals the candidate config name, which the driver deterministically treats as "no golden comparison leg" (`sim_driver.py` gates the golden run on `compare_to != strategy_config_name`). Frozen rationale: each `run_backtest` TRUNCATEs the sim tables, so a second leg sharing one `--sim-db-path` would overwrite the candidate observation while its provenance carries a different `sim_run_id` — the converter could not prove which leg the retained DB belongs to. One leg ⇒ 1:1 pairing: one `run_backtest`, one `sim_run_id`, one DB, one ledger |
-| ledger↔DB pairing rule | a seed's corpus = the (`data/wf_provenance/<sim_run_id>.jsonl`, `data/sim_runs_seed<S>.db`) pair whose `sim_run_id` appears in that DB's `score_committed` observations; a DB containing observations from any OTHER `sim_run_id` voids the seed (§5) |
+| ledger↔DB pairing rule | implementable bidirectional cover, per seed: the set of `(run_id, date, run_type)` triples in the ledger's `persisted: true` `score_committed` records must EXACTLY equal the set of `(run_id, date, run_type)` observations in `data/sim_runs_seed<S>.db`'s `score_distribution` (no unmatched member in either direction), and every payload digest is recomputed from the DB rows per the model#65 canonical serialization and must equal the committed digest + `n_rows`. Any cover failure in either direction is an implementation defect (something scored without emitting, or emitted without persisting) → batch ABORT-AND-VOID per §5 |
 | execution | sequential or ≤2-way parallel on this machine (local CPU only; ~3 h/run per the 2026-06-03 feasibility study → ~15 h sequential); no Modal, no cloud spend |
 | environment | one ISOLATED umbrella worktree assembled for this batch (see §4); NEVER the live tree, NEVER the live `.subrepo_runtime` |
 
@@ -58,18 +58,34 @@ rejected is a reported result, not a discarded one.
 
 ## 4. Environment pinning (worktree-local; no live-surface mutation)
 
-- Fresh `git worktree` of the umbrella at current `origin/main`, with its
-  OWN lock edited (uncommitted, worktree-local) to advance exactly TWO pins:
-  `renquant-pipeline` to current main (past #216 — the #531 PIN CAVEAT:
-  without this the sink is `None`, zero provenance is emitted, and the
-  batch is VOID, not silently passed) and `renquant-backtesting` to current
-  main (past its #78 — the pinned revision otherwise lacks the
-  `sim_driver --seed` surface this prereg's commands require). All other
-  pins as on umbrella main. The batch report MUST list the exact resolved
-  revision of EVERY runtime repo in the assembled worktree (and each
-  provenance record's `revision_pins` independently attests them); all
-  provenance/DB/output artifacts are collected from that assembled
-  runtime's tree, nowhere else.
+- FROZEN EXACT REVISIONS (resolved 2026-07-27 before launch; any resolved
+  revision differing from this table at assembly time VOIDS the batch and
+  requires an amendment prereg — post-run reporting of "whatever main
+  resolved" is not a freeze):
+
+  | repo | frozen revision |
+  |---|---|
+  | umbrella worktree base | `9d0dcad6bc64ad11fecd198ad890cbc9180377f3` |
+  | renquant-pipeline (worktree-local advance, past #216) | `ac98b5027c37052291e1091c368bbbddc8ced766` |
+  | renquant-backtesting (worktree-local advance, past #78) | `a4b525ce12d4cbaabfe00c16b325cb330a280a8d` |
+  | renquant-common (lock, unchanged) | `6f09cb99ae47` |
+  | renquant-strategy-104 (lock, unchanged) | `5c3eae9d258b` |
+  | renquant-model — SIM runtime (lock, unchanged) | `5ef1c2d94f64` |
+  | renquant-execution (lock, unchanged) | `c41639840b2c` |
+  | renquant-base-data (lock, unchanged) | `021ca6474102` |
+  | renquant-artifacts (lock, unchanged — pin-gate honored) | `c09d66f8dd09` |
+  | renquant-orchestrator (lock, unchanged) | `ade07dd797b0` |
+  | renquant-model — offline CONVERTER (#65) | `9b4970cb64564c4befde2dac154e53316141e32f` |
+
+  The worktree lock (uncommitted, worktree-local) advances exactly the two
+  marked pins; every other pin is verbatim from the umbrella base
+  revision's `subrepos.lock.json` (values listed above are that lock's).
+  The #531 PIN CAVEAT is why pipeline must advance: below #216 the sink is
+  `None`, zero provenance is emitted, and the batch is VOID, not silently
+  passed. The converter runs OFFLINE from the model revision listed, against
+  archived artifacts only. Each provenance record's `revision_pins`
+  independently attests the runtime; all provenance/DB/output artifacts are
+  collected from the assembled worktree's tree, nowhere else.
 - `subrepo_assemble --sync` into that worktree's own runtime; the live
   tree, live lock, and live `.subrepo_runtime` are not touched. The lock
   pin advance for the LIVE surface ships later with its own reviewed PR and
@@ -83,8 +99,8 @@ The batch is VALID iff every launched seed completes and its ledger + sim DB
 + provenance JSONL are archived (per-seed: `data/wf_provenance/*.jsonl`,
 `data/sim_runs_seed<S>.db`, equity/trade outputs, converter build manifest).
 ABORT-AND-VOID (the whole batch, not the offending seed): any
-`pit_violation: true` row, any read-back digest mismatch, or any converter
-cross-check disagreement — these indicate implementation defects, and the
+`pit_violation: true` row, any read-back digest mismatch, any converter
+cross-check disagreement, or any §2 ledger↔DB cover failure — these indicate implementation defects, and the
 remedy is fix → NEW prereg (amendment PR) → rerun ALL seeds fresh. Partial
 salvage of a defective batch is forbidden. (Context: the 2026-05-09 audit
 recorded a non-reproducible 27-month replay under identical config; frozen
