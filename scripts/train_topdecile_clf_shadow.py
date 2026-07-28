@@ -17,9 +17,13 @@ into the artifact so serving normalizes identically to training.
 Provenance: stamps TOP-LEVEL ``effective_train_cutoff_date`` (the max
 panel date actually trained on, AFTER the label dropna — computed from
 the data) so the runtime shadow health record sees the training cutoff
-instead of degrading with ``missing_train_cutoff``; see the placement
-note in ``main()`` for why top-level (not metadata-nested) is required
-and fingerprint-safe.
+instead of degrading with ``missing_train_cutoff``; plus the round-8
+recipe-provenance stamp ``provenance_schema_version`` / ``recipe_id`` /
+``required_axis_fields`` (vendored contract constants below) so shadow
+admission resolves ``walkforward_only_v1`` instead of refusing the
+top_picks as NOT ACTIONABLE. See the placement notes in ``main()`` for
+why top-level (not metadata-nested) is required and fingerprint-safe
+(requires renquant-common >= 0.15.1).
 
 SHADOW-ONLY GUARD: refuses any output path whose resolved path components
 do not include a literal ``shadow`` component, or that include a
@@ -53,6 +57,23 @@ CLF_PARAMS = {"objective": "binary:logistic", "eta": 0.05, "max_depth": 5,
 N_ROUNDS = 100
 LABEL = "fwd_60d_excess"
 TOP_DECILE = 0.9
+
+# KEEP IN SYNC — vendored from the round-8 provenance-schema contract in the
+# umbrella/pipeline panel scorer (RenQuant
+# ``backtesting/renquant_104/kernel/panel_pipeline/panel_scorer.py``
+# ``PROVENANCE_SCHEMA_VERSION`` / ``RECIPE_REQUIRED_AXES`` /
+# ``stamp_provenance_schema``, mirrored in renquant-pipeline's copy). This
+# repo must NOT import renquant_pipeline (repo boundary), so the constants
+# are vendored verbatim. The shadow round-8 admission gate requires the
+# artifact's OWN stamp of these fields (never inferred from whichever cutoff
+# fields happen to be present) and re-verifies the claimed recipe against
+# the actually-present axis fields — drift here = top_picks silently NOT
+# ACTIONABLE ("required-recipe-schema, round 8"). This trainer's confirmed
+# provenance axes are EXACTLY {effective_train_cutoff_date} (stamped in
+# ``main()``), which resolves to ``walkforward_only_v1`` under the contract.
+PROVENANCE_SCHEMA_VERSION = "v1"
+RECIPE_ID = "walkforward_only_v1"
+RECIPE_REQUIRED_AXIS_FIELDS = ("effective_train_cutoff_date",)
 
 _FORBIDDEN_COMPONENTS = frozenset({"prod", "production", "strategy_config", "walkforward", "walk_forward"})
 
@@ -169,6 +190,20 @@ def main() -> int:
     # check validates the key at train time.
     cutoff = effective_train_cutoff(train)
     artifact["effective_train_cutoff_date"] = cutoff
+    # Round-8 recipe-provenance stamp (see the vendored-constants note at the
+    # top): also TOP-LEVEL — the shadow admission gate reads all three from
+    # ``scorer.metadata`` (built from top-level payload keys) and refuses an
+    # UNstamped artifact outright ("does not stamp provenance_schema_version/
+    # recipe_id — fail-closed, required-recipe-schema, round 8"). Safe at the
+    # top level since renquant-common >= 0.15.1 classifies all three
+    # OPERATIONAL (recipe-provenance attestations; hash-preserving, so
+    # ``config_fingerprint`` is unchanged), and stamped BEFORE stamp_contract
+    # so the hasher's total-classification check validates them at train time
+    # (an older renquant-common fails the build here rather than emitting an
+    # unfingerprintable or inadmissible artifact).
+    artifact["provenance_schema_version"] = PROVENANCE_SCHEMA_VERSION
+    artifact["recipe_id"] = RECIPE_ID
+    artifact["required_axis_fields"] = sorted(RECIPE_REQUIRED_AXIS_FIELDS)
     stamp_contract(artifact, booster, feat_cols)
     # Nested under the already-OPERATIONAL "metadata" envelope (schema-v1
     # classifies TOP-LEVEL keys and treats a nested value as one atomic unit
@@ -189,7 +224,9 @@ def main() -> int:
     print(f"wrote {out}")
     print(f"rows={len(train):,} feats={len(feat_cols)} pos_rate={pos_rate:.3f} "
           f"trained_date={artifact.get('trained_date')} "
-          f"effective_train_cutoff_date={cutoff}")
+          f"effective_train_cutoff_date={cutoff} "
+          f"recipe_id={RECIPE_ID} provenance_schema_version="
+          f"{PROVENANCE_SCHEMA_VERSION}")
     return 0
 
 

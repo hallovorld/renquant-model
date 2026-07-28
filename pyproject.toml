@@ -17,7 +17,7 @@ dependencies = [
   # HARD dependency of the renquant_model_crypto fee gate (D-C8b). No local
   # fallback exists by design (Codex review, model#43 r2): the crypto family
   # fails closed at import below this version.
-  "renquant-common>=0.12.0,<1.0",
+  "renquant-common>=0.15.1,<1.0",
   "renquant-base-data>=0.1.0",
   "renquant-artifacts>=0.1.0",
   "numpy>=1.26",
