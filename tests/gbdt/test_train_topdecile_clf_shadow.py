@@ -202,3 +202,97 @@ def test_effective_train_cutoff_is_fingerprint_stable():
     mod.stamp_contract(artifact, booster, feat_cols)
     assert artifact["config_fingerprint"] == fp_without
     assert model_content_sha256(artifact) == fp_without
+
+
+# ---------------------------------------------------------------------------
+# Round-8 recipe-provenance stamp (requires renquant-common >= 0.15.1).
+# ---------------------------------------------------------------------------
+
+def _recipe_keys_classified() -> bool:
+    from renquant_common.model_fingerprint import OPERATIONAL_KEYS
+    return {"provenance_schema_version", "recipe_id",
+            "required_axis_fields"} <= OPERATIONAL_KEYS
+
+
+needs_recipe_classification = pytest.mark.skipif(
+    not _recipe_keys_classified(),
+    reason="requires renquant-common >= 0.15.1 (recipe-provenance stamp keys "
+           "classified OPERATIONAL — renquant-common PR #36)")
+
+
+def _stamp_like_main(artifact: dict, booster, feat_cols: list[str]) -> dict:
+    """Replay main()'s exact provenance-stamping sequence on a toy artifact."""
+    artifact["effective_train_cutoff_date"] = mod.effective_train_cutoff(
+        _synthetic_panel())
+    artifact["provenance_schema_version"] = mod.PROVENANCE_SCHEMA_VERSION
+    artifact["recipe_id"] = mod.RECIPE_ID
+    artifact["required_axis_fields"] = sorted(mod.RECIPE_REQUIRED_AXIS_FIELDS)
+    mod.stamp_contract(artifact, booster, feat_cols)
+    return artifact
+
+
+@needs_recipe_classification
+def test_recipe_provenance_stamp_values_and_placement():
+    """main()'s sequence must stamp the exact round-8 contract values, all
+    TOP-LEVEL (the admission gate reads scorer.metadata, built from
+    top-level payload keys), none nested under metadata."""
+    artifact, booster, feat_cols = _toy_artifact()
+    _stamp_like_main(artifact, booster, feat_cols)
+    assert artifact["provenance_schema_version"] == "v1"
+    assert artifact["recipe_id"] == "walkforward_only_v1"
+    assert artifact["required_axis_fields"] == ["effective_train_cutoff_date"]
+    for key in ("provenance_schema_version", "recipe_id",
+                "required_axis_fields"):
+        assert key not in artifact["metadata"]
+
+
+@needs_recipe_classification
+def test_recipe_provenance_stamp_is_fingerprint_stable():
+    """The three stamp keys are OPERATIONAL (renquant-common 0.15.1) —
+    config_fingerprint must be IDENTICAL with and without the full
+    provenance stamp (the deployed artifact's fp must not move)."""
+    from renquant_common.model_fingerprint import model_content_sha256
+
+    artifact, booster, feat_cols = _toy_artifact()
+    fp_without = model_content_sha256(artifact)
+    _stamp_like_main(artifact, booster, feat_cols)
+    assert artifact["config_fingerprint"] == fp_without
+    assert model_content_sha256(artifact) == fp_without
+
+
+@needs_recipe_classification
+def test_stamped_recipe_resolves_under_round8_contract():
+    """Replicates the umbrella round-8 admission resolution
+    (panel_scorer.RECIPE_REQUIRED_AXES / resolve_recipe_id +
+    shadow_scoring._compute-admission semantics) against the stamped
+    artifact: the EXACT set of confirmed axes this trainer stamps must
+    resolve to the stamped recipe_id, and the artifact must actually carry
+    every field its own declared recipe requires (the gate re-verifies,
+    never trusts the stamp blindly)."""
+    # KEEP IN SYNC — vendored round-8 taxonomy (see the constants note in
+    # the trainer): recipe_id -> EXACT required axis set.
+    recipe_required_axes = {
+        "walkforward_only_v1": frozenset({"effective_train_cutoff_date"}),
+        "full_history_only_v1": frozenset({"label_observation_cutoff"}),
+        "walkforward_dual_axis_v1": frozenset(
+            {"label_observation_cutoff", "effective_train_cutoff_date"}),
+    }
+
+    def resolve_recipe_id(present_confirmed_fields):
+        fs = frozenset(present_confirmed_fields)
+        for recipe_id, required in recipe_required_axes.items():
+            if fs == required:
+                return recipe_id
+        return None
+
+    artifact, booster, feat_cols = _toy_artifact()
+    _stamp_like_main(artifact, booster, feat_cols)
+    # the trainer's confirmed provenance axes resolve to its stamped recipe
+    assert resolve_recipe_id(mod.RECIPE_REQUIRED_AXIS_FIELDS) == artifact["recipe_id"]
+    # admission re-verification: schema version matches, recipe recognized,
+    # and every required axis field is present (and truthy) on the artifact
+    required = recipe_required_axes[artifact["recipe_id"]]
+    assert artifact["provenance_schema_version"] == "v1"
+    assert frozenset(artifact["required_axis_fields"]) == required
+    present = {f for f in required if artifact.get(f)}
+    assert present == required
