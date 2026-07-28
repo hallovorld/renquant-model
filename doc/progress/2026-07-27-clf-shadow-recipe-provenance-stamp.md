@@ -72,3 +72,16 @@ NEXT:      coordinator deploy batch: swap the regenerated artifact into the
            receipt + probe rerun — next shadow session's top_picks should
            then be admissible under recipe `walkforward_only_v1` instead of
            refused for a missing recipe schema.
+
+## Follow-up (codex MED, 2026-07-28)
+
+Codex found `pyproject.toml:20` still advertised
+`renquant-common>=0.12.0,<1.0` while the new stamp sequence structurally
+requires the 0.15.1 key classification (`stamp_contract()` raises
+`UnclassifiedKeyError` for the three recipe keys below it) — a currently
+"supported" install per this repo's own metadata could no longer run the
+trainer. Fixed in `8a7b6fe`: floor raised to `renquant-common>=0.15.1,<1.0`,
+matching the true requirement; the trainer's own fail-closed check remains
+as defense in depth. `scope` above updates to: trainer + tests + doc +
+`pyproject.toml` (dependency floor only — no live artifact/config/runtime
+pin touched).
