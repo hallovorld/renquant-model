@@ -4,7 +4,14 @@ STATUS:   prereg FROZEN, no run yet. Docs only. A prior head of this PR added a
           results doc claiming Stage 0 had "executed exactly as frozen" while the
           three findings below were still open — that was a preregistration
           violation (results cannot be valid for a still-open design) and has been
-          reverted (`git rm`) in this pass; Stage 0 has NOT run.
+          reverted (`git rm`) in this pass; Stage 0 has NOT run. This pass also (a)
+          rewrote `doc/research/2026-07-28-goal6-stage0-amendment-1.md` to remove
+          every specific corpus/coverage/result number for subject (c) — even
+          hedged ones — replacing them with a pure forward-looking admission
+          contract, per the reviewer's explicit "remove entirely, not conditionally"
+          instruction; and (b) froze the parent's previously-undefined rebalance
+          spacing, block construction, and `SE_HAC` estimator (Newey-West, Bartlett
+          kernel, lag = h_min - 1).
 
 WHAT:     Adds `doc/research/2026-07-28-goal6-stage0-prereg.md` — a measurement-only
           study: 3 statistics (IC, decile spread, top-decile hit rate) x 2 horizons

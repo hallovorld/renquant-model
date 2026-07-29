@@ -88,6 +88,28 @@ model — this is the T1 finding promoted to a first-class measurement.
 dispersion; block length = ceil(label_horizon / rebalance spacing). Every
 table states `n_eff`.
 
+**Rebalance spacing and block construction (frozen):** rebalance spacing is
+1 trading day (this project's live-runner cadence generates a signal every
+trading day). For horizon `h` (20 or 60 trading days), block length =
+`ceil(h / 1) = h` trading days: blocks are non-overlapping windows of `h`
+trading days with boundaries at `t = 0, h, 2h, ...` counted from the
+corpus's first eligible date for that horizon; the block statistic is the
+mean of the per-date statistic (IC, decile spread, hit rate, or a REAL −
+NULL difference) within the block; `n_eff = N = floor(T / h)` blocks
+(`T` = eligible trading days); block-level `SE = std(block_stats, ddof=1) /
+sqrt(N)`; degrees of freedom `df = N − 1`. Every "block-level t" in this
+document is `mean(block_stats) / SE` with that `df`.
+
+**`SE_HAC` (frozen, used only for §5 H2's effect-size veto (c)):**
+Newey-West HAC on the per-date (not per-block) effect-size series, Bartlett
+kernel, lag `L = h_min − 1` trading days where `h_min = min(20, 60) = 19` —
+the exact MA(h−1)-order dependence induced by daily rebalancing of an
+h-day-overlapping forward return (Hansen-Hodrick / Newey-West rule for
+overlapping-window statistics):
+`SE_HAC = sqrt( (1/n) * (γ₀ + 2 * Σ_{k=1}^{L} (1 − k/(L+1)) * γ_k) )`,
+where `γ_k` is the sample autocovariance at lag `k` of the per-date effect
+series and `n` is that arm's own eligible-date count.
+
 ## 4. Hypotheses (closed set)
 
 - **H1 (statistic):** the tail statistics (decile spread, hit rate) have
