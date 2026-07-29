@@ -18,9 +18,13 @@ EVIDENCE: each new trap row cites its measured cost `[VERIFIED - adversarial rev
           bare sign-count control passing 37.5% of the time on signal-free input (and
           zero-skill AR scores 50-55%), i.e. structurally unable to fail; T15, a cited
           root digest of f6b6ef6d.../44 files against an actual 901f0add.../61 because
-          the bundle was appended to after citation. Section 5 makes control
-          calibration mandatory (>=40 reps, ~10% false-pass ceiling) and section 7
-          makes adversarial review a PRE-publication step. No model claim is made here.
+          the bundle was appended to after citation. Section 5 (control calibration,
+          >=40 reps / ~10% false-pass ceiling) and section 7 (PRE-publication
+          adversarial review) are gated confirmatory-only: required when the prereg's
+          decision rule could change model status or a production-facing action, N/A
+          for routine diagnostics/exploratory work (codex MED, addressed 2026-07-29 —
+          the two sections were previously unconditionally mandatory, disproportionate
+          for routine work). No model claim is made here.
 
 NEXT:     Use it for the next PatchTST attempt, which needs a new prereg naming the
           estimand up front and a bias-corrected estimator. INCONCLUSIVE stands until

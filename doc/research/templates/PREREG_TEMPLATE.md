@@ -1,8 +1,17 @@
 # PREREG TEMPLATE — copy this, fill it, freeze it BEFORE running
 
-Every section below is mandatory. A prereg missing one is not frozen, it is a
-plan. The trap list is not decoration: each row is a real failure this project
-has already paid for, and several were paid for twice.
+Every section below is mandatory unless marked **confirmatory-only**. A
+prereg missing a mandatory section is not frozen, it is a plan. The trap
+list is not decoration: each row is a real failure this project has already
+paid for, and several were paid for twice.
+
+**Applicability gate.** Sections 5 and 7 are marked **confirmatory-only**:
+required when this prereg's declared decision rule (§6) could change a
+model's status (CLOSE/promote/kill) or trigger a production-facing action.
+For routine diagnostics, data-quality checks, or exploratory work with no
+such decision rule, write `N/A — non-confirmatory, no promote/kill/production
+decision` under §5 and §7 and proceed; do not fabricate a false-pass rate or
+adversarial review to fill the section.
 
 ---
 
@@ -60,7 +69,7 @@ re-verify each input digest and REFUSE to proceed on a mismatch.
   and prefer `dependence_aware_mean`, which requires block t, bootstrap CI and
   leave-one-block-out to agree in sign.
 
-## 5. Control calibration (T14) — mandatory, not optional
+## 5. Control calibration (T14) — confirmatory-only, see Applicability gate
 
 A control arm is only a control if it can FAIL. Report, before the real run:
 
@@ -75,7 +84,7 @@ Thresholds, and what each verdict AUTHORISES (usually: opening a reviewed PR,
 never a live change). Ties, ambiguity, broken arms and invalid controls all
 resolve to the conservative branch, named explicitly.
 
-## 7. Publication discipline (the rule that actually worked)
+## 7. Publication discipline — confirmatory-only, see Applicability gate
 
 **Commission an adversarial review BEFORE publishing a verdict, not after.**
 On 2026-07-29 a CLOSE was withheld pending attack; the attack destroyed it on
