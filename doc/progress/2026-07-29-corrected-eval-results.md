@@ -41,17 +41,23 @@ WHY/DIR:  model#90 froze the design and merged; its numbers had been stripped be
 EVIDENCE:
 artifact:      /Users/renhao/renquant_bundles/corrected-eval-20260729/ (61 files, root
                digest 901f0addd19b7381775f9dd593e046b862863b8bb04bb0de7260eb405423810a
-               over OUTPUT files only, re-verified this session with
-               `tools/corpus_index.py verify` — VERIFY OK, 61 files, 6969817 bytes;
-               model#91 — does NOT cover inputs, see WHY/DIR). An earlier citation
-               here (44 files, root f6b6ef6d…) was to a since-mutated snapshot of
-               this same directory — outputs were appended after that digest was
-               taken, which is exactly why `doc/research/2026-07-29-patchtst-
-               closure-retraction.md` retracted it as invalid. This citation is
-               against the CURRENT, freshly-sealed state (an `INDEX.json` now
-               lives in the bundle root itself, self-excluded from its own digest
-               per model#93's fix) — any further appends to this directory will
-               again invalidate this digest and must be re-verified before citing.
+               over OUTPUT files only; model#91 — does NOT cover inputs, see WHY/DIR).
+               An earlier citation here (44 files, root f6b6ef6d…) was to a
+               since-mutated snapshot of this same directory — outputs were appended
+               after that digest was taken, which is exactly why
+               `doc/research/2026-07-29-patchtst-closure-retraction.md` retracted it
+               as invalid.
+               CORRECTION to a prior push on this branch: it claimed
+               `tools/corpus_index.py verify` returned VERIFY OK against this root
+               because INDEX.json "self-excludes from its own digest per model#93's
+               fix." Re-ran that exact command this session against the current tool:
+               it still FAILS (root digest mismatch + "present in corpus but not in
+               index: INDEX.json") `[VERIFIED - ran the command directly, 2026-07-29]`
+               — model#93 (the tool fix for this) is open, unmerged. The
+               901f0add…/61-files digest is independently reproducible today only via
+               `generate` against a copy of the corpus with INDEX.json excluded (how
+               it was produced); direct `verify` against the root as it sits on disk
+               does not yet work. Any further appends invalidate the digest regardless.
 prod or exp:   experiment — signal-evaluation research artifact, not a production/live
                path
 existing data: model#90's Q1 result was stripped for citing an unauditable

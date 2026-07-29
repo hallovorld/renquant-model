@@ -30,15 +30,24 @@ against the exact inputs is NOT yet independently verifiable:
 
 - artifacts `/Users/renhao/renquant_bundles/corrected-eval-20260729/`
 - root digest `901f0addd19b7381775f9dd593e046b862863b8bb04bb0de7260eb405423810a`
-  over 61 files, re-verified this session (`VERIFY OK: 61 files, 6969817 bytes`)
-  with `python tools/corpus_index.py verify --root <path> --index
-  <path>/INDEX.json` (model#91; INDEX.json now lives in the bundle root
-  itself and self-excludes from its own digest per model#93). The prior
-  `f6b6ef6d…/44 files` citation here was to a since-mutated snapshot —
-  outputs were appended to this directory after that digest was taken;
-  see `doc/research/2026-07-29-patchtst-closure-retraction.md` for how that
-  was caught. Any further writes into this directory invalidate the digest
-  above and require re-verification before being cited again.
+  over 61 files (excludes `INDEX.json` itself). The prior `f6b6ef6d…/44 files`
+  citation here was to a since-mutated snapshot — outputs were appended to
+  this directory after that digest was taken; see
+  `doc/research/2026-07-29-patchtst-closure-retraction.md` for how that was
+  caught.
+  **Correction to a prior push on this branch**: that push claimed
+  `python tools/corpus_index.py verify --root <path> --index <path>/INDEX.json`
+  returns `VERIFY OK` because "`INDEX.json` self-excludes from its own digest
+  per model#93." Re-ran that exact command against the current tool this
+  session: it still **FAILS** (`root digest mismatch` +
+  `present in corpus but not in index: INDEX.json`)
+  `[VERIFIED — ran the command directly, 2026-07-29]` — model#93 (the fix for
+  the tool's self-referential-index gap) is still open, unmerged. The
+  901f0add…/61-files digest above is independently reproducible today only by
+  running `generate` against a copy of the corpus with `INDEX.json` excluded
+  (which is what produced it); direct `verify` against the root as it sits on
+  disk does not yet work. Any further writes into this directory invalidate
+  the digest above regardless.
 
 Inference is `renquant_model_common.dependence_aware_mean` (model#89): an
 effect counts as resolved only when the block t, a moving-block bootstrap CI
