@@ -26,15 +26,16 @@ against an arm built from `scores[0:N-L)`. The two arms are paired on the
 label date but drawn from different score windows, so any time-variation in
 skill leaks in as an "effect".
 
-THE RULE this module enforces, at two levels: when statistics are compared
-ACROSS lags (or across arms with different lags), (1) every lag must be
-evaluated on the SAME set of score DATES — `align_lags` — and (2), because a
-cross-sectional panel is rarely balanced (tickers get delisted, IPO, or have
-data gaps), the SAME date can still have a different constituent set at
-different lags' target dates. `common_panel_members` narrows further, to
-the same (date, ticker) PAIRS at every lag. A per-lag maximal sample, at
-either level, answers a different question for each lag, and the
-differences between those answers are not comparable.
+THE RULE this module enforces: when statistics are compared ACROSS lags (or
+across arms with different lags), every lag must be evaluated on the SAME
+`(date, ticker)` PAIRS — `align_lag_pairs` — not merely the same dates.
+Because a cross-sectional panel is rarely balanced (tickers get delisted,
+IPO, or have data gaps), a shared date can still carry a different
+constituent set at different lags' target dates; a date-only alignment
+(`align_lags`) does not catch that and is kept only for the balanced-panel
+case, where it provably reduces to the pair-level result. A per-lag maximal
+sample answers a different question for each lag, and the differences
+between those answers are not comparable.
 
 Using a smaller sample is the price of comparability. This module makes that
 price explicit and refuses to hide it.
@@ -178,65 +179,6 @@ def lagged_label_frame(labels: pd.DataFrame, *, date_col: str, key_col: str,
 
 def _as_date_index_col(col: pd.Series) -> pd.Series:
     return pd.to_datetime(col).dt.normalize()
-
-
-def common_panel_members(frames: dict[int, pd.DataFrame], *, date_col: str,
-                         key_col: str, min_rows: int = 1
-                         ) -> dict[int, pd.DataFrame]:
-    """Restrict per-lag label frames to (date, key) pairs present at EVERY lag.
-
-    `align_lags` / `lagged_label_frame` guarantee a common set of SCORE
-    DATES across lags. They do not guarantee a common set of (date, key)
-    PAIRS in an unbalanced panel: a ticker with a valid label at one lag's
-    target date can be missing (delisted, not yet listed, a data gap) at
-    another lag's target date, for the SAME source date. Comparing a
-    per-date cross-sectional statistic computed over different constituent
-    sets at "the same" date reintroduces a milder form of the composition
-    defect this module exists to prevent — the two dates are the same, but
-    the two cross-sections are not.
-
-    Parameters
-    ----------
-    frames:
-        One `lagged_label_frame(...)` output per lag, all built from the
-        SAME `align_lags(...).dates` via `restrict_to` (so their date
-        columns already agree — this function narrows further, to the
-        member level).
-
-    Returns
-    -------
-    Each input frame filtered to the (date, key) pairs that appear in
-    every lag's frame, same columns, reset index.
-
-    Raises
-    ------
-    LagAlignmentError
-        If ``frames`` is empty, or the intersection has fewer than
-        ``min_rows`` (date, key) pairs.
-    """
-    if not frames:
-        raise LagAlignmentError("at least one lag's frame is required")
-
-    keysets = {
-        lag: set(zip(df[date_col], df[key_col]))
-        for lag, df in frames.items()
-    }
-    common = set.intersection(*keysets.values()) if keysets else set()
-
-    if len(common) < min_rows:
-        raise LagAlignmentError(
-            f"lags {sorted(frames)} share only {len(common)} common "
-            f"(date, {key_col}) pair(s), below min_rows={min_rows}. Per-lag "
-            f"pair counts: { {lag: len(ks) for lag, ks in keysets.items()} }. "
-            f"An unbalanced panel can leave almost no members common to "
-            f"every lag even when the DATES themselves align."
-        )
-
-    out: dict[int, pd.DataFrame] = {}
-    for lag, df in frames.items():
-        mask = [(d, k) in common for d, k in zip(df[date_col], df[key_col])]
-        out[lag] = df[mask].reset_index(drop=True)
-    return out
 
 
 @dataclass(frozen=True)
