@@ -1,68 +1,46 @@
 # AMENDMENT 1 to the corrected signal-evaluation prereg (model#90)
 
-Written 2026-07-29 in response to a review finding, BEFORE the affected
-recomputation. Per the parent prereg §4, changes are amendments with their own
-timestamp, never edits.
+Written 2026-07-29. **Scope: provenance only.** The block-length defect from
+the same review was fixed IN PLACE in the parent by the co-reviewer
+(`f947a1d`, "block_length floor for Q2"), and this amendment deliberately does
+**not** restate that rule — one rule written twice in two places, in two
+wordings, is how a document starts contradicting itself.
 
-## 1. The defect being fixed (codex HIGH — correct)
+## What this amendment adds
 
-The parent's §2 fixes `block_length` = the arm's own **label horizon**. Q2's
-lag profile instead used `block_length = L`, the lag. At L = 20 and L = 40
-that treats observations carrying **overlapping 60-day forward labels** as if
-they were 20- or 40-day blocks.
+The review's second finding was that numbers cited from a session-scratch
+path cannot be audited by another reviewer and vanish with the session. The
+co-reviewer resolved it by **deleting** those numbers. That is safe but
+lossy: the measurements were real and they are the reason the parent's design
+looks the way it does.
 
-**The lag does not shorten the label overlap.** A shorter block means more
-blocks, and more blocks means a larger t for the same effect — so the error is
-**anti-conservative** exactly where the profile's short lags are, which is
-where an apparent "rise" would be manufactured. This is the same family as the
-sample-drift defect the parent prereg was written to fix, one level down.
+So the artifacts are now **retained and content-addressed** instead, using the
+reviewed tool from model#91 (MERGED 2026-07-29T08:38:58Z):
 
-## 2. The frozen rule (replaces Q2's block choice)
+- location `/Users/renhao/renquant_bundles/corrected-eval-20260729/`
+  (alongside the other frozen bundles, outside any session scratch);
+- root digest
+  `f6b6ef6d5055600df190da9d56c32453e31b71c54ff5beeda88e12caac0df38a`
+  over **44 files** `[VERIFIED — tools/corpus_index.py generate, 2026-07-29]`;
+- verifiable by `python tools/corpus_index.py verify --root <path> --index <index>`,
+  which exits non-zero on any digest, missing-file or extra-file mismatch.
 
-For every lag `L` and every arm:
+**Rule going forward for this prereg's line of work:** a number may be quoted
+only if it is (a) reproducible from committed code, or (b) tied to a
+content-addressed artifact root. Numbers meeting neither are removed, not
+re-asserted — which is what the parent now does, and this amendment simply
+moves specific measurements from category (neither) into category (b).
 
-```
-block_length = max(label_horizon_trading_days, L)
-```
+## What this amendment does NOT change
 
-with the parent's common-sample eligibility unchanged: all lags evaluated on
-`align_lags(...).dates` (or `align_lag_pairs` for an unbalanced panel), both
-arms of any paired comparison restricted to the same sample before any
-statistic is computed, and `n_eff` printed per row.
+No subject, statistic, null, horizon, hypothesis, decision rule or block-length
+rule. The parent, as amended in place, remains the single source for all of
+those.
 
-At the traded horizon this means `block_length = 60` for L ≤ 60 and `L`
-beyond. No lag may use a block shorter than the label overlap it inherits.
+## Honest limitation
 
-## 3. Inference procedure (tightened, not loosened)
-
-Every effect is reported through
-`renquant_model_common.dependence_aware_mean` (model#89, MERGED
-2026-07-29T08:39:02Z), which returns **three views** — block t, a moving-block
-bootstrap CI, and leave-one-block-out bounds — and marks an effect resolved
-only when all three agree in sign. A block t on 8–12 blocks leans on a normal
-approximation it has not earned; requiring agreement is strictly stricter than
-the parent's t-only reading and cannot rescue a result the parent would have
-rejected.
-
-## 4. Provenance of the inputs (codex, second finding — also correct)
-
-The parent cited numbers from a session-scratch path, which another reviewer
-cannot audit and which disappears with the session. The evaluation artifacts
-are now retained at
-`/Users/renhao/renquant_bundles/corrected-eval-20260729/` and content-addressed
-with the reviewed tool from model#91:
-
-- root digest `f6b6ef6d5055600df190da9d56c32453e31b71c54ff5beeda88e12caac0df38a`
-  over **44 files** `[VERIFIED — tools/corpus_index.py generate]`.
-
-Any number quoted from those artifacts is now falsifiable by recomputation
-rather than by trust. Numbers that cannot be tied to that root must be removed
-rather than re-asserted.
-
-## 5. What this amendment does NOT change
-
-No subject, statistic, null, hypothesis or decision rule is altered. Q2's
-verdict must be RECOMPUTED under §2; the parent's recorded Q1 and Q3 verdicts
-were computed at the traded horizon where `max(60, L) = 60` already held, so
-they are unaffected — but that claim is itself checked in the results rather
-than assumed.
+Content addressing proves WHAT the artifacts contain and makes any claim about
+them falsifiable by recomputation. It does not prove the artifacts were
+produced by the analysis they claim to come from — for that, the reviewable
+evidence is the committed harness code plus the parent's frozen design, not a
+digest.
