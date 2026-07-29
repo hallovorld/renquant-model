@@ -132,6 +132,15 @@ def assess_control(
     vals = [float(v) for v in values]
     if not vals:
         raise ControlCalibrationError(f"control '{name}' has no observations")
+    non_finite = [v for v in vals if not math.isfinite(v)]
+    if non_finite:
+        raise ControlCalibrationError(
+            f"control '{name}' has {len(non_finite)} non-finite observation(s) "
+            f"(e.g. {non_finite[0]!r}) out of {len(vals)}; a control whose "
+            f"statistic is not finite is unassessable, not evidence of a null "
+            f"arm — fix the upstream computation rather than let NaN/inf "
+            f"silently reach the t-statistic."
+        )
     t_stat, n = _t_statistic(vals)
     mean = sum(vals) / n
 

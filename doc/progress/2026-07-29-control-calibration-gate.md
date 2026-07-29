@@ -1,7 +1,9 @@
 # Progress: a control arm must be shown to be null before it certifies anything
 
 STATUS:   delivered (primitive + tests). The PatchTST verdict itself is NOT
-          changed by this PR and remains INCONCLUSIVE.
+          changed by this PR and remains INCONCLUSIVE. Revised after codex
+          BLOCKER: `assess_control` computed a statistic from non-finite
+          inputs and could certify the result CLEAN.
 
 WHAT:     New `renquant_model_common/control_calibration.py`:
           `assess_control(values)` -> `ControlVerdict{CLEAN | NOT_NULL |
@@ -9,7 +11,20 @@ WHAT:     New `renquant_model_common/control_calibration.py`:
           verdicts)`. A control whose own |t| exceeds a threshold is NOT_NULL
           and VOIDS the comparison; a control with too few observations is
           UNPROVEN, which is explicitly not usable. Supplying no controls
-          raises rather than passing. 13 tests.
+          raises rather than passing. Non-finite observations (NaN, +-inf)
+          now raise `ControlCalibrationError` before any statistic is
+          computed from them. 17 tests.
+
+          Fix detail: `float('nan')` propagates through mean and variance to
+          a NaN `t_stat`. Every magnitude comparison against NaN (`abs(t) >
+          max_abs_t`) is False, so the NOT_NULL branch was skipped, and with
+          `n >= min_obs` the function fell through to CLEAN — certifying an
+          unassessable control as a valid null. `+-inf` hit the same path:
+          `inf - inf` inside the variance sum is itself NaN. Fixed by
+          rejecting any non-finite value in `assess_control` before
+          `_t_statistic` runs, with a message naming the offending value and
+          count. 4 new regression tests cover NaN, +inf, -inf, and
+          propagation through `gate_comparison`.
 
 WHY/DIR:  Measured 2026-07-29 on the 43-fold PatchTST walk-forward corpus while
           building the kill-line prereg. The evaluation reads its real arm
@@ -79,12 +94,20 @@ SCOPE/LIMITS:
           pairs with `lag_alignment`: that module makes arms share a sample,
           this one makes the control mean something once they do.
 
-VERIFICATION (both runs this session, `--continue-on-collection-errors`):
-  baseline `origin/main` 8579fa7 : 539 passed, 19 collection errors
-  this branch                    : 552 passed, 19 collection errors
-  552 - 539 = 13, exactly the new tests. The 19 errors are a pre-existing
-  environment fault (`_SixMetaPathImporter`) present identically on untouched
-  `origin/main`; this PR neither causes nor fixes them.
+VERIFICATION:
+  `pytest tests/test_control_calibration.py` -> 17 passed (13 original + 4
+  new: NaN, +inf, -inf, and propagation through `gate_comparison`), stable
+  and repeatable in isolation.
+
+  Full-suite `--continue-on-collection-errors` totals are NOT cited here:
+  re-running it on this same branch gave three different collection/error
+  counts across consecutive invocations this session (19 vs 23 errors; a
+  `test_model_common_import.py::...meta_label_exit` failure that appeared
+  once and vanished on rerun) with no change to the checked-out files between
+  runs — `_SixMetaPathImporter`/`six` shim state that is flaky at the
+  environment level, unrelated to `control_calibration.py`. Stating a single
+  snapshot as "the" full-suite count would misrepresent a number that isn't
+  stable; the scoped run above is what this fix actually touches.
 
 NEXT:     1. The `wf-eval` harness still contains the unaligned
              `lab.shift(-120)`. Any future run of it must go through

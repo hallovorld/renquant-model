@@ -124,3 +124,32 @@ def test_describe_names_the_status_and_the_numbers():
     d = assess_control(_arm(CONTROL_MEAN, CONTROL_SD, N_FOLDS),
                        name="shift120").describe()
     assert "shift120" in d and "NOT_NULL" in d and "t=" in d
+
+
+def test_a_nan_observation_raises_rather_than_certifying_clean():
+    """NaN made the old mean/var/t_stat chain NaN, and NaN fails every
+    magnitude comparison — so |t| > max_abs_t was False and a broken control
+    silently reached CLEAN. It must be rejected before the statistic exists."""
+    vals = [0.001, -0.002, 0.0015, float("nan")] + [0.001] * 6
+    with pytest.raises(ControlCalibrationError, match="non-finite"):
+        assess_control(vals, name="nan-poisoned")
+
+
+def test_a_positive_infinity_observation_raises():
+    vals = [0.001] * 9 + [float("inf")]
+    with pytest.raises(ControlCalibrationError, match="non-finite"):
+        assess_control(vals, name="inf-poisoned")
+
+
+def test_a_negative_infinity_observation_raises():
+    vals = [0.001] * 9 + [float("-inf")]
+    with pytest.raises(ControlCalibrationError, match="non-finite"):
+        assess_control(vals, name="neg-inf-poisoned")
+
+
+def test_gate_comparison_propagates_the_non_finite_rejection():
+    with pytest.raises(ControlCalibrationError, match="non-finite"):
+        gate_comparison({
+            "shuffle": _arm(0.0013, 0.0095, 43, seed=5),
+            "poisoned": [0.001] * 9 + [float("nan")],
+        })
