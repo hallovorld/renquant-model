@@ -7,7 +7,12 @@ WHAT:     Adds `doc/research/2026-07-29-corrected-signal-evaluation-prereg.md`: 
           subjects (prod XGB, certified clf, PatchTST) under one design, on the
           142-name intersection, with every cross-lag and cross-arm comparison pinned
           to the common sample produced by `renquant_model_common.lag_alignment`
-          (model#89). Three registered questions with conservative default branches.
+          (model#89). Three registered questions with conservative default branches,
+          each decided by `dependence_aware_mean` (block-t + moving-block bootstrap
+          + leave-one-block-out, `.resolves` requires all three to agree on sign) —
+          not a bare single-statistic threshold. Q2's 7-lag selection carries a
+          Bonferroni-corrected `ci_level`; Q3 is a paired per-block contrast (one
+          registered estimator/SE), not two independently-computed t-statistics.
 
 WHY/DIR:  The prior harness computed cross-lag statistics on a drifting sample, so
           neither Stage 0's profile nor the closure verdict may be quoted. Re-running
@@ -52,14 +57,16 @@ enter git; re-verified directly against the files on disk (timestamps
 2026-07-28 22:48-23:00, real script + real JSON output), the struck numbers
 are exactly what is recorded. Restored, not fabricated.
 
-NEXT:     Run it on the corrected primitive, once (1) model#89 (the primitive this
-          design pins every comparison to) is MERGED, not just approved, and (2)
-          the joint/multiplicity inference procedure across the three subjects and
-          two statistics is fully frozen here, not left implicit. A results doc was
-          drafted against an earlier revision of this design before both of those
-          were true and was removed from this PR per codex BLOCKER — a prereg PR
-          carries the frozen design only; results are a separate PR against
-          immutable inputs once execution is actually authorized. The prod XGB
-          doubles as the positive control: if it lands UNRESOLVED, every verdict
-          becomes UNRESOLVED, because a design that cannot detect the model that
-          trades cannot speak about the others.
+NEXT:     Run it on the corrected primitive, once model#89 (the primitive this
+          design pins every comparison to, including `dependence_aware_mean`) is
+          MERGED, not just approved. The joint/multiplicity inference procedure
+          (previously left implicit) is now frozen in §2/§3: one estimator
+          (`dependence_aware_mean`) for every decision, Bonferroni-corrected
+          `ci_level` for Q2's 7-lag family, and a paired per-block contrast for
+          Q3. A results doc was drafted against an earlier revision of this design
+          before either of these were true and was removed from this PR per codex
+          BLOCKER — a prereg PR carries the frozen design only; results are a
+          separate PR against immutable inputs once execution is actually
+          authorized. The prod XGB doubles as the positive control: if it lands
+          UNRESOLVED, every verdict becomes UNRESOLVED, because a design that
+          cannot detect the model that trades cannot speak about the others.
