@@ -11,9 +11,12 @@ outcome.
 
 ```
 python3 tools/traded_estimand_calibration.py \
-    --clf-corpus      <scratch>/clf-wf/clf_wf_scores.parquet \
+    --subject         clf \
+    --corpus          <scratch>/clf-wf/clf_wf_scores.parquet \
+    --screen-corpus   <scratch>/clf-wf/clf_wf_scores.parquet \
     --patchtst-corpus <scratch>/wf-eval/scores.parquet \
-    --panel /Users/renhao/git/github/RenQuant/data/transformer_v4_wl200_clean.parquet
+    --panel /Users/renhao/git/github/RenQuant/data/transformer_v4_wl200_clean.parquet \
+    --require-pinned
 ```
 
 The script pins each input by sha256 and **aborts** on a mismatch, so a

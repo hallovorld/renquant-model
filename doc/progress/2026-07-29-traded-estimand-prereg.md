@@ -30,9 +30,13 @@ EVIDENCE: artifact: `doc/research/2026-07-29-traded-estimand-prereg.md` +
                     `renquant-model` @ origin/main 8579fa7. Every number is
                     reproduced by:
                       `python3 tools/traded_estimand_calibration.py
-                       --clf-corpus <scratch>/clf-wf/clf_wf_scores.parquet
+                       --subject clf
+                       --corpus <scratch>/clf-wf/clf_wf_scores.parquet
+                       --screen-corpus <scratch>/clf-wf/clf_wf_scores.parquet
                        --patchtst-corpus <scratch>/wf-eval/scores.parquet
-                       --panel RenQuant/data/transformer_v4_wl200_clean.parquet`
+                       --panel RenQuant/data/transformer_v4_wl200_clean.parquet
+                       --require-pinned`
+                    (verified FULL, sections A-E, this session)
                     which pins each input by sha256 and ABORTS on mismatch:
                       clf_wf_scores.parquet      1da3fcfab06af1e5…5bc4efe4
                       wf-eval/scores.parquet     6eb209e2491b26b1…e2606d18

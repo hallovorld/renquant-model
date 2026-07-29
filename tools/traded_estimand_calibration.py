@@ -8,9 +8,17 @@ numbers the prereg states — so a reviewer can audit the registration decision
 from the branch instead of taking `[VERIFIED — this session]` on trust.
 
     python3 tools/traded_estimand_calibration.py \\
-        --clf-corpus     <scratch>/clf-wf/clf_wf_scores.parquet \\
+        --subject         clf \\
+        --corpus          <scratch>/clf-wf/clf_wf_scores.parquet \\
+        --screen-corpus   <scratch>/clf-wf/clf_wf_scores.parquet \\
         --patchtst-corpus <scratch>/wf-eval/scores.parquet \\
-        --panel /Users/renhao/git/github/RenQuant/data/transformer_v4_wl200_clean.parquet
+        --panel /Users/renhao/git/github/RenQuant/data/transformer_v4_wl200_clean.parquet \\
+        --require-pinned
+
+`--subject`/`--corpus` are REQUIRED: sections A/C/D run on that subject's own
+corpus, because SS5 Amendment 1 makes each subject measure its OWN false-flag
+rate. `--require-pinned` is what makes the run FULL; without it the run is
+PARTIAL and says so.
 
 Sections map 1:1 onto the prereg:
   A  §2   label units  -> the statistic is in sd, not return
@@ -38,8 +46,12 @@ from renquant_model_common.lag_alignment import dependence_aware_mean  # noqa: E
 
 try:
     from renquant_model_common.control_calibration import assess_control
-except ImportError:  # pragma: no cover - ordering, not logic
-    assess_control = None  # section D needs renquant-model#96 to be merged
+except ImportError:  # pragma: no cover - environment, not logic
+    # `control_calibration` merged to main in renquant-model#96, so on a normal
+    # checkout this import succeeds and section D runs. The fallback stays only
+    # for a broken/partial environment: section D then self-reports SKIPPED
+    # rather than dying or silently reporting a number it did not compute.
+    assess_control = None
 
 PINNED = {
     "clf_wf_scores.parquet":
@@ -74,12 +86,34 @@ def check_pin(path: Path, *, allow_mismatch: bool) -> None:
 
 
 def spread_per_date(frame: pd.DataFrame, ycol: str) -> pd.Series:
+    """Registered estimand: mean(top-k) - mean(the REMAINING n-k).
+
+    The two arms must be exact complements. An earlier revision took them as
+    `nlargest(k)` and `nsmallest(n-k)`, which select INDEPENDENTLY: when
+    scores tie across the k boundary the same row can land in both arms (in
+    the degenerate all-ties case, `nlargest(1)` and `nsmallest(n-1)` both
+    return row 0), so the bottom arm was not the complement of the top and
+    the computed statistic was not the registered one.
+
+    Fixed by sorting ONCE with an explicit deterministic tie policy and
+    splitting by POSITION, which makes complementarity structural rather
+    than something the tie distribution has to cooperate with. Tie policy:
+    `raw` descending, then `ticker` ascending — so the split is reproducible
+    regardless of the corpus's row order, not merely stable within one file.
+    """
+    tiebreak = ["raw", "ticker"] if "ticker" in frame.columns else ["raw"]
+    ascending = [False, True][:len(tiebreak)]
+
     def one(g: pd.DataFrame) -> float:
         if len(g) < MIN_NAMES:
             return np.nan
         k = max(1, int(round(len(g) * TOP_FRACTION)))
-        return (g.nlargest(k, "raw")[ycol].mean()
-                - g.nsmallest(len(g) - k, "raw")[ycol].mean())
+        if k >= len(g):                       # no complement to compare against
+            return np.nan
+        ordered = g.sort_values(tiebreak, ascending=ascending, kind="mergesort")
+        top = ordered.iloc[:k]
+        rest = ordered.iloc[k:]               # exact complement, by construction
+        return top[ycol].mean() - rest[ycol].mean()
     return frame.groupby("date").apply(one, include_groups=False).dropna()
 
 
