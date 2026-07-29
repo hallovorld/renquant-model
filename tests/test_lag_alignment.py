@@ -14,6 +14,7 @@ import pytest
 from renquant_model_common.lag_alignment import (
     LagAlignmentError,
     align_lags,
+    common_panel_members,
     lag_evaluable_dates,
     lagged_label_frame,
 )
@@ -106,6 +107,54 @@ def test_rows_without_a_lagged_target_are_dropped_not_nan_filled():
     out = lagged_label_frame(df, date_col="date", key_col="ticker",
                             value_col="label", lag=3)
     assert len(out) == 1 and not out["label"].isna().any()
+
+
+def test_common_panel_members_drops_a_ticker_missing_at_one_lags_target_date():
+    # unbalanced panel: ticker B has no label at date[3] (the lag-2 target
+    # for date[1]), so date[1]'s cross-section differs between lag 0 and
+    # lag 2 even though date[1] itself is "evaluable" at both.
+    dates = list(AXIS[:5])
+    df = pd.DataFrame({
+        "date": dates * 2,
+        "ticker": ["A"] * 5 + ["B"] * 5,
+        "label": [1.0, 2.0, 3.0, 4.0, 5.0, 10.0, 20.0, 30.0, np.nan, 50.0],
+    }).dropna(subset=["label"])  # ticker B has no row at date[3]
+
+    lag0 = lagged_label_frame(df, date_col="date", key_col="ticker",
+                              value_col="label", lag=0)
+    lag2 = lagged_label_frame(df, date_col="date", key_col="ticker",
+                              value_col="label", lag=2)
+
+    # Before the fix: lag0 has (date[1], B) but lag2 does not (its target,
+    # date[3], has no B row) — the two frames disagree on membership at
+    # date[1] even though both "have" date[1].
+    assert (dates[1], "B") in set(zip(lag0["date"], lag0["ticker"]))
+    assert (dates[1], "B") not in set(zip(lag2["date"], lag2["ticker"]))
+
+    fixed = common_panel_members({0: lag0, 2: lag2}, date_col="date",
+                                 key_col="ticker")
+    for lag, frame in fixed.items():
+        assert (dates[1], "B") not in set(zip(frame["date"], frame["ticker"])), (
+            f"lag {lag} still carries the member the other lag doesn't have"
+        )
+    # what SHOULD survive: (date[1], A) is present at both lags' targets
+    assert (dates[1], "A") in set(zip(fixed[0]["date"], fixed[0]["ticker"]))
+    assert (dates[1], "A") in set(zip(fixed[2]["date"], fixed[2]["ticker"]))
+    # both output frames now describe the exact same (date, ticker) pairs
+    assert (set(zip(fixed[0]["date"], fixed[0]["ticker"]))
+            == set(zip(fixed[2]["date"], fixed[2]["ticker"])))
+
+
+def test_common_panel_members_min_rows_guard_is_enforced():
+    df0 = pd.DataFrame({"date": [AXIS[0]], "ticker": ["A"], "label": [1.0]})
+    df1 = pd.DataFrame({"date": [AXIS[1]], "ticker": ["A"], "label": [1.0]})
+    with pytest.raises(LagAlignmentError, match="share only 0"):
+        common_panel_members({0: df0, 1: df1}, date_col="date", key_col="ticker")
+
+
+def test_common_panel_members_requires_at_least_one_frame():
+    with pytest.raises(LagAlignmentError, match="at least one"):
+        common_panel_members({}, date_col="date", key_col="ticker")
 
 
 def test_empty_intersection_raises_rather_than_returning_garbage():
