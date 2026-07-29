@@ -42,6 +42,7 @@ price explicit and refuses to hide it.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Iterable, Sequence
 
@@ -279,3 +280,128 @@ def align_lag_pairs(labels: pd.DataFrame, *, date_col: str, key_col: str,
     dropped = {lag: len(per_lag[lag]) - len(common) for lag in lags}
     return PairAlignment(lags=lags, pairs=common, dropped_per_lag=dropped,
                          date_col=date_col, key_col=key_col)
+
+
+# ---------------------------------------------------------------------------
+# Dependence-aware inference.
+#
+# Overlapping forward labels make consecutive per-date statistics strongly
+# dependent, and cross-sectional correlation makes each one noisier than an
+# iid draw would be. The usual response — average within non-overlapping
+# blocks and run a t-test on the block means — is only the FIRST half of the
+# fix. With a 60-trading-day label over a few years of dates, the block count
+# lands around 8-12, where a t-statistic leans on a normal approximation it
+# has no right to and a single influential block can move the verdict.
+#
+# So: report a moving-block bootstrap interval alongside the block t, and
+# report leave-one-block-out bounds. Where the three disagree, the honest
+# reading is that the sample cannot resolve the question — which is itself
+# the most decision-relevant thing such a sample can tell you.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class DependenceAwareResult:
+    """A point estimate with THREE views of its uncertainty."""
+    mean: float
+    block_t: float | None
+    n_blocks: int
+    block_length: int
+    ci_low: float
+    ci_high: float
+    ci_level: float
+    lobo_low: float
+    lobo_high: float
+    n_boot: int
+
+    @property
+    def resolves(self) -> bool:
+        """True only if every view agrees the effect excludes zero."""
+        if self.block_t is None:
+            return False
+        same_sign = (self.ci_low > 0 and self.lobo_low > 0 and self.block_t > 0) or \
+                    (self.ci_high < 0 and self.lobo_high < 0 and self.block_t < 0)
+        return bool(same_sign)
+
+    def describe(self) -> str:
+        t = "n/a" if self.block_t is None else f"{self.block_t:+.2f}"
+        return (
+            f"mean {self.mean:+.4f} | block t {t} on {self.n_blocks} blocks of "
+            f"{self.block_length} | bootstrap {self.ci_level:.0%} CI "
+            f"[{self.ci_low:+.4f}, {self.ci_high:+.4f}] | leave-one-block-out "
+            f"[{self.lobo_low:+.4f}, {self.lobo_high:+.4f}] | "
+            f"{'RESOLVES' if self.resolves else 'DOES NOT RESOLVE'}"
+        )
+
+
+def _blocks(values: Sequence[float], block_length: int) -> list[float]:
+    v = [float(x) for x in values]
+    if block_length < 1:
+        raise LagAlignmentError("block_length must be >= 1")
+    return [sum(v[i:i + block_length]) / len(v[i:i + block_length])
+            for i in range(0, len(v), block_length)]
+
+
+def dependence_aware_mean(values: Sequence[float], *, block_length: int,
+                          n_boot: int = 2000, ci_level: float = 0.90,
+                          seed: int = 0) -> DependenceAwareResult:
+    """Point estimate of a mean under serial dependence, with honest bounds.
+
+    ``values`` is the per-date statistic series in DATE ORDER (order matters:
+    the block structure is what encodes the dependence). ``block_length``
+    should be at least the label horizon in the same units.
+
+    Returns the block t, a moving-block bootstrap CI, and leave-one-block-out
+    bounds. ``resolves`` is True only when all three agree on the sign — a
+    deliberately strict reading, because the failure this guards against is a
+    verdict that rests on one block.
+    """
+    import random
+
+    v = [float(x) for x in values]
+    if not v:
+        raise LagAlignmentError("no values to summarise")
+    mean = sum(v) / len(v)
+    blocks = _blocks(v, block_length)
+    n = len(blocks)
+
+    block_t: float | None = None
+    if n >= 2:
+        bm = sum(blocks) / n
+        var = sum((b - bm) ** 2 for b in blocks) / (n - 1)
+        if var > 0:
+            block_t = bm / ((var / n) ** 0.5)
+        else:
+            # Unanimous blocks. Whether the residual variance lands at exactly
+            # 0.0 or at 1e-34 is float noise, and letting the verdict hinge on
+            # that is its own bug. Treat zero dispersion as what it is: maximal
+            # agreement (infinite t) for a non-zero mean, and no evidence at all
+            # for a mean of zero.
+            block_t = math.copysign(math.inf, bm) if bm != 0.0 else 0.0
+
+    # moving-block bootstrap: resample contiguous blocks with replacement
+    rng = random.Random(seed)
+    starts = list(range(0, max(1, len(v) - block_length + 1)))
+    n_draw = max(1, len(v) // block_length)
+    boots: list[float] = []
+    for _ in range(n_boot):
+        sample: list[float] = []
+        for _ in range(n_draw):
+            s = rng.choice(starts)
+            sample.extend(v[s:s + block_length])
+        boots.append(sum(sample) / len(sample))
+    boots.sort()
+    lo_i = int((1 - ci_level) / 2 * (len(boots) - 1))
+    hi_i = int((1 + ci_level) / 2 * (len(boots) - 1))
+
+    if n >= 2:
+        lobo = [(sum(blocks) - b) / (n - 1) for b in blocks]
+        lobo_low, lobo_high = min(lobo), max(lobo)
+    else:
+        lobo_low = lobo_high = mean
+
+    return DependenceAwareResult(
+        mean=mean, block_t=block_t, n_blocks=n, block_length=block_length,
+        ci_low=boots[lo_i], ci_high=boots[hi_i], ci_level=ci_level,
+        lobo_low=lobo_low, lobo_high=lobo_high, n_boot=n_boot,
+    )

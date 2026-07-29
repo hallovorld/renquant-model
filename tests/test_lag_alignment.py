@@ -7,6 +7,8 @@ silently evaluated a different — older — set of dates.
 """
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -205,3 +207,65 @@ def test_empty_pair_intersection_raises():
     with pytest.raises(LagAlignmentError, match="min_pairs=99"):
         align_lag_pairs(df, date_col="date", key_col="ticker", lags=[0, 2],
                         min_pairs=99)
+
+
+# ---------------------------------------------------------------------------
+# Dependence-aware inference: a block t on ~8 blocks is not enough on its own.
+# ---------------------------------------------------------------------------
+
+from renquant_model_common.lag_alignment import dependence_aware_mean  # noqa: E402
+
+
+def test_a_strong_effect_resolves_on_all_three_views():
+    v = [0.10] * 480                      # noiseless positive effect
+    r = dependence_aware_mean(v, block_length=60, n_boot=400)
+    assert r.n_blocks == 8 and r.resolves
+    assert r.ci_low > 0 and r.lobo_low > 0
+
+
+def test_pure_noise_does_not_resolve():
+    rng = np.random.default_rng(3)
+    r = dependence_aware_mean(list(rng.normal(size=480)), block_length=60,
+                              n_boot=400)
+    assert not r.resolves
+
+
+def test_an_effect_carried_by_one_block_does_not_resolve():
+    # the failure mode this exists for: 7 flat blocks and 1 large one gives a
+    # tidy-looking positive mean, and leave-one-block-out exposes it
+    v = [0.0] * 420 + [1.0] * 60
+    r = dependence_aware_mean(v, block_length=60, n_boot=400)
+    assert r.mean > 0
+    assert not r.resolves
+    assert r.lobo_low == pytest.approx(0.0, abs=1e-9)
+
+
+def test_unanimous_blocks_do_not_hinge_on_float_residue():
+    # 480 values leave a 1e-34 residual variance, 300 leave exactly 0.0. The
+    # verdict must not differ between them.
+    a = dependence_aware_mean([0.10] * 480, block_length=60, n_boot=200)
+    b = dependence_aware_mean([0.10] * 300, block_length=60, n_boot=200)
+    assert a.resolves and b.resolves
+    assert b.block_t == math.inf
+
+
+def test_unanimous_zero_is_no_evidence_not_infinite_evidence():
+    r = dependence_aware_mean([0.0] * 300, block_length=60, n_boot=200)
+    assert r.block_t == 0.0 and not r.resolves
+
+
+def test_describe_states_the_verdict_and_all_three_views():
+    r = dependence_aware_mean([0.05] * 300, block_length=60, n_boot=200)
+    d = r.describe()
+    assert "block t" in d and "bootstrap" in d and "leave-one-block-out" in d
+    assert "RESOLVES" in d
+
+
+def test_block_length_below_one_is_rejected():
+    with pytest.raises(LagAlignmentError, match="block_length"):
+        dependence_aware_mean([1.0, 2.0], block_length=0)
+
+
+def test_empty_input_is_rejected():
+    with pytest.raises(LagAlignmentError, match="no values"):
+        dependence_aware_mean([], block_length=60)
