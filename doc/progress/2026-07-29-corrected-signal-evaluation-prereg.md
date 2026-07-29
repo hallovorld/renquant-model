@@ -24,10 +24,9 @@ artifact:      quarantined local scratch (not committed to git, by this
                project's "scratch-only writes" convention — §4):
                `bughunt/h9_fix.py` + `h9_results.json`,
                `bughunt/h6_closure.py` + `h6_results.json`; also
-               `src/renquant_model_common/lag_alignment.py` (model#89, APPROVED
-               but not yet merged as of 2026-07-29 — this design depends on
-               it landing, per NEXT below) which formalizes the same defect
-               class as checklist rows
+               `src/renquant_model_common/lag_alignment.py` (model#89, MERGED
+               2026-07-29T08:39:02Z, commit 2151dfc) which formalizes the
+               same defect class as checklist rows
                T11/T12 in doc/research/2026-07-29-corrected-signal-evaluation-prereg.md
 prod or exp:   experiment — bug-hunt scripts re-measuring a methodology defect
                in the prior (superseded) harness, not a model performance
@@ -57,16 +56,15 @@ enter git; re-verified directly against the files on disk (timestamps
 2026-07-28 22:48-23:00, real script + real JSON output), the struck numbers
 are exactly what is recorded. Restored, not fabricated.
 
-NEXT:     Run it on the corrected primitive, once model#89 (the primitive this
-          design pins every comparison to, including `dependence_aware_mean`) is
-          MERGED, not just approved. The joint/multiplicity inference procedure
-          (previously left implicit) is now frozen in §2/§3: one estimator
-          (`dependence_aware_mean`) for every decision, Bonferroni-corrected
-          `ci_level` for Q2's 7-lag family, and a paired per-block contrast for
-          Q3. A results doc was drafted against an earlier revision of this design
-          before either of these were true and was removed from this PR per codex
-          BLOCKER — a prereg PR carries the frozen design only; results are a
-          separate PR against immutable inputs once execution is actually
-          authorized. The prod XGB doubles as the positive control: if it lands
-          UNRESOLVED, every verdict becomes UNRESOLVED, because a design that
-          cannot detect the model that trades cannot speak about the others.
+NEXT:     model#89 is now MERGED (2151dfc, 2026-07-29T08:39:02Z), the primitive
+          this design pins every comparison to (including `dependence_aware_mean`).
+          The joint/multiplicity inference procedure is frozen in §2/§3: one
+          estimator (`dependence_aware_mean`) for every decision, Bonferroni-
+          corrected `ci_level` for Q2's 7-lag family, and a paired per-block
+          contrast for Q3. Both preconditions this doc previously blocked on
+          are now satisfied — the design is ready to run on the corrected
+          primitive. Results are a separate PR against immutable inputs once
+          execution is authorized; this PR carries the frozen design only.
+          The prod XGB doubles as the positive control: if it lands UNRESOLVED,
+          every verdict becomes UNRESOLVED, because a design that cannot
+          detect the model that trades cannot speak about the others.
