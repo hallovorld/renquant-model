@@ -14,11 +14,18 @@ WHY/DIR:  The natural layout is the index next to the artifacts it describes. Th
           that points at the data when the fault is in the tool. I hit this while
           sealing a confirmatory bundle; the next person would have hit it too.
 
-EVIDENCE: reproduced then fixed `[VERIFIED — tools/corpus_index.py verify, 2026-07-29]`:
-          the same bundle that reported "present in corpus but not in index:
-          INDEX.json" now reports `VERIFY OK: 3 files, 6901 bytes, root_digest
-          1a50d4ae…`. Two new tests pin both halves: an index written inside the root
-          verifies, AND the exclusion does not hide a genuinely extra file (a planted
-          `sneaked.bin` still fails verification by name). Suite 9/9.
+EVIDENCE: artifact:      tools/corpus_index.py (`build_index`/`verify`) + tests/test_corpus_index.py
+          prod or exp:   experiment — repo tooling, not a production/live path
+          existing data: reproduced then fixed `[VERIFIED — tools/corpus_index.py verify,
+                         2026-07-29]`: the same bundle that reported "present in corpus
+                         but not in index: INDEX.json" now reports `VERIFY OK: 3 files,
+                         6901 bytes, root_digest 1a50d4ae…`
+          best-known?:   yes — no prior fix existed for this defect; two new tests pin
+                         both halves: an index written inside the root verifies, AND the
+                         exclusion does not hide a genuinely extra file (a planted
+                         `sneaked.bin` still fails verification by name). Suite 9/9.
+          scope:         "this is tools/corpus_index.py, repo tooling, the self-exclusion
+                         fix for indexes written inside their own root — no model/IC/
+                         Sharpe claim is made"
 
 NEXT:     None for this tool. The fix unblocks sealing bundles in the obvious layout.
