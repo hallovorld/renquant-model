@@ -93,37 +93,108 @@ def shuffled(frame: pd.DataFrame, seed: int) -> pd.DataFrame:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--clf-corpus", required=True, type=Path)
-    ap.add_argument("--patchtst-corpus", type=Path, default=None)
+    # SUBJECT-PARAMETERISED. Prereg SS5 Amendment 1 requires EVERY confirmatory
+    # subject to measure its OWN 30-shuffle false-flag rate before a verdict.
+    # The first revision only ran section D on --clf-corpus, so PatchTST and
+    # prod XGB had no execution path for a prerequisite the document calls
+    # mandatory — the protocol was registered but not executable for the
+    # subjects it names. --subject/--corpus closes that.
+    ap.add_argument("--subject", required=True,
+                    help="registered subject name, e.g. clf / patchtst / prod_xgb")
+    ap.add_argument("--corpus", required=True, type=Path,
+                    help="that subject's score corpus (sections A/C/D run on IT)")
+    ap.add_argument("--screen-corpus", type=Path, default=None,
+                    help="optional: the already-consumed clf corpus, for the "
+                         "SS3 screen reproduction only")
+    ap.add_argument("--patchtst-corpus", type=Path, default=None,
+                    help="optional: for the SS5 shift120 ban (PatchTST corpus)")
     ap.add_argument("--panel", type=Path, default=None)
     ap.add_argument("--allow-input-mismatch", action="store_true")
+    ap.add_argument("--require-pinned", action="store_true",
+                    help="FULL verification: fail if any supplied input is not "
+                         "in the PINNED table. Without it the run is PARTIAL.")
     args = ap.parse_args(argv)
 
+    print(f"SUBJECT: {args.subject}")
     print("INPUTS")
-    for p in (args.clf_corpus, args.patchtst_corpus, args.panel):
-        if p is not None and p.exists():
-            check_pin(p, allow_mismatch=args.allow_input_mismatch)
+    supplied = [x for x in (args.corpus, args.screen_corpus,
+                            args.patchtst_corpus, args.panel) if x is not None]
+    missing = [x for x in supplied if not x.exists()]
+    if missing:
+        raise SystemExit("ABORT: required input(s) do not exist: "
+                         + ", ".join(str(m) for m in missing))
+    unpinned = []
+    for p in supplied:
+        d = check_pin(p, allow_mismatch=args.allow_input_mismatch)
+        if PINNED.get(p.name) is None:
+            unpinned.append(p.name)
+    if args.require_pinned and unpinned:
+        raise SystemExit(
+            "ABORT (--require-pinned): not in the PINNED table: "
+            + ", ".join(unpinned)
+            + ". A FULL verification cannot rest on an unpinned input; add its "
+              "digest to PINNED or drop --require-pinned and accept a PARTIAL run.")
+    sections = ["A", "C", "D"] + (["B"] if args.screen_corpus else []) + \
+               (["E"] if (args.patchtst_corpus and args.panel) else [])
+    mode = "FULL" if (args.require_pinned and not unpinned) else "PARTIAL"
+    print(f"\nVERIFICATION MODE: {mode}  sections={sorted(sections)}")
+    if mode == "PARTIAL":
+        print("   (PARTIAL: not every section ran and/or an input is unpinned. "
+              "Not the all-sections command the docs describe.)")
 
-    clf = pd.read_parquet(args.clf_corpus).dropna(subset=["raw", LABEL])
+    # Corpora differ in whether the label is INLINE. The clf corpus carries
+    # fwd_60d_excess; the PatchTST corpus carries only raw/cal and the label
+    # must be joined from the panel. That difference is exactly why the first
+    # revision could not run this calibration for PatchTST or prod XGB — the
+    # registered protocol was not executable for the subjects it named.
+    clf = pd.read_parquet(args.corpus)
+    if LABEL not in clf.columns:
+        if args.panel is None or not args.panel.exists():
+            raise SystemExit(
+                f"ABORT: subject corpus {args.corpus.name} has no `{LABEL}` "
+                f"column, so the label must be joined from --panel, which was "
+                f"not supplied. SS5 Amendment 1's per-subject calibration cannot "
+                f"be measured without it. Columns present: "
+                f"{sorted(clf.columns)[:8]}")
+        clf["date"] = pd.to_datetime(clf["date"])
+        panel = pd.read_parquet(args.panel, columns=["date", "ticker", LABEL])
+        panel["date"] = pd.to_datetime(panel["date"])
+        before = len(clf)
+        clf = clf.merge(panel, on=["date", "ticker"], how="left")
+        print(f"   label `{LABEL}` joined from {args.panel.name}: "
+              f"{clf[LABEL].notna().sum()}/{before} rows matched")
+    clf = clf.dropna(subset=["raw", LABEL])
     fold_of = clf.drop_duplicates("date").set_index("date")["fold_idx"]
 
-    print(f"\nA. PREREG §2 — label units ({LABEL})")
+    print(f"\nA. PREREG §2 — label units ({LABEL}) — subject={args.subject}")
     y = clf[LABEL]
     print(f"   mean={y.mean():+.4f}  sd={y.std():.4f}")
     print(f"   -> the statistic is in STANDARD DEVIATIONS, not return")
 
-    print("\nB. PREREG §3 — the SCREEN (already observed; cannot confirm itself)")
-    real = spread_per_date(clf, LABEL)
-    r = dependence_aware_mean(list(real.values), block_length=BLOCK, n_boot=3000)
-    print(f"   clf real arm : spread={r.mean:+.4f} sd  block_t={r.block_t:+.2f}  "
-          f"CI=[{r.ci_low:+.4f},{r.ci_high:+.4f}]  resolves={r.resolves}")
-    ts = []
-    for seed in range(5):
-        v = spread_per_date(shuffled(clf, seed), "y_shuf")
-        rs = dependence_aware_mean(list(v.values), block_length=BLOCK, n_boot=800)
-        ts.append(abs(rs.block_t))
-    print(f"   5 shuffle placebos: max |block_t| = {max(ts):.2f}  "
-          f"(none resolving is the requirement)")
+    # SS3's screen is a clf-corpus ARTEFACT, not part of any subject's
+    # calibration. Running it against a confirmatory subject's corpus would
+    # compute the very quantity the prereg forbids reading before the
+    # controls pass, so it is gated behind an explicit --screen-corpus.
+    if args.screen_corpus is None:
+        print("\nB. PREREG §3 — SKIPPED (no --screen-corpus). The screen is a "
+              "clf artefact; it is NOT part of a subject's calibration.")
+    else:
+        print("\nB. PREREG §3 — the SCREEN (already observed; cannot confirm itself)")
+        scr = pd.read_parquet(args.screen_corpus).dropna(subset=["raw", LABEL])
+        real = spread_per_date(scr, LABEL)
+        r = dependence_aware_mean(list(real.values), block_length=BLOCK,
+                                  n_boot=3000)
+        print(f"   screen real arm : spread={r.mean:+.4f} sd  "
+              f"block_t={r.block_t:+.2f}  "
+              f"CI=[{r.ci_low:+.4f},{r.ci_high:+.4f}]  resolves={r.resolves}")
+        ts = []
+        for seed in range(5):
+            v = spread_per_date(shuffled(scr, seed), "y_shuf")
+            rs = dependence_aware_mean(list(v.values), block_length=BLOCK,
+                                       n_boot=800)
+            ts.append(abs(rs.block_t))
+        print(f"   5 shuffle placebos: max |block_t| = {max(ts):.2f}  "
+              f"(none resolving is the requirement)")
 
     print("\nC. PREREG §6 — null CI half-width (12 clean shuffles)")
     hws = []
@@ -132,16 +203,19 @@ def main(argv: list[str] | None = None) -> int:
         rs = dependence_aware_mean(list(v.values), block_length=BLOCK, n_boot=600)
         hws.append((rs.ci_high - rs.ci_low) / 2)
     print(f"   median half-width under the null = {np.median(hws):.4f} sd")
-    print(f"   real arm half-width at effect {r.mean:+.3f} = "
-          f"{(r.ci_high - r.ci_low) / 2:.4f} sd  -> MDE is set by the "
-          f"ALTERNATIVE's dispersion, not the null's")
+    print(f"   -> the MDE is set by the ALTERNATIVE's dispersion, not the "
+          f"null's; a subject's own real-arm half-width is reported by the "
+          f"RUNNER at verdict time, not here (reading it here would preempt "
+          f"the controls-first ordering)")
 
-    print("\nD. PREREG §5 — assess_control false-flag rate on 30 CLEAN nulls")
+    print(f"\nD. PREREG §5 Amd.1 — false-flag rate on 30 CLEAN nulls, subject={args.subject}")
     if assess_control is None:
-        print("   SKIPPED: renquant_model_common.control_calibration is not "
-              "importable. It lands in renquant-model#96, which is APPROVED "
-              "but not yet merged — so section D cannot be audited until that "
-              "merges. Stating the dependency rather than hiding the gap.")
+        raise SystemExit(
+            "ABORT: renquant_model_common.control_calibration is not "
+            "importable, so SS5 Amendment 1's mandatory per-subject false-flag "
+            "rate CANNOT be measured. #96 is merged on main, so this means a "
+            "broken import path, not a missing dependency. Refusing to report a "
+            "calibration that omits a section the prereg calls mandatory.")
     flag = {"fold means": 0, "block means": 0}
     if assess_control is not None:
         for seed in range(5000, 5030):

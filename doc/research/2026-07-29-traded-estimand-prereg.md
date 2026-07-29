@@ -165,6 +165,60 @@ one-sample `t`. Measured lag-1 autocorrelation of null fold means: mean
 independence assumption holds; the bar is simply not calibrated to this
 statistic's tails.
 
+
+### §5 AMENDMENT 2 (2026-07-29, before any confirmatory run)
+
+Amendment 1 required every confirmatory subject to measure its OWN 30-shuffle
+false-flag rate. The calibration tool could not do that: it ran section D only
+on the already-consumed clf corpus, so PatchTST and prod XGB had **no execution
+path for a prerequisite this document calls mandatory**. A registered protocol
+that is not executable for the subjects it names is not registered.
+
+`tools/traded_estimand_calibration.py` is now `--subject`/`--corpus`
+parameterised. Running it on the PatchTST subject for the first time produced
+two subject-specific facts that Amendment 1 predicted would exist and the
+single-corpus version could not have seen:
+
+| quantity | clf subject | **patchtst subject** |
+|---|---:|---:|
+| label mean | −0.0000 | **+0.1356** |
+| label sd | 0.9982 | 1.0895 |
+| false-flag, fold means (registered unit) | 1/30 = 3% | **0/30 = 0%** |
+| ALL-clean survival over 5 controls | 84% | **100%** |
+| null CI half-width | 0.0124 sd | **0.0184 sd** |
+
+`[VERIFIED — calibration §A/§C/§D, subject=patchtst, corpus sha256
+6eb209e2…e2606d18 joined to panel sha256 3982ca54…668f0676]`
+
+**Two consequences, both registered here:**
+
+**(a) The void-rate budget is subject-specific and the range is wider than
+Amendment 1 stated.** Measured 0% (patchtst) to 3% per arm (clf) to 8%
+(synthetic), i.e. an ALL-clean void rate of 0%–34%. Carrying clf's 16% forward
+to PatchTST would have attached a materially wrong budget to its verdict.
+
+**(b) §2's unit statement does NOT hold uniformly.** §2 records the label as
+cross-sectionally standardised with mean −0.0000. That is true of the clf
+corpus. On the PatchTST corpus the joined label has **mean +0.1356** — because
+its 142 tickers are a subset of the 292-ticker panel over which the
+standardisation was performed, so restricting to the subset leaves a non-zero
+mean. A top-decile spread on that subject is measured against a SHIFTED
+distribution.
+
+Registered consequence: each subject's label mean and sd MUST be reported with
+its verdict, and a spread may not be compared ACROSS subjects without stating
+both. This does not invalidate a within-subject verdict — the spread is a
+difference of two means drawn from the same distribution, so a common shift
+cancels — but it does forbid the cross-subject comparison a reader would
+otherwise make by default.
+
+**Verification mode.** The tool now distinguishes FULL from PARTIAL: FULL
+requires `--require-pinned` and every supplied input present in the PINNED
+table, and aborts otherwise. A run that omits sections prints PARTIAL and says
+so. A missing required input aborts rather than silently reducing coverage, and
+an unimportable `control_calibration` now ABORTS instead of printing SKIPPED —
+a calibration that omits a mandatory section must not be reported as one.
+
 **A shift/displacement placebo may NOT be used.** Measured on the **PatchTST**
 corpus — NOT the clf one; the two are different subjects and conflating them
 was an error in this document's first revision — the `shift120`
