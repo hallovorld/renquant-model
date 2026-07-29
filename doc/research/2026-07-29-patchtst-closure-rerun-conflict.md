@@ -1,6 +1,47 @@
-# PatchTST closure re-run — a CONFLICT, deliberately not a verdict
+# PatchTST closure re-run — the conflict is RESOLVED (different estimands)
 
-Date: 2026-07-29. Status: **UNRESOLVED — no verdict claimed.**
+Date: 2026-07-29. Status: **RESOLVED as a definitional difference, not an
+error. A CLOSE follows from the frozen rule — submitted for adversarial
+review rather than declared settled.**
+
+> ## Resolution (added after the conflict was traced to source)
+>
+> The two computations were never estimating the same quantity.
+>
+> The persistence arms differ from the real arms by an **L-shift between the
+> score date and the label date**. You therefore cannot hold BOTH sets common:
+>
+> * hold the **label date** common → the two arms read scores from dates `t`
+>   and `t−L` against the SAME forward window. This is *"for the same
+>   outcome, does today's score beat the L-day-old one?"* — **the persistence
+>   question the frozen rule asks.**
+> * hold the **score date** common → the two arms are scored on the same
+>   dates but must be judged against forward windows `L` apart. This is
+>   *"does this score predict the near window or the far one better?"* — a
+>   **horizon** question.
+>
+> The audit's `common-SD` arms hold SCORE dates common `[VERIFIED — bughunt/
+> h6_closure.py: "'common-SD' = both arms recomputed on the SAME SCORE-date
+> set"]`, so its `p = 0/4` and invalid control are correct answers to the
+> horizon question and simply do not bear on the persistence rule.
+>
+> The audit's PRIMARY criticism of the original `closure.py` remains valid and
+> is not being waved away: that code paired on the label date **without**
+> restricting to a common sample, so REAL ran on `corpus[L:N]` and PERSIST on
+> `corpus[0:N−L)` — different eras. This re-run removes exactly that: both
+> arms are columns of ONE merged frame, so they share every row.
+> `[VERIFIED — 68,870 rows / 485 dates / 142 tickers at L=60, identical for
+> both arms by construction]`
+>
+> My own leading suspect — that date-level rather than pair-level alignment
+> caused the divergence — is REFUTED: rerunning under `align_lag_pairs` gives
+> **numerically identical** results (−0.0101 / −0.0274 / −0.0458 / −0.0480,
+> t −1.01 / −1.39 / −1.53 / −1.88, p = 4/4).
+>
+> **Implied verdict: CLOSE.** Not declared settled here. A CLOSE was published
+> on this question once and retracted; this one reverses the basis of that
+> retraction, so it belongs in front of an adversarial reviewer before it
+> changes PatchTST's recorded status. Until then: **UNRESOLVED-pending-review.**
 
 model#87's closure rule is frozen and merged; its earlier results were
 retracted because the harness computed cross-lag arms on a drifting sample.
