@@ -48,8 +48,17 @@ Motivating measurement (2026-07-28, single serving fold, val window
 
 The point estimate is not small; the POWER is the problem. One validation
 window with 60-day overlapping labels is ~4 independent observations, so
-+0.043 and 0.00 are not separable. `[VERIFIED — direct read of
-hf_patchtst_all_seed44_val_preds.parquet, 33,370 rows]`
++0.043 and 0.00 are not separable. **Re-measured directly this session**
+(a prior review round could not locate this file and the claim was
+provisionally treated as unverified pending re-measurement; found at
+`ptserve/2026-07-21/hf_patchtst_all_seed44_val_preds.parquet` in local
+scratch, real file, `ls -la` confirms it on disk): loading the parquet and
+recomputing per-date Spearman IC from its own `pred`/`label` columns
+independently reproduces every number above exactly — 33,370 rows, 235
+dates × 142 tickers, 2025-05-20 → 2026-04-27, mean IC 0.04305, naive t
+5.393 (n=235), block-adjusted t 0.696 (n_eff=235/60=3.92) `[VERIFIED —
+recomputed directly from hf_patchtst_all_seed44_val_preds.parquet this
+session, not carried over from an earlier draft]`.
 
 The same recipe scored an entire live cross-section at calibrated
 conviction ≈ 0.50 (IQR 0.011) and correctly sized to zero. That is the

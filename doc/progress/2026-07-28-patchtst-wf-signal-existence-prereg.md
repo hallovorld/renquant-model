@@ -41,8 +41,13 @@ WHAT:     Adds `doc/research/2026-07-28-patchtst-wf-signal-existence-prereg.md`:
           pattern is stale-score persistence, not fresh information.
 
 WHY/DIR:  The single-window read is not decidable. Measured on the fresh serving fold
-          (val 2025-05-20 → 2026-04-27, 235 dates, 33,370 rows)
-          `[VERIFIED — direct parquet read]`: per-date rank IC +0.0430, naive t +5.39,
+          (val 2025-05-20 → 2026-04-27, 235 dates, 33,370 rows) — a review round
+          could not locate this file and flagged the claim as unverified pending
+          re-measurement; found this session at
+          `ptserve/2026-07-21/hf_patchtst_all_seed44_val_preds.parquet` in local
+          scratch and the numbers below independently reproduced by loading the
+          parquet and recomputing per-date Spearman IC directly `[VERIFIED —
+          recomputed directly this session, not carried over]`: per-date rank IC +0.0430, naive t +5.39,
           but the 60-trading-day label overlap leaves n_eff ≈ 4, so the block-adjusted
           t is **+0.70** — +0.043 and 0.00 are not separable. The within-date shuffle
           placebo is clean (−0.0008 over 5 seeds), so this is a POWER problem, not a
@@ -53,9 +58,12 @@ WHY/DIR:  The single-window read is not decidable. Measured on the fresh serving
           diagnostic `doc/memory/mid-term/model-edge.md` requires before closing or
           switching architecture.
 
-EVIDENCE: artifact:      `hf_patchtst_all_seed44_val_preds.parquet` (single serving
-          fold, val 2025-05-20 → 2026-04-27, 235 dates × ~142 tickers, 33,370
-          rows) `[VERIFIED — direct parquet read]`; the 43-fold corpus itself
+EVIDENCE: artifact:      `hf_patchtst_all_seed44_val_preds.parquet`, found at
+          `ptserve/2026-07-21/` in local scratch (single serving fold, val
+          2025-05-20 → 2026-04-27, 235 dates × 142 tickers, 33,370 rows)
+          `[VERIFIED — recomputed directly from the parquet's own pred/label
+          columns this session, exact match to all figures below]`; the
+          43-fold corpus itself
           is NOT YET GENERATED — model#82's frozen dispatch plan
           (43 folds, $16.8 projected / $20 cap) has a proven 1-fold smoke
           test (`wf-pt-b4e47e2c-20260727T195313Z`) but the remaining 42
