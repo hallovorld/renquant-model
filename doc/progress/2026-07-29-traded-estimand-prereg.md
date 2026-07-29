@@ -45,8 +45,14 @@ EVIDENCE: artifact: `doc/research/2026-07-29-traded-estimand-prereg.md` +
                     section of the committed verifier (§A-§E) rather than to
                     "this session", and all of them except the named SCREEN
                     come from NULL arms, so no confirmatory evidence was spent
-                    writing the registration. §A-§C and §E are independently
-                    reproducible from this branch today; §D is NOT — see below:
+                    writing the registration. One precise condition on §D, not
+                    two: it is VERIFIED on THIS branch's exact stacked head
+                    (parent `7909240` — renquant-model#96's head, where
+                    `control_calibration` lives), reproducing from the
+                    canonical import path with no PYTHONPATH override. It is
+                    NOT yet verified relative to `main`, since #96 has not
+                    merged there — so re-run required after the post-#96
+                    rebase, before this PR is mergeable:
                       - §A label units `mean=-0.0000, sd=0.9982` (so the
                         statistic is in sd, not return — a P&L reading would
                         have been wrong by construction);
@@ -54,7 +60,7 @@ EVIDENCE: artifact: `doc/research/2026-07-29-traded-estimand-prereg.md` +
                       - §D `assess_control` false-flag on 30 clean nulls
                         (seeds 5000-5029): 3% fed fold means, 7% fed block
                         means — the unit changes the answer, so the prereg
-                        registers which one. auditable on this stacked branch: §D reproduces from the canonical import path (no PYTHONPATH override) because #96's tree is this branch's parent;
+                        registers which one;
                       - therefore ALL-clean over 5 controls voids ~16% of valid
                         experiments, registered in advance as an accepted cost;
                       - §E the shift120 ban, which running the verifier
@@ -84,17 +90,19 @@ SCOPE/LIMITS:
 VERIFICATION:
           `tools/traded_estimand_calibration.py` run against the three pinned
           inputs: PIN OK on all three, and §A-§E ALL reproduce the prereg's
-          stated numbers exactly. §D specifically now runs from the CANONICAL
-          import path with no PYTHONPATH override for `renquant_model_common`,
-          because this branch is rebased onto renquant-model#96 head
-          790924078ce0 and `control_calibration` is therefore in its own tree.
-          The re-run after that rebase returns §D unchanged: fold means
-          1/30 = 3%, block means 2/30 = 7%, ~16% of valid experiments voided.
-          The document contains no outcome; that is the deliverable. Its own
-          §5 records the measurement that disqualifies the `shift120`
-          displacement placebo (control `t=+2.90`, more significant than the
-          real arm it was meant to null), so a known-broken control cannot be
-          reintroduced by default.
+          stated numbers exactly, on THIS branch's exact stacked head (parent
+          `7909240` = renquant-model#96's head, where `control_calibration`
+          lives — so §D runs from the canonical import path with no
+          PYTHONPATH override): fold means 1/30 = 3%, block means 2/30 = 7%,
+          ~16% of valid experiments voided. This is verified relative to the
+          stacked parent, NOT yet relative to `main` — #96 has not merged
+          there — so the same re-run is required again after the post-#96
+          rebase, before this PR is mergeable. The document contains no
+          outcome; that is the deliverable. Its own §5 records the
+          measurement that disqualifies the `shift120` displacement placebo
+          (control `t=+2.90`, more significant than the real arm it was meant
+          to null), so a known-broken control cannot be reintroduced by
+          default.
 
 NEXT:     When #96 merges, GitHub retargets this PR to main; rebase onto that
           main commit and re-run

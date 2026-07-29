@@ -122,9 +122,15 @@ changes the answer). A control that is itself significant does not lose the
 comparison, it **VOIDS** it.
 
 Measured false-flag rate of that bar on 30 genuinely clean nulls
-`[VERIFIED — calibration §D run from the CANONICAL import path on this stacked branch (parent 790924078ce0 = renquant-model#96 head), clf corpus sha256 1da3fcfa…5bc4efe4, seeds 5000-5029]`. **Not VERIFIED on this branch**:
-`assess_control` does not exist on `main` yet, so running the committed
-This branch is STACKED on renquant-model#96, so `control_calibration` is present in its own tree and §D reproduces from the canonical import path with no PYTHONPATH override. The PR is based on that branch and is therefore unmergeable until #96 lands.
+`[VERIFIED — calibration §D, clf corpus sha256 1da3fcfa…5bc4efe4, seeds
+5000-5029]`. One precise condition, not two: this branch is STACKED on
+`renquant-model#96` (parent `7909240` — that PR's head), so
+`control_calibration` sits in this branch's own tree and §D reproduces from
+the canonical import path with no PYTHONPATH override, **on this exact
+stacked head**. It is **not yet verified relative to `main`** — `#96` has
+not merged there — so this PR stays unmergeable until #96 lands, at which
+point it must be rebased onto the post-merge `main` and §D re-run from that
+tree before the freeze holds there too.
 
 **A shift/displacement placebo may NOT be used.** Measured on the **PatchTST**
 corpus — NOT the clf one; the two are different subjects and conflating them
