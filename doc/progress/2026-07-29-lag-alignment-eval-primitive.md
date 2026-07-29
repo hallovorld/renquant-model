@@ -32,34 +32,18 @@ WHY/DIR:  A walk-forward study concluded "IC rises with label lag" across two mo
           not stop the next study from repeating it; a primitive that refuses the
           unsafe comparison does.
 
-EVIDENCE: artifact:      `doc/research/evidence/2026-07-29-lag-alignment-defect/
-          h9_fix.py` + `h9_results.json`, committed (sha256 in that dir's
-          README) `[VERIFIED — direct read + hash, this session]` — holding
-          the sample common moved lag-0 IC from +0.028 to +0.043 (PatchTST)
-          and +0.069 to +0.100 (prod XGB); the PatchTST rise lost 60% of its
-          size and the prod XGB profile REVERSED (z = -2.09), removing the
-          two-model corroboration entirely. The second form of the same
-          defect: an arm built from `scores[L:N]` compared against one from
-          `scores[0:N-L)` carries an era term measured at 19-28% of the
-          statistic.
-           prod or exp:   code + a committed derived-statistics evidence
-          snapshot; no production artifact touched.
-           existing data: the 43-fold PatchTST WF corpus the evidence script
-          reads from stays in quarantined local scratch per its own prereg's
-          data-handling contract — not committed, not claimed reproducible
-          from this PR alone; the committed evidence is the derived OUTPUT,
-          not the corpus.
-           best-known?:   n/a — utility module + evidence snapshot, no
-          model/statistic ranking claim.
-           scope:         "library code + a committed evidence artifact; no
-          model claim is made, so the §4(b) sanity triad does not apply."
-          Test suite 13/13 `[VERIFIED — pytest tests/test_lag_alignment.py,
-          this session]`, including one test that reproduces the mechanism
-          end-to-end: on synthetic data whose recent era carries no skill,
-          the SAME lag-0 statistic differs by >0.15 between the full and the
-          common sample; and 3 new tests for `common_panel_members`
-          (unbalanced-panel membership drop, min_rows guard, empty-input
-          guard).
+EVIDENCE: the module's justification does NOT rest on session-local scratch numbers,
+          which a reviewer cannot inspect and which are therefore not quoted here
+          (codex round-1 HIGH). The committed evidence is runnable: 19/19 tests
+          `[VERIFIED - PYTHONPATH=src pytest tests/test_lag_alignment.py]`, including
+          one that reproduces the mechanism end-to-end on synthetic data - with a
+          recent era carrying no skill, the SAME lag-0 statistic differs by >0.15
+          between the full and the common sample - and six that pin the unbalanced-
+          panel case (a delisted key is dropped exactly where its lagged row is
+          missing; a date-only rule would have compared 4 pairs across lags that the
+          pair rule excludes; a balanced panel reduces to the date-only special case).
+          No model/IC/Sharpe claim is made, so the §4(b) triad does not apply.
+
 
 NEXT:     Port the Stage-0 / closure harnesses onto this primitive (including
           `common_panel_members`, not just `align_lags`) before any of their

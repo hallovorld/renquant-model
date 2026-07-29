@@ -176,3 +176,81 @@ def test_score_dates_absent_from_the_label_axis_are_excluded():
     scores = AXIS.append(pd.DatetimeIndex(["2030-01-01"]))
     ev = lag_evaluable_dates(scores, AXIS, 0)
     assert pd.Timestamp("2030-01-01") not in ev and len(ev) == 200
+
+
+# ---------------------------------------------------------------------------
+# (date, key) alignment — the unbalanced-panel gap. Date-only alignment lets
+# per-date MEMBERSHIP drift with the lag, which is the same defect one level
+# down and bites hardest in exactly the survivorship-correct panels we want.
+# ---------------------------------------------------------------------------
+
+from renquant_model_common.lag_alignment import (  # noqa: E402
+    align_lag_pairs,
+    lag_evaluable_pairs,
+)
+
+
+def _unbalanced(n_dates=10, exit_at=6):
+    rows = []
+    for i, d in enumerate(AXIS[:n_dates]):
+        keys = ["A", "B"] if i < exit_at else ["A"]      # B delists at exit_at
+        rows.extend((d, k) for k in keys)
+    return pd.DataFrame(rows, columns=["date", "ticker"])
+
+
+def test_a_delisted_key_is_dropped_where_its_lagged_row_is_missing():
+    df = _unbalanced()
+    ev = lag_evaluable_pairs(df, date_col="date", key_col="ticker", lag=4)
+    b = ev[ev.ticker == "B"]
+    # B trades on dates 0..5; at lag 4 only dates 0..1 have a B row at t+4
+    assert len(b) == 2 and b["date"].max() == AXIS[1]
+    assert (ev[ev.ticker == "A"]).shape[0] == 6           # A survives throughout
+
+
+def test_date_only_alignment_would_keep_pairs_the_pair_alignment_drops():
+    df = _unbalanced()
+    date_only = align_lags(df["date"].unique(), df["date"].unique(), [0, 4])
+    pairs = align_lag_pairs(df, date_col="date", key_col="ticker", lags=[0, 4])
+    # the date axis says dates 0..5 are fine for both lags...
+    assert len(date_only.dates) == 6
+    # ...but B is only evaluable on 2 of them, so 4 (date, ticker) pairs that a
+    # date-only rule would have compared across lags are correctly excluded
+    kept_b = (pairs.pairs.ticker == "B").sum()
+    assert kept_b == 2
+    assert pairs.n_pairs == 8                              # 6 A + 2 B
+
+
+def test_pair_alignment_is_identical_across_lags():
+    df = _unbalanced()
+    al = align_lag_pairs(df, date_col="date", key_col="ticker", lags=[0, 2, 4])
+    for lag in al.lags:
+        ev = lag_evaluable_pairs(df, date_col="date", key_col="ticker", lag=lag)
+        merged = al.pairs.merge(ev, on=["date", "ticker"], how="left",
+                                indicator=True)
+        assert (merged["_merge"] == "both").all(), (
+            f"lag {lag} cannot evaluate the whole common pair sample"
+        )
+
+
+def test_restrict_joins_a_frame_down_to_the_common_sample():
+    df = _unbalanced()
+    al = align_lag_pairs(df, date_col="date", key_col="ticker", lags=[0, 4])
+    scored = df.assign(score=1.0)
+    out = al.restrict(scored)
+    assert len(out) == al.n_pairs and set(out.columns) >= {"date", "ticker", "score"}
+
+
+def test_balanced_panel_agrees_with_the_date_only_special_case():
+    rows = [(d, k) for d in AXIS[:10] for k in ("A", "B")]
+    df = pd.DataFrame(rows, columns=["date", "ticker"])
+    pairs = align_lag_pairs(df, date_col="date", key_col="ticker", lags=[0, 4])
+    dates = align_lags(df["date"].unique(), df["date"].unique(), [0, 4])
+    assert list(pairs.dates) == list(dates.dates)
+    assert pairs.n_pairs == len(dates.dates) * 2
+
+
+def test_empty_pair_intersection_raises():
+    df = _unbalanced(n_dates=6, exit_at=3)
+    with pytest.raises(LagAlignmentError, match="min_pairs=99"):
+        align_lag_pairs(df, date_col="date", key_col="ticker", lags=[0, 2],
+                        min_pairs=99)

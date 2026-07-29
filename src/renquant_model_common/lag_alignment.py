@@ -12,15 +12,19 @@ The mechanism is a one-liner that reads as obviously correct:
     Y_lagged = Y.shift(-lag)          # WRONG for cross-lag comparison
 
 `shift(-lag)` nulls the newest `lag` rows. Every longer lag therefore drops
-the most RECENT dates — and in that study those were precisely the dates
-carrying ~0 or negative IC. Recomputed on a date set common to all lags:
-the first model's rise lost 60% of its size and the second model's profile
-REVERSED (z = -2.09), destroying the "two models agree" corroboration.
+the most RECENT dates — and when those dates carry different skill from the
+rest of the sample, the per-lag statistics stop being comparable. In the
+study that motivated this module, recomputing on a common date set removed
+most of the apparent rise and reversed one of the two profiles outright.
+(The specific figures lived in session-local scratch artifacts that a
+reviewer cannot inspect, so they are deliberately not quoted here;
+`tests/test_lag_alignment.py` reproduces the MECHANISM from committed,
+runnable code instead.)
 
 A second form of the same defect: comparing an arm built from `scores[L:N]`
 against an arm built from `scores[0:N-L)`. The two arms are paired on the
 label date but drawn from different score windows, so any time-variation in
-skill leaks in as an "effect" — measured at 19-28% of the statistic.
+skill leaks in as an "effect".
 
 THE RULE this module enforces, at two levels: when statistics are compared
 ACROSS lags (or across arms with different lags), (1) every lag must be
@@ -233,3 +237,103 @@ def common_panel_members(frames: dict[int, pd.DataFrame], *, date_col: str,
         mask = [(d, k) in common for d, k in zip(df[date_col], df[key_col])]
         out[lag] = df[mask].reset_index(drop=True)
     return out
+
+
+@dataclass(frozen=True)
+class PairAlignment:
+    """The common `(date, key)` evaluation sample for a set of lags.
+
+    The unbalanced-panel counterpart of :class:`LagAlignment`. ``align_lags``
+    fixes WHICH DATES every lag sees; this fixes which `(date, key)` PAIRS,
+    which is the guarantee actually needed when the key set varies by date.
+    """
+    lags: tuple[int, ...]
+    pairs: pd.DataFrame            # columns: [date_col, key_col], sorted
+    dropped_per_lag: dict[int, int]
+    date_col: str
+    key_col: str
+
+    @property
+    def n_pairs(self) -> int:
+        return len(self.pairs)
+
+    @property
+    def dates(self) -> pd.DatetimeIndex:
+        return pd.DatetimeIndex(self.pairs[self.date_col].unique()).sort_values()
+
+    def restrict(self, frame: pd.DataFrame) -> pd.DataFrame:
+        """Inner-join `frame` down to the common sample."""
+        f = frame.copy()
+        f[self.date_col] = _as_date_index_col(f[self.date_col])
+        return f.merge(self.pairs, on=[self.date_col, self.key_col], how="inner")
+
+    def describe(self) -> str:
+        return (
+            f"common sample: {self.n_pairs} ({self.date_col}, {self.key_col}) "
+            f"pairs across {len(self.dates)} dates, evaluable at all "
+            f"{len(self.lags)} lags {self.lags}; dropped per lag "
+            f"{self.dropped_per_lag}"
+        )
+
+
+def lag_evaluable_pairs(labels: pd.DataFrame, *, date_col: str, key_col: str,
+                        lag: int) -> pd.DataFrame:
+    """`(date, key)` pairs whose lag-`lag` counterpart exists FOR THE SAME KEY.
+
+    A pair `(t, k)` is evaluable at `lag` when the label frame contains
+    `(t + lag positions on the date axis, k)`. Presence of the DATE is not
+    enough: in an unbalanced panel the key may be absent at the target date,
+    and a date-only alignment would silently let membership drift with the lag.
+    """
+    if lag < 0:
+        raise LagAlignmentError(f"lag must be >= 0, got {lag}")
+    lab = labels[[date_col, key_col]].copy()
+    lab[date_col] = _as_date_index_col(lab[date_col])
+    lab = lab.drop_duplicates()
+
+    axis = _as_date_index(lab[date_col])
+    if len(axis) == 0:
+        return lab.iloc[0:0]
+    pos = axis.get_indexer(axis)
+    target = {axis[i]: (axis[i + lag] if i + lag < len(axis) else pd.NaT)
+              for i in pos}
+    lab["_target"] = lab[date_col].map(target)
+    present = lab[[date_col, key_col]].rename(columns={date_col: "_target"})
+    ok = lab.dropna(subset=["_target"]).merge(
+        present, on=["_target", key_col], how="inner")
+    return (ok[[date_col, key_col]]
+            .drop_duplicates()
+            .sort_values([date_col, key_col])
+            .reset_index(drop=True))
+
+
+def align_lag_pairs(labels: pd.DataFrame, *, date_col: str, key_col: str,
+                    lags: Sequence[int], min_pairs: int = 1) -> PairAlignment:
+    """Intersect the evaluable `(date, key)` pairs of every lag.
+
+    Prefer this over :func:`align_lags` for any real panel. Raises when the
+    intersection is empty or below ``min_pairs`` — a comparison across lags on
+    a near-empty or lag-dependent sample is not meaningful, and returning a
+    plausible-looking number for it is the failure this module exists to stop.
+    """
+    lags = tuple(sorted({int(x) for x in lags}))
+    if not lags:
+        raise LagAlignmentError("at least one lag is required")
+
+    per_lag = {lag: lag_evaluable_pairs(labels, date_col=date_col,
+                                        key_col=key_col, lag=lag)
+               for lag in lags}
+    common = per_lag[lags[0]]
+    for lag in lags[1:]:
+        common = common.merge(per_lag[lag], on=[date_col, key_col], how="inner")
+    common = common.sort_values([date_col, key_col]).reset_index(drop=True)
+
+    if len(common) < min_pairs:
+        raise LagAlignmentError(
+            f"lags {lags} share only {len(common)} evaluable "
+            f"({date_col}, {key_col}) pair(s), below min_pairs={min_pairs}. "
+            f"Per-lag availability: { {l: len(p) for l, p in per_lag.items()} }."
+        )
+    dropped = {lag: len(per_lag[lag]) - len(common) for lag in lags}
+    return PairAlignment(lags=lags, pairs=common, dropped_per_lag=dropped,
+                         date_col=date_col, key_col=key_col)
