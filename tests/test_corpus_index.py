@@ -98,3 +98,24 @@ def test_the_construction_is_documented_in_the_artifact(corpus, tmp_path):
     # a reader must be able to reproduce the digest without reading the code
     for key in ("line_format", "sort", "join", "hash", "symlinks"):
         assert dc[key]
+
+
+def test_index_written_inside_the_root_still_verifies(corpus):
+    """The trap I walked into: an index written next to the artifacts.
+
+    The index cannot contain its own digest, so without an exclusion rule
+    `verify` fails immediately with 'present in corpus but not in index' —
+    confusing, and it points at the tool rather than at the data.
+    """
+    inside = corpus / "INDEX.json"
+    assert _run("generate", "--root", str(corpus), "--out", str(inside)).returncode == 0
+    r = _run("verify", "--root", str(corpus), "--index", str(inside))
+    assert r.returncode == 0, r.stderr
+
+
+def test_self_exclusion_does_not_hide_a_real_extra_file(corpus, tmp_path):
+    inside = corpus / "INDEX.json"
+    _run("generate", "--root", str(corpus), "--out", str(inside))
+    (corpus / "sneaked.bin").write_bytes(b"x")
+    r = _run("verify", "--root", str(corpus), "--index", str(inside))
+    assert r.returncode == 1 and "sneaked.bin" in r.stderr
