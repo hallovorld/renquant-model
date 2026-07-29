@@ -39,7 +39,8 @@ EVIDENCE: artifact: `doc/research/2026-07-29-traded-estimand-prereg.md` +
                     section of the committed verifier (§A-§E) rather than to
                     "this session", and all of them except the named SCREEN
                     come from NULL arms, so no confirmatory evidence was spent
-                    writing the registration:
+                    writing the registration. §A-§C and §E are independently
+                    reproducible from this branch today; §D is NOT — see below:
                       - §A label units `mean=-0.0000, sd=0.9982` (so the
                         statistic is in sd, not return — a P&L reading would
                         have been wrong by construction);
@@ -47,7 +48,11 @@ EVIDENCE: artifact: `doc/research/2026-07-29-traded-estimand-prereg.md` +
                       - §D `assess_control` false-flag on 30 clean nulls
                         (seeds 5000-5029): 3% fed fold means, 7% fed block
                         means — the unit changes the answer, so the prereg
-                        registers which one;
+                        registers which one. PENDING renquant-model#96:
+                        `assess_control` is not on `main` yet, so running the
+                        committed verifier today prints §D as SKIPPED — this
+                        number is not independently reproducible from this
+                        branch until #96 merges;
                       - therefore ALL-clean over 5 controls voids ~16% of valid
                         experiments, registered in advance as an accepted cost;
                       - §E the shift120 ban, which running the verifier

@@ -122,7 +122,11 @@ changes the answer). A control that is itself significant does not lose the
 comparison, it **VOIDS** it.
 
 Measured false-flag rate of that bar on 30 genuinely clean nulls
-`[VERIFIED — calibration §D, clf corpus sha256 1da3fcfa…5bc4efe4, seeds 5000-5029]`:
+`[VERIFIED — calibration §D, pending renquant-model#96, clf corpus sha256
+1da3fcfa…5bc4efe4, seeds 5000-5029]`. **Pending #96**: `assess_control` does
+not exist on `main` yet, so running the committed verifier today prints §D as
+SKIPPED — this row is not independently reproducible from this branch until
+#96 merges; re-run the verifier after that merge to confirm:
 
 | unit fed to the bar | flagged NOT_NULL |
 |---|---:|
