@@ -17,7 +17,7 @@ forward.
 | T6 | post-hoc subgroup rescue | closed hypothesis set; splits descriptive only |
 | T9 | acting on a striking by-product of another study | every claim here is registered before computation |
 | T10 | confusing "the score is stale" with "the signal is long-horizon" | turnover-matched control (a smoothed score manufactures persistence without changing signal) |
-| **T11 (new, this session's actual bug)** | **cross-lag statistics computed on a drifting sample** — `Y.shift(-lag)` nulls the NEWEST rows, so longer lags silently drop the most recent dates. Measured directly in the bug-hunt scratch run (`bughunt/h9_fix.py` + `h9_results.json`, quarantined local scratch space, not committed to git by this project's design — same convention as `bughunt/h6_closure.py` + `h6_results.json`): holding the sample common moved lag-0 IC +0.028→+0.043 (PatchTST, `h9_results.json.PatchTST.fixed_set."0".ic_fixed`) and +0.069→+0.100 (prod XGB, `...prodXGB.fixed_set."0".ic_fixed`); the closure-test recomputation on the common sample separately dropped PatchTST's block-count from 4/4 to 0/4 and the prod-XGB positive control from 4/4 to 1/4 (`h6_results.json`: `p_as_closure=4, p_fixed=0, ctrl_as_closure=4, ctrl_fixed=1`) — a z ≈ −2.09 reversal on the prod-XGB rise-vs-lag0 statistic at lag 80–100. **CORRECTION:** an earlier revision of this row struck this table as "fabricated" after a search that covered only git branch history; the scratch directory is intentionally outside git (§4 "scratch-only writes"), and re-verified directly against the actual files on disk the numbers above are exactly what is recorded — restored, not fabricated. | every cross-lag and cross-arm comparison runs on `align_lags(...).dates` from `renquant_model_common.lag_alignment` (model#89). The run FAILS if any arm is computed off that common sample. `dropped_per_lag` is reported. |
+| **T11 (new, this session's actual bug)** | **cross-lag statistics computed on a drifting sample** — `Y.shift(-lag)` nulls the NEWEST rows, so longer lags silently drop the most recent dates, and a per-lag maximal sample answers a different question at every lag. A session-local scratch investigation motivated this row, but its specific numbers are not independently reproducible by a reviewer of this repo and are not quoted here (same standard applied on model#89 per codex HIGH — see that PR's history) | every cross-lag and cross-arm comparison runs on `align_lags(...).dates` from `renquant_model_common.lag_alignment` (model#89). The run FAILS if any arm is computed off that common sample. `dropped_per_lag` is reported. |
 | **T12 (new)** | **arms drawn from different score windows** — the closure test paired REAL `scores[L:N]` against PERSIST `scores[0:N−L)`, an era term worth 19–28% of the statistic | both arms of every paired comparison are restricted to the SAME score dates before any statistic is computed |
 
 ## 1. Subjects (all three, same treatment)
@@ -65,7 +65,12 @@ persistence[t]`, the per-date IC difference at 60d on the common sample.
 **Q2 — is the lag profile real once the sample is fixed?** For the prod XGB,
 compute `rise[L][t] = IC_lag_L[t] − IC_lag_0[t]` for each of the 7 non-zero
 lags `L ∈ {20,40,60,80,100,120,160}` on the common sample, then
-`dependence_aware_mean(rise[L], block_length=L)` per lag — **7 tests, one
+`dependence_aware_mean(rise[L], block_length=max(60, L))` per lag — the
+label itself is always the 60d forward return regardless of which lag is
+being compared, so the block length can never drop below 60 (§2's own rule);
+using `block_length=L` for `L < 60` would treat overlapping 60d-label
+observations as if they were independent at a shorter interval, understating
+the dependence and reading anti-conservatively — **7 tests, one
 family**, so the per-lag `ci_level` is Bonferroni-corrected:
 `ci_level = 1 − 0.10/7 ≈ 0.9857` (holds the family-wise rate at the same 0.10
 Q1 uses for one test). Let `L*` be the lag with the largest `.mean` among the

@@ -11,8 +11,10 @@ WHAT:     Adds `doc/research/2026-07-29-corrected-signal-evaluation-prereg.md`: 
           each decided by `dependence_aware_mean` (block-t + moving-block bootstrap
           + leave-one-block-out, `.resolves` requires all three to agree on sign) —
           not a bare single-statistic threshold. Q2's 7-lag selection carries a
-          Bonferroni-corrected `ci_level`; Q3 is a paired per-block contrast (one
-          registered estimator/SE), not two independently-computed t-statistics.
+          Bonferroni-corrected `ci_level` and a `block_length = max(60, L)` floor
+          (the label's own 60d overlap never shortens just because a shorter lag
+          is being tested); Q3 is a paired per-block contrast (one registered
+          estimator/SE), not two independently-computed t-statistics.
 
 WHY/DIR:  The prior harness computed cross-lag statistics on a drifting sample, so
           neither Stage 0's profile nor the closure verdict may be quoted. Re-running
@@ -20,41 +22,28 @@ WHY/DIR:  The prior harness computed cross-lag statistics on a drifting sample, 
           rather than an amendment to a compromised one.
 
 EVIDENCE:
-artifact:      quarantined local scratch (not committed to git, by this
-               project's "scratch-only writes" convention — §4):
-               `bughunt/h9_fix.py` + `h9_results.json`,
-               `bughunt/h6_closure.py` + `h6_results.json`; also
-               `src/renquant_model_common/lag_alignment.py` (model#89, MERGED
-               2026-07-29T08:39:02Z, commit 2151dfc) which formalizes the
-               same defect class as checklist rows
-               T11/T12 in doc/research/2026-07-29-corrected-signal-evaluation-prereg.md
-prod or exp:   experiment — bug-hunt scripts re-measuring a methodology defect
-               in the prior (superseded) harness, not a model performance
-               claim
-existing data: `h9_results.json` records lag-0 IC 0.0432 (PatchTST) and
-               0.0998 (prod XGB) on the sample-common set, against +0.028 /
-               +0.069 on the prior drifting-sample harness; `h6_results.json`
-               records the closure-test recomputation dropping PatchTST from
-               p=4/4 to p=0/4 and the prod-XGB positive control from 4/4 to
-               1/4 (invalid), with a z-statistic of -2.07..-2.09 on the
-               prod-XGB rise-vs-lag0 term at lags 80-100 — read directly from
-               the JSON on disk, not recalled
+artifact:      `doc/research/2026-07-29-corrected-signal-evaluation-prereg.md`
+               (design only, this PR) + `src/renquant_model_common/lag_alignment.py`
+               (model#89, MERGED 2026-07-29T08:39:02Z, commit 2151dfc), which
+               formalizes the defect class named in T11/T12
+               `[VERIFIED — this PR's diff + gh pr view 89]`
+prod or exp:   design/experiment — no production artifact touched; no model
+               performance claim is made by this PR
+existing data: T11/T12's motivating investigation lived in session-local
+               scratch and its specific numbers are not independently
+               reproducible by a reviewer of this repo, so they are not
+               quoted here (same standard applied on model#89 per codex
+               HIGH). The general defect class (`Y.shift(-lag)` nulling
+               newest rows; paired arms drawn from different score windows)
+               is stated qualitatively in T11/T12 and does not depend on
+               those specific numbers being verifiable
 best-known?:   this corrected harness (common-sample T11 + common-arm-window T12,
                enforced by renquant_model_common.lag_alignment, model#89) is the
                best-known fix; the prior harness's Stage 0 (model#86) and closure
                (model#87) numbers stay withdrawn and may not be quoted
 scope:         this PR registers a prereg design only — no model works/fails claim
-               is made here; the evidence block above scopes the bug-measurement
-               that motivates the redesign, and the §4(b) triad for a model-
-               performance verdict applies to the future results doc once this
-               prereg is executed
-
-CORRECTION (self, per LONG#10): a prior revision of this block struck the
-above as "fabricated," having searched only git branch history for
-`bughunt/`/`stage0.py`. Those paths are intentionally scratch-only and never
-enter git; re-verified directly against the files on disk (timestamps
-2026-07-28 22:48-23:00, real script + real JSON output), the struck numbers
-are exactly what is recorded. Restored, not fabricated.
+               is made here, so the §4(b) sanity triad applies to the future
+               results doc once this prereg is executed, not to this PR
 
 NEXT:     model#89 is now MERGED (2151dfc, 2026-07-29T08:39:02Z), the primitive
           this design pins every comparison to (including `dependence_aware_mean`).
