@@ -44,9 +44,12 @@ otherwise read as overclaiming it). Using the reviewed tool from model#91
   CORRECTION (per long-term-agreements.md entry 10): this line originally
   cited root `f6b6ef6d…` over 44 files — that snapshot mutated (more
   outputs were appended to the bundle after the digest was taken), retracted
-  on model#92's own thread and re-verified here against the current,
-  freshly-sealed state. Any further writes into the bundle invalidate the
-  digest above too and require re-verification before being cited again.
+  on model#92's own thread and re-verified here against the current
+  **observed state, not an immutable snapshot** — this remains the same
+  appendable directory used by model#91's bundle, so it is not "sealed" in
+  any durable sense. Any further write into it invalidates the digest above
+  immediately, not eventually, and requires re-verification before being
+  cited again.
 
 **Rule going forward for this prereg's line of work:** a number may be quoted
 only if it is (a) reproducible from committed code, or (b) tied to a

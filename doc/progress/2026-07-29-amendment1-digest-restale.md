@@ -42,8 +42,14 @@ EVIDENCE: artifact:      `doc/research/2026-07-29-corrected-signal-evaluation-am
           tree does not prove those outputs came from the claimed analysis —
           restated prominently, not just in the trailing caveat section."
 
-NEXT:     Once model#93 merges, re-run `tools/corpus_index.py verify` with
-          the merged tool and drop the "not yet reproducible" caveat if it
-          then passes (it should, since the bundle itself hasn't changed).
-          If the bundle receives further writes before then, the digest
-          invalidates again regardless of #93's merge status.
+NEXT:     Model#93 merging resolves ONLY the tool-verification dependency
+          (the merged `corpus_index.py` would then reproduce `VERIFY OK`
+          without needing that branch's code) — re-run `verify` with the
+          merged tool at that point and drop the "not yet reproducible"
+          caveat if it passes. It does NOT resolve the output-only
+          provenance limitation (Honest limitation section): the bundle
+          remains an appendable directory, not an immutable snapshot, so the
+          "does not prove the artifacts were produced by the claimed
+          analysis" caveat stays regardless of #93's merge status. If the
+          bundle receives further writes before #93 merges, the digest
+          invalidates again immediately.
