@@ -1,11 +1,26 @@
 # Progress: GOAL-6 Stage 0 prereg (frozen)
 
-STATUS:   prereg FROZEN, no run yet. Docs only.
+STATUS:   prereg FROZEN, no run yet. Docs only. A prior head of this PR added a
+          results doc claiming Stage 0 had "executed exactly as frozen" while the
+          three findings below were still open — that was a preregistration
+          violation (results cannot be valid for a still-open design) and has been
+          reverted (`git rm`) in this pass; Stage 0 has NOT run.
 
 WHAT:     Adds `doc/research/2026-07-28-goal6-stage0-prereg.md` — a measurement-only
           study: 3 statistics (IC, decile spread, top-decile hit rate) x 2 horizons
           (20d, 60d) on already-trained models, two nulls, block-level inference,
-          plus IC-vs-horizon profiles.
+          plus IC-vs-horizon profiles. This pass fixes 3 open review findings: (1)
+          PatchTST's source-artifact contract — model#85's 43-fold corpus does not
+          exist, so PatchTST is now explicitly OUT OF SCOPE for this Stage-0 run
+          (XGB ranker + top-decile classifier only, both scored against the
+          already-on-disk `data/exp/oos_pick_table_recipe_v2.parquet` corpus); (2)
+          §5's decision rule now uses a paired contrast (`t_pair`, same permutation
+          draws for both arms) with Holm-Bonferroni multiplicity control across
+          H1's 3 pairwise tests, and H2's "equal or lower effect size" is a hard
+          numeric gate (`d_20d ≤ d_60d`), not narrative; (3) §3's persistence-matched
+          control now specifies score alignment (same-ticker `t-60`), unavailable-
+          score handling (drop that cell only, report coverage), and its own
+          block-level variance (computed on its own eligible-date subset).
 
 WHY/DIR:  GOAL-6 Stage 0 (orchestrator design §5). No model is trained, promoted or
           killed by it; it decides which statistic and which measurement horizon
@@ -13,15 +28,30 @@ WHY/DIR:  GOAL-6 Stage 0 (orchestrator design §5). No model is trained, promote
           each row naming a real past failure and how this design avoids it — T1 is
           this session's own defective shift-120 placebo.
 
-EVIDENCE: the defect that forced T1 `[VERIFIED — wf-eval/diagnostics.log]`: the
-          score's IC-vs-lag profile is +0.028 at lag 0, +0.071 at 60d and peaks at
-          **+0.078 (t=3.21) at 100d**, so a +120d shift sits near the PEAK of the
-          score's real predictive profile rather than on a null — making
-          `real - shift` structurally negative. Replacement nulls are within-date
-          permutation (measured clean: -0.0008) and a persistence-matched control
-          (cross-sectional rank autocorrelation 0.59 @1d, 0.30 @60d). No IC/Sharpe
-          claim is made by this PR, so the §4(b) triad applies to the results doc.
+EVIDENCE: artifact:      wf-eval/diagnostics.log (T1 lag-profile measurement — the
+          defect that forced this design's null choice)
+           prod or exp:   experiment — a GOAL-6 design-doc measurement; no
+          production path touched, no promotion/kill decision
+           existing data: the score's IC-vs-lag profile is +0.028 at lag 0, +0.071
+          at 60d, peaks at +0.078 (t=3.21) at 100d — so a +120d shift sits near the
+          PEAK of the score's own predictive profile rather than on a null, making
+          `real - shift` structurally negative; replacement nulls measured clean
+          (within-date permutation: -0.0008), with the persistence-matched
+          control's own confound also measured (cross-sectional rank
+          autocorrelation 0.59 @1d, 0.30 @60d)
+           best-known?:   this is the first documented diagnosis of the shift-120
+          placebo defect; supersedes treating shift-120 as a valid null anywhere
+          it is still used as one (model#85 still uses it — flagged there
+          separately, not fixed by this PR)
+           scope:         this PR's own T1 finding + the Stage-0 design; no
+          Stage-0 run has executed under this PR (the removed results doc's
+          numbers do not carry evidentiary weight and are not reasserted here); no
+          IC/Sharpe or model promotion/kill claim is made
 
-NEXT:     Run Stage 0 (CPU-only; the 43-fold scoring precedent ran 11s/fold), then a
-          results doc with the H1/H2/H3 verdicts and an explicit recommendation for
-          the Stage-2 primary statistic and measurement horizon.
+NEXT:     Re-review with the 3 findings above addressed and the premature results
+          doc removed. After approval, run Stage 0 (CPU-only, XGB-scope) as its own
+          step, then open a SEPARATE results PR (§6) — never bundled with this
+          prereg — with the H1/H2/H3 verdicts and an explicit recommendation for
+          the Stage-2 primary statistic and measurement horizon. PatchTST rejoins
+          Stage 0 once model#85 (or an equivalent verified artifact) exists with a
+          stated immutable path and fingerprint.
