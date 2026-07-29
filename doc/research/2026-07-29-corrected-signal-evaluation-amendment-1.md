@@ -20,10 +20,18 @@ reviewed tool from model#91 (MERGED 2026-07-29T08:38:58Z):
 - location `/Users/renhao/renquant_bundles/corrected-eval-20260729/`
   (alongside the other frozen bundles, outside any session scratch);
 - root digest
-  `f6b6ef6d5055600df190da9d56c32453e31b71c54ff5beeda88e12caac0df38a`
-  over **44 files** `[VERIFIED — tools/corpus_index.py generate, 2026-07-29]`;
+  `901f0addd19b7381775f9dd593e046b862863b8bb04bb0de7260eb405423810a`
+  over **61 files** `[VERIFIED — tools/corpus_index.py verify, this session:
+  "VERIFY OK: 61 files, 6969817 bytes"]`;
 - verifiable by `python tools/corpus_index.py verify --root <path> --index <index>`,
   which exits non-zero on any digest, missing-file or extra-file mismatch.
+
+  CORRECTION (per long-term-agreements.md entry 10): this line originally
+  cited root `f6b6ef6d…` over 44 files — that snapshot mutated (more
+  outputs were appended to the bundle after the digest was taken), retracted
+  on model#92's own thread and re-verified here against the current,
+  freshly-sealed state. Any further writes into the bundle invalidate the
+  digest above too and require re-verification before being cited again.
 
 **Rule going forward for this prereg's line of work:** a number may be quoted
 only if it is (a) reproducible from committed code, or (b) tied to a
