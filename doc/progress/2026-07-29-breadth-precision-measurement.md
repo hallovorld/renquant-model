@@ -10,10 +10,15 @@ STATUS:   delivered (committed verifier + research memo). NOT a proposal; asks
           derivation + per-number provenance tags) before the placement
           finding landed.
 
-WHAT:     `tools/breadth_precision_verify.py` — reproduces every number in the
-          memo from sha256-pinned inputs, aborting on mismatch, with each
-          subsample draw seeded off (date, N, replicate) so the tables are
-          bit-reproducible. Plus
+WHAT:     `tools/breadth_precision_verify.py` — reproduces the breadth-ladder,
+          fit, and survivorship-probe numbers (tagged `[VERIFIED — verifier]`
+          in the memo) from sha256-pinned inputs, aborting on mismatch, with
+          each subsample draw seeded off (date, N, replicate) so the tables
+          are bit-reproducible. It does NOT compute §3's moving-block
+          bootstrap corroboration table or §8's manifest completeness/leakage
+          checks — those numbers are separately provenanced and tagged
+          `[VERIFIED — measured earlier this session, ...]` / `[VERIFIED —
+          manifest]` at the point of use. Plus
           `doc/research/2026-07-29-breadth-does-not-buy-evaluation-precision.md`.
 
           Findings: at N=292 names/date, 91% of per-date IC variance is

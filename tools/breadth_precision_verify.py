@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
-"""Recompute every number in the breadth-precision memo, from pinned inputs.
+"""Recompute the breadth-ladder, fit, and survivorship-probe numbers in the
+breadth-precision memo, from pinned inputs.
 
 Why this exists: the memo's numbers were first quoted from a scratch-only
 corpus that a reviewer could not reproduce from the PR branch. This script is
-the reviewable derivation. It pins each input by sha256, refuses to run against
-a different one unless told to, and prints the same tables the memo states.
+the reviewable derivation for those numbers. It pins each input by sha256,
+refuses to run against a different one unless told to, and prints the same
+tables the memo states. It does NOT cover the memo's section-3 bootstrap
+corroboration table or the section-8 manifest completeness/leakage claims —
+those are separately provenanced (see the memo's tags at point of use).
 
     python3 tools/breadth_precision_verify.py \
         --clf-corpus <path>/clf_wf_scores.parquet \

@@ -2,7 +2,10 @@
 
 **Date:** 2026-07-29
 **Status:** measurement, not a proposal. Nothing here asks for a decision.
-**Reproduce every number below:**
+**Reproduce the numbers tagged `[VERIFIED — verifier]` below** (the breadth
+ladder, fit, and survivorship probe). §3's bootstrap corroboration table and
+§8's manifest completeness/leakage figures are computed separately and carry
+their own tags — see those sections:
 
 ```
 python3 tools/breadth_precision_verify.py \
@@ -12,7 +15,11 @@ python3 tools/breadth_precision_verify.py \
 
 The script pins its inputs by sha256 and **aborts** on a mismatch, so a
 different corpus cannot silently reproduce different numbers under this memo's
-name. Every figure in this document is the script's own output.
+name. Every figure tagged `[VERIFIED — verifier]` is the script's own output;
+§3's bootstrap corroboration table (`[VERIFIED — measured earlier this
+session, moving-block bootstrap]`) and §8's manifest completeness/leakage
+figures (`[VERIFIED — manifest]`) are not computed by this script and carry
+their own, separate tags.
 
 | input | sha256 |
 |---|---|
