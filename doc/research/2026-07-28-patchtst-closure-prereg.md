@@ -50,16 +50,22 @@ inherit an unregistered measurement as if it were a result).
 
 - **Subjects:** the 43-fold PatchTST corpus and, as a positive control, the
   prod XGB corpus. A design that cannot show the control passing is not
-  evidence about the treatment. **The PatchTST corpus's existence is
-  contested, not settled**: one audit found no on-disk fold count or
-  Modal-run provenance reachable from this repo's git history; a later
-  audit reported 43/43 fold dirs, checkpoints, and calibrators plus Modal
-  dispatch provenance in a quarantined scratch namespace outside git (see
-  model#87's 2026-07-29T06:05 PR comment). This prereg does not resolve
-  that dispute. Whoever runs the confirmatory test must independently
-  re-verify the corpus at its actual claimed location and provenance
-  fingerprint before treating it as real — a document's say-so, in either
-  direction, is not sufficient.
+  evidence about the treatment. **Corpus status, directly re-verified this
+  session** (not recycled from an earlier claim in either direction):
+  `walkforward_patchtst_manifest.json` + its `.provenance.json` show 43/43
+  `calibration.json` files, real per-cutoff `.pt` checkpoints, and a Modal
+  dispatch record (`app_id`, per-fold cost gate, budget contract) —
+  `[VERIFIED — direct filesystem inspection of the manifest, provenance
+  file, checkpoint files, and calibration-file count, this session]`. The
+  corpus is real. It is **not**, however, at a stable, content-hashed,
+  checked-in location: it lives under a Claude-session-scoped scratch path
+  (`/private/tmp/claude-<session>/.../scratchpad/...`) that is not
+  guaranteed to persist past that session. Before the confirmatory run in
+  this prereg is treated as authoritative, the corpus (or a fresh
+  regeneration of it) MUST be pinned to a stable location with a recorded
+  content hash / provenance fingerprint in the results doc — an ephemeral
+  scratch path is not by itself a valid prereg input, independent of
+  whether the data at that path is genuine.
 - **Statistic:** `REAL − persistence` on per-date rank IC and on the
   top-decile spread, block-level t across folds, at 60d.
 - **Persistence lags:** 20d, 40d, 60d, 80d. A genuine fresh-information
@@ -69,20 +75,47 @@ inherit an unregistered measurement as if it were a result).
 - **Second control:** the same test on a deliberately signal-free score
   (within-date permuted PatchTST scores), which must show no systematic sign.
 - **T11 (new known trap — sample-composition mismatch, frozen fix
-  required):** an adversarial audit of an actually-executed confirmatory
-  run under this exact design found that reading the REAL arm as
-  `corpus[lag:N]` and the PERSIST arm as `corpus[0:N-lag)` pairs the two
-  arms on label date but draws them from **different score-date windows**
-  — the REAL arm always includes the most recent `lag` dates that PERSIST
-  necessarily excludes, and those recent dates carried the weakest (near-
-  zero or negative) IC in the motivating profile. Recomputed on a common
-  score-date set, a prior run's `p=4/4` CLOSE-direction result for PatchTST
-  fell to `0/4`, and the prod-XGB positive control fell to `1/4` (control
-  invalid). **Before this confirmatory test is executed for real, the
-  harness MUST compute REAL and PERSIST on the same common score-date
-  subset at each lag** (drop the non-overlapping tail dates from both
-  arms, not just one) — otherwise `p` in §3 is not measuring what it
-  claims to.
+  required):** a bug-hunt script (`bughunt/h6_closure.py`, read-only,
+  re-using the same `scores.parquet` traced back to the 43-fold corpus via
+  `wf-eval/score_folds.py`) recomputed this design's own statistic and
+  found that reading the REAL arm as `corpus[lag:N]` and the PERSIST arm as
+  `corpus[0:N-lag)` pairs the two arms on label date but draws them from
+  **different score-date windows** — the REAL arm always includes the most
+  recent `lag` dates that PERSIST necessarily excludes, and those recent
+  dates carried the weakest (near-zero or negative) IC in the motivating
+  profile. Recomputed on a common score-date set (`h6_results.json`,
+  re-read directly this session), the raw `p=4/4` CLOSE-direction count for
+  PatchTST fell to `0/4`, and the prod-XGB positive control fell to `1/4`
+  (control invalid) `[VERIFIED — h6_results.json:
+  p_as_closure=4/p_fixed=0, ctrl_as_closure=4/ctrl_fixed=1]`. This is a
+  bug-hunt script's recomputation, not the official harness's own output —
+  it demonstrates the defect and its fix is registered below, but the
+  confirmatory numbers this prereg's own §3 verdict depends on must come
+  from the harness described here, run against the pinned corpus, not from
+  this bug-hunt script. **Before this confirmatory test is executed for
+  real, the harness MUST compute REAL and PERSIST on the same common
+  score-date subset at each lag** (drop the non-overlapping tail dates
+  from both arms, not just one) — otherwise `p` in §3 is not measuring what
+  it claims to.
+- **Block-level estimator (frozen):** the natural block here is the WF
+  fold — each of the 43 folds is drawn from a distinct cutoff date and is
+  approximately independent of the others. Per fold, compute the fold-level
+  `REAL − persistence` IC difference (mean over that fold's dates); the
+  decision statistic is `t = mean(fold_diffs) / (std(fold_diffs, ddof=1) /
+  sqrt(n_folds))` with `df = n_folds − 1`, reported alongside `n_eff =
+  n_folds` per row (matching the T2 discipline).
+- **Multiplicity / power calibration for the four-lag rule (frozen):**
+  under a naive independent-lags null with each lag's one-sided Type-I
+  rate at the `t ≤ −1.0` bar equal to `Φ(−1.0) ≈ 0.159`, `P(≥3 of 4) =
+  C(4,3)·0.159³·0.841 + 0.159⁴ ≈ 1.4%`. The four persistence lags are NOT
+  independent (overlapping windows, correlated scores), so the true
+  Type-I rate is higher than 1.4% and bounded above by the single-lag rate
+  (~15.9%, the fully-correlated limit). The results doc MUST report both
+  bounds AND the empirical Type-I rate estimated by applying the same
+  `p ≥ 3` rule to the within-date permutation null already registered
+  above (§2 "Second control") — a rule calibrated only against the naive
+  1.4% figure is not adequately powered against its own correlation
+  structure.
 
 ## 3. Decision rule (frozen)
 
