@@ -17,10 +17,13 @@ WHAT:     Adds `doc/research/2026-07-28-goal6-stage0-prereg.md` — a measuremen
           study: 3 statistics (IC, decile spread, top-decile hit rate) x 2 horizons
           (20d, 60d) on already-trained models, two nulls, block-level inference,
           plus IC-vs-horizon profiles. This pass fixes 3 open review findings: (1)
-          PatchTST's source-artifact contract — model#85's 43-fold corpus does not
-          exist, so PatchTST is now explicitly OUT OF SCOPE for this Stage-0 run
-          (XGB ranker + top-decile classifier only, both scored against the
-          already-on-disk `data/exp/oos_pick_table_recipe_v2.parquet` corpus); (2)
+          PatchTST's source-artifact contract — model#85's 43-fold `scores.parquet`
+          is not yet pinned to a stable, reviewable source contract this design can
+          cite (model#91's queued corpus-index evidence shows the underlying corpus
+          is not simply nonexistent, just not yet merged/citable here), so PatchTST
+          is now explicitly OUT OF SCOPE for this Stage-0 run (XGB ranker +
+          top-decile classifier only, both scored against the already-on-disk
+          `data/exp/oos_pick_table_recipe_v2.parquet` corpus); (2)
           §5's decision rule now uses a paired contrast (`t_pair`, same permutation
           draws for both arms) with Holm-Bonferroni multiplicity control across
           H1's 3 pairwise tests, and H2's "equal or lower effect size" is a hard
@@ -60,5 +63,5 @@ NEXT:     Re-review with the 3 findings above addressed and the premature result
           step, then open a SEPARATE results PR (§6) — never bundled with this
           prereg — with the H1/H2/H3 verdicts and an explicit recommendation for
           the Stage-2 primary statistic and measurement horizon. PatchTST rejoins
-          Stage 0 once model#85 (or an equivalent verified artifact) exists with a
-          stated immutable path and fingerprint.
+          Stage 0 once model#85 or model#91's corpus index is merged and this
+          design cites its exact artifact path and row/date fingerprint.

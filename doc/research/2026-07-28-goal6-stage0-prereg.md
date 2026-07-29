@@ -36,14 +36,20 @@ trained, promoted, or killed by it.
   artifact that exists on disk today, read-only, not recomputed.
 - **PatchTST is OUT OF SCOPE for this Stage-0 run.** An earlier draft of
   this prereg claimed model#85's "43-fold corpus scores already computed
-  (`scores.parquet`, 88,750 rows)" as a reusable input; that corpus does
-  not exist — model#85 is still a queued, unmerged prereg and no PatchTST
-  43-fold Modal batch has been dispatched under any run-id in this repo's
-  history. Stage 0 does not run against an undocumented or fictional
-  input. PatchTST is added to Stage 0 as a follow-up amendment once
-  model#85 (or an equivalent already-verified PatchTST scoring artifact)
-  exists with a stated immutable path and row/date fingerprint — not
-  before.
+  (`scores.parquet`, 88,750 rows)" as a reusable input; that specific
+  claim does not hold — model#85 is still a queued, unmerged prereg and
+  no `scores.parquet` for this corpus is committed anywhere in this
+  repo's history. That is a narrower claim than "the corpus does not
+  exist": model#91 (queued, unmerged) now carries a content-addressed
+  index of a 43-fold PatchTST corpus (root digest
+  `b8aa2d99...`, Modal dispatch app ids `ap-RIc3qj4D3yFfU9z7tAx4Rd` /
+  `ap-HHid4LhAAD0heLm7Mlk4aW`) — so the correct status is **not yet
+  pinned to a stable, reviewable source contract that this Stage-0 design
+  can cite**, not nonexistence. Stage 0 does not run against an input
+  without a stated immutable path and fingerprint. PatchTST is added to
+  Stage 0 as a follow-up amendment once model#85 (or model#91's index)
+  is merged and this design cites its exact artifact path and row/date
+  fingerprint — not before.
 - **Panel:** the existing `transformer_v4_wl200_clean.parquet`
   (142 tickers, 2016-01-04 → 2026-04-28), read-only.
 - **Labels:** `fwd_20d_excess` and `fwd_60d_excess`, both already present.
