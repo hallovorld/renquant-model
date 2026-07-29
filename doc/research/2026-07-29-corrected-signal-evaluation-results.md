@@ -1,11 +1,32 @@
-# Corrected signal evaluation — RESULTS
+# Corrected signal evaluation — EXPLORATORY, NOT CONFIRMATORY
+
+> **STATUS: exploratory only — do not cite any table below as an established
+> or confirmatory verdict.** Two defects, both flagged by review:
+> 1. **Wrong order.** The retained bundle's `harness.py` / `results.json` /
+>    `verdict.json` are timestamped 2026-07-28 23:34–23:35 PDT
+>    `[VERIFIED — ls -la on the bundle]`. model#90 (the prereg this doc claims
+>    to execute against) merged at 2026-07-29 02:19:34 PDT
+>    `[VERIFIED — git log -1 8579fa7]` — **~3 hours after** this bundle was
+>    produced. This cannot be a recomputation against the merged, frozen
+>    prereg; the execution predates the freeze it claims to follow.
+> 2. **Not independently reproducible.** The harness imports code from
+>    `/private/tmp/renquant-model-pr89-review/src` and reads mutable inputs
+>    from `/Users/renhao/git/github/RenQuant/data/...` and session-scratch
+>    parquet files under `/private/tmp/...`. The retained root digest covers
+>    only the output CSVs/JSON, not those inputs or the code revision, so a
+>    verifier cannot reproduce these numbers from the bundle alone.
+>
+> The numbers below are real (this computation did run, on the corpora it
+> says), but per reviewer guidance they are downgraded to exploratory pending
+> a genuine post-merge, self-contained (hashed-input) re-run — see the
+> progress doc's NEXT for the required follow-up.
 
 Prereg: `2026-07-29-corrected-signal-evaluation-prereg.md` (model#90) as amended
 in place (`block_length = max(60, L)`) and by amendment 1 (provenance).
 
-**Every number below is tied to a content-addressed artifact root**, which is
-why they can be quoted at all — an earlier draft cited a session-scratch path
-and was correctly rejected as unauditable:
+Every number below is tied to a content-addressed artifact root over the
+**output** files only (not the inputs — see the caveat above); recomputation
+against the exact inputs is NOT yet independently verifiable:
 
 - artifacts `/Users/renhao/renquant_bundles/corrected-eval-20260729/`
 - root digest `f6b6ef6d5055600df190da9d56c32453e31b71c54ff5beeda88e12caac0df38a`
@@ -59,11 +80,17 @@ X" is weaker than a claim about "model X beats its own persistence".
 
 ## What is and is not established
 
-- Established: both production-relevant models carry fresh information beyond
-  score persistence, on three independent views of the uncertainty.
-- Established: PatchTST's walk-forward edge is worse than its own stale score,
-  robustly. Formal closure still needs its own registered kill rule — model#87
-  is retracted and may not be reused.
-- NOT established: the absolute cross-sectional IC of the certified clf. Its
-  level does not resolve, and no claim in this programme should quote it as if
-  it did.
+Nothing below is established or confirmatory — see the STATUS caveat at the
+top of this document. These are exploratory findings from the same
+computation, pending a reproducible post-merge re-run:
+
+- Exploratory, not confirmatory: both production-relevant models carry fresh
+  information beyond score persistence, on three independent views of the
+  uncertainty.
+- Exploratory, not confirmatory: PatchTST's walk-forward edge is worse than
+  its own stale score. Formal closure still needs its own registered kill
+  rule — model#87 is retracted and may not be reused.
+- NOT established under any framing: the absolute cross-sectional IC of the
+  certified clf. Its level does not resolve, and no claim in this programme
+  should quote it as if it did — this holds regardless of the exploratory
+  vs. confirmatory question above.
