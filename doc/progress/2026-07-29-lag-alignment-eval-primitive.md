@@ -1,6 +1,6 @@
 # Progress: lag-alignment evaluation primitive
 
-STATUS:   delivered (module + 16 tests). Makes the 2026-07-28/29 harness defect
+STATUS:   delivered (module + 24 tests). Makes the 2026-07-28/29 harness defect
           unrepresentable rather than merely documented.
           Fix (codex round 1): (1) date-only alignment did not guarantee a
           common `(date, ticker)` sample in an unbalanced panel — added
@@ -41,18 +41,34 @@ WHY/DIR:  A walk-forward study concluded "IC rises with label lag" across two mo
           not stop the next study from repeating it; a primitive that refuses the
           unsafe comparison does.
 
-EVIDENCE: the module's justification does NOT rest on session-local scratch numbers,
-          which a reviewer cannot inspect and which are therefore not quoted here
-          (codex round-1 HIGH). The committed evidence is runnable: 16/16 tests
-          `[VERIFIED - PYTHONPATH=src pytest tests/test_lag_alignment.py, this
-          session]`, including one that reproduces the mechanism end-to-end on
-          synthetic data - with a recent era carrying no skill, the SAME lag-0
-          statistic differs by >0.15 between the full and the common sample - and
-          six that pin the unbalanced-panel case (a delisted key is dropped
-          exactly where its lagged row is missing; a date-only rule would have
-          compared pairs across lags that the pair rule excludes; a balanced
-          panel reduces to the date-only special case). No model/IC/Sharpe claim
-          is made, so the §4(b) triad does not apply.
+EVIDENCE: artifact:      `src/renquant_model_common/lag_alignment.py` +
+          `tests/test_lag_alignment.py` `[VERIFIED - this PR's diff]`. The
+          module's justification does NOT rest on session-local scratch
+          numbers a reviewer cannot inspect (codex round-1 HIGH) - the
+          committed, runnable test suite is the evidence instead.
+           prod or exp:   experiment/code-only - a library primitive plus
+          synthetic-data tests; no production artifact, model, or claim.
+           existing data: none cited as motivation beyond the mechanism
+          itself (`Y.shift(-lag)` nulls the newest rows by construction,
+          verifiable by reading the function).
+           best-known?:   n/a - utility module, no model/statistic ranking.
+           scope:         "library code + synthetic-data tests only; no
+          model claim is made, so the §4(b) sanity triad does not apply to
+          this PR. `test_the_lag0_statistic_itself_moves_between_full_and_
+          common_samples` demonstrates the mechanism on generated data with
+          a designed effect, not a real-study replay."
+          Suite: 24/24 `[VERIFIED - PYTHONPATH=src pytest
+          tests/test_lag_alignment.py, this session]`, including one test
+          that reproduces the mechanism end-to-end on synthetic data - with
+          a recent era carrying no skill, the SAME lag-0 statistic differs
+          by >0.15 between the full and the common sample - six that pin
+          the unbalanced-panel case (a delisted key is dropped exactly
+          where its lagged row is missing; a date-only rule would have
+          compared pairs across lags that the pair rule excludes; a
+          balanced panel reduces to the date-only special case), and the
+          dependence-aware-inference tests added afterward (moving-block
+          bootstrap + leave-one-block-out agreement, not a bare block-t on
+          8-12 blocks).
 
 NEXT:     Port the Stage-0 / closure harnesses onto `align_lag_pairs` (not the
           date-only `align_lags`) before any of their numbers are quoted again,
