@@ -75,42 +75,41 @@ f6b6ef6d…/wf-eval]`:
 
 Mechanically, `p = 4/4` with a valid control is **CLOSE** under model#87 §3.
 
-## Why no verdict is being claimed
+## Why the two computations disagreed (superseded analysis, kept for the record)
 
 The 2026-07-29 adversarial bug hunt recomputed the ORIGINAL closure arms on a
 common score-date set and reported the opposite: **PatchTST p = 4/4 → 0/4 and
 the control 4/4 → 1/4 (INVALID)**, which under the same rule gives
 INCONCLUSIVE. That recomputation is what retracted the first CLOSE.
 
-So two computations, each built to be sample-stable, disagree on both the
-treatment and the control. At least one construction is wrong, and I do not
-yet know which. Possible sources, none yet eliminated:
-
-1. **What "common" ranges over.** This run intersects SCORE dates evaluable at
-   every lag. The bug hunt may have intersected label-side eligibility, which
-   is a different set.
-2. **Which axis the persistence shift walks.** Here the stale score is taken
-   `L` positions back on the score-date axis and re-attached to the same label
-   date. An implementation that instead shifts the LABEL produces a different
-   pairing with the same description in prose.
-3. **Coverage after the join.** Restricting to the common sample before versus
-   after the ticker-level merge changes which `(date, ticker)` pairs survive —
-   precisely the unbalanced-panel gap that `align_lag_pairs` exists for, and
-   which THIS run does not use (it aligns on dates only).
-
-Item 3 is the most likely and the most embarrassing: the pair-level primitive
-was written for exactly this hazard two rounds ago, and this run used the
-date-level one.
+At the time this section was first written, three candidate causes were
+listed as unexamined, with "which axis the persistence shift walks / pair-
+level vs date-level alignment" (then item 3) flagged as the leading suspect.
+**That suspicion is refuted** — see the Resolution block at the top: rerunning
+under `align_lag_pairs` reproduces this run's numbers exactly
+(−0.0101/−0.0274/−0.0458/−0.0480, identical to three decimal places), so
+date-vs-pair alignment was never the source of the disagreement. The actual
+source is the estimand difference explained in the Resolution block: the
+audit's `common-SD` construction and this run's persistence-arm construction
+answer different questions (horizon vs. persistence) and are not in conflict
+about the same quantity — there is no remaining "which construction is
+wrong" question to resolve by further re-running.
 
 ## What happens next, and what must not
 
-Next: re-run BOTH constructions under `align_lag_pairs`, with the two
-implementations diffed line by line, and let the frozen rule decide once they
-agree. If they still disagree, neither may be quoted.
+The re-run planned here (both constructions under `align_lag_pairs`) has
+already happened — see the Resolution block. What remains is NOT another
+re-run; it is adversarial review of the estimand-difference explanation
+itself, since a CLOSE verdict was already published once on this question
+and retracted, and reversing that on the strength of a single author's
+re-analysis (however carefully reasoned) would repeat the same error with
+better tooling.
 
-Must not: pick the construction whose answer is preferred. A CLOSE verdict was
-already published once on this question and retracted; publishing a second one
-on the strength of one of two conflicting computations would be the same
-error with better tooling.
+Must not: treat "the implied verdict is CLOSE" as PatchTST's recorded status
+before that review happens.
 
-PatchTST's status therefore remains **UNRESOLVED**.
+PatchTST's status therefore remains **UNRESOLVED-pending-adversarial-review**
+— not because the two computations are unreconciled (they are, as of the
+Resolution block above), but because a reversal of a previously-retracted
+verdict needs an independent check before it is recorded, not just a
+same-author explanation.
