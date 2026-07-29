@@ -19,17 +19,30 @@ WHY/DIR:  One repo's memory record asserted the corpus "does not exist"; the oth
           content-addressed index is the reconciliation: it is inspectable, citable,
           and falsifiable by recomputation.
 
-EVIDENCE: `[VERIFIED — hashed 2026-07-29 by direct file reads]` root digest
-          `b8aa2d998c51fcd19c06afa3e63753f2ad5522cd2651d9f30bf60e038b291aa5`;
-          43 fold dirs / 43 `*_model.pt` / 43 `*calibration.json`; cutoffs
-          2023-10-02 … 2026-03-02; Modal `app_name: renquant-wf-patchtst` with dispatch
-          app ids `ap-RIc3qj4D3yFfU9z7tAx4Rd` and `ap-HHid4LhAAD0heLm7Mlk4aW`;
-          `budget_contract {max_total_usd: 25.0, pre_spend_usd: 1.45,
-          rate_usd_per_hour: 0.59, timeout_seconds: 2900}`; `failed_folds: []`;
-          `n_folds_promotable: 0` (quarantined by design, calibrators fitted
-          separately). The provenance's `code_git_heads` pin all seven sibling repos at
-          states that independently matched this machine's checkouts hours after the
-          run. No model/IC claim is made here, so the §4(b) triad does not apply.
+EVIDENCE:
+  artifact:      `doc/research/evidence/2026-07-29-patchtst-43fold-corpus-index.json`
+                 (schema `artifact_corpus_index.v1`)
+  prod or exp:   experiment — quarantined WF corpus, `n_folds_promotable: 0`,
+                 calibrators fitted separately; nothing here is a prod artifact.
+  existing data: `[VERIFIED — hashed 2026-07-29 by direct file reads]` root digest
+                 `b8aa2d998c51fcd19c06afa3e63753f2ad5522cd2651d9f30bf60e038b291aa5`;
+                 43 fold dirs / 43 `*_model.pt` / 43 `*calibration.json`; cutoffs
+                 2023-10-02 … 2026-03-02; Modal `app_name: renquant-wf-patchtst` with
+                 dispatch app ids `ap-RIc3qj4D3yFfU9z7tAx4Rd` and
+                 `ap-HHid4LhAAD0heLm7Mlk4aW`; `budget_contract {max_total_usd: 25.0,
+                 pre_spend_usd: 1.45, rate_usd_per_hour: 0.59, timeout_seconds: 2900}`;
+                 `failed_folds: []`. The provenance's `code_git_heads` pin all seven
+                 sibling repos at states that independently matched this machine's
+                 checkouts hours after the run.
+  best-known?:   n/a — this is a provenance/existence index, not a competing model
+                 variant. It replaces two contradictory prose claims (model#85/#86
+                 said the corpus "does not exist"; orch#590 said it was "directly
+                 inspected") with one citable, recomputable artifact.
+  scope:         this index proves WHAT is on disk and its digests (43/43 folds
+                 present, root-digest-verifiable), NOT that the bytes were produced
+                 by the run they claim — the Modal app ids and `code_git_heads`
+                 correspondence are corroboration, not proof. No model/IC/Sharpe
+                 claim is made.
 
 NEXT:     Cite this index from the model-side evidence trail and from the orchestrator
           MID record, replacing both the existence and the non-existence assertions.
