@@ -66,8 +66,20 @@ def walk_files(root: str) -> list[str]:
     return out
 
 
-def build_index(root: str) -> dict:
+def build_index(root: str, exclude: str | None = None) -> dict:
+    """Index every regular file under `root`, minus `exclude`.
+
+    `exclude` exists for one specific trap: writing the index INTO the tree it
+    indexes. The index cannot contain its own digest, so a self-referencing
+    layout makes `verify` fail immediately and confusingly. Rather than
+    forbidding it, both commands exclude the index file when it lands inside
+    the root — the natural layout (index next to the artifacts) then works.
+    """
     rels = walk_files(root)
+    if exclude:
+        ex = os.path.realpath(exclude)
+        rels = [r for r in rels
+                if os.path.realpath(os.path.join(root, r)) != ex]
     files = {rel: {"sha256": sha256_file(os.path.join(root, rel)),
                    "bytes": os.path.getsize(os.path.join(root, rel))}
              for rel in rels}
@@ -83,6 +95,8 @@ def build_index(root: str) -> dict:
             "hash": "sha256 of the utf-8 encoded joined string",
             "symlinks": "rejected",
             "directories": "contribute nothing",
+            "self_exclusion": "the index file itself is excluded when it lands "
+                              "inside the indexed root",
         },
         "root_digest_sha256": root_digest,
         "n_files": len(files),
@@ -92,7 +106,7 @@ def build_index(root: str) -> dict:
 
 
 def cmd_generate(args) -> int:
-    idx = build_index(args.root)
+    idx = build_index(args.root, exclude=args.out)
     text = json.dumps(idx, indent=1, sort_keys=True)
     if args.out:
         with open(args.out, "w", encoding="utf-8") as f:
@@ -107,7 +121,7 @@ def cmd_generate(args) -> int:
 def cmd_verify(args) -> int:
     with open(args.index, encoding="utf-8") as f:
         committed = json.load(f)
-    actual = build_index(args.root)
+    actual = build_index(args.root, exclude=args.index)
 
     problems: list[str] = []
     if committed.get("root_digest_sha256") != actual["root_digest_sha256"]:
