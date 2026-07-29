@@ -38,10 +38,20 @@ window (its own post-cutoff period, disjoint from its training data by the
 recipe's embargo). Cutoffs span 2023-10-02 → 2026-03-02 at 21-day cadence.
 
 **Primary statistic:** the fold-level mean of per-date rank IC, aggregated
-across folds; significance from the ACROSS-FOLD dispersion (43 windows),
-never from per-date counts within a fold. Report both the naive per-date t
-(for comparability with prior docs) and the fold-level t; **the fold-level
-t is the decision statistic.**
+across folds. Significance is NOT the naive across-fold dispersion treating
+the 43 folds as independent — cutoffs are spaced 21 trading days apart
+while the label horizon overlaps 60 trading days, so adjacent folds share
+label window for `⌈60/21⌉ − 1 = 2` lags (fold i is dependent with fold
+i+1 and i+2; fold i+3, at 63 trading days, is the first fold outside the
+horizon). **Decision statistic (frozen):** a Newey-West (1987, *Econometrica*
+55(3):703) HAC t-statistic on the fold-level series `d_i` = real IC −
+shift-placebo IC per fold (i = 1..43, ordered by cutoff date), Bartlett
+kernel, truncation lag **L = 2** — fixed by the known overlap order above,
+not selected from the data (equivalent to treating each independent block
+as 3 folds / 63 trading days, matching Hansen-Hodrick (1980, *JPE* 88(5):829)
+practice for overlapping-horizon regressions). Denote this `t_d`. The naive
+per-date t and a naive iid-across-fold t are still reported for
+comparability with prior docs, but carry no decision weight.
 
 **Secondary statistic:** top-decile minus bottom-decile forward-return
 spread per date, aggregated the same way (this is the statistic the panel
@@ -64,8 +74,11 @@ must be reported as such.
 
 ## 3. Decision rule (frozen)
 
-Let `d` = fold-level mean of (real IC − shift-placebo IC), with fold-level
-t-statistic `t_d` over the 43 folds.
+Let `d` = fold-level mean of (real IC − shift-placebo IC), with the
+Newey-West HAC t-statistic `t_d` defined in §2 (Bartlett kernel, lag
+L = 2). The 90% CI on `d` is `mean(d) ± t_{0.95}(df=42) × SE_HAC(d)`,
+critical value from `scipy.stats.t.ppf(0.95, df=42)` (df = n_folds − 1 = 42,
+a conservative small-sample adjustment on top of the HAC-corrected SE).
 
 **Smallest economically useful effect (frozen numeric threshold):**
 `d_min = 0.01` (IC units). This is `min_oos_mean_ic` — the OOS mean-IC
@@ -82,12 +95,18 @@ noise-level for a single signal). Reusing it here avoids inventing a
 second, prereg-only bar with no operational meaning.
 
 - **GO (third blend leg)** — `t_d ≥ 2.0` AND the decile-spread arm agrees in
-  sign AND the calibrated arm is not materially weaker than the raw arm.
-  Next step on GO: the standard blend gate chain (screen → frozen
+  sign AND the calibrated arm is not materially weaker than the raw arm,
+  frozen as: `d_raw − d_calibrated ≤ d_min` (0.01 IC units), where
+  `d_calibrated` is the same fold-level mean of (calibrated real IC −
+  calibrated shift-placebo IC) and `d_raw` is `d` as defined above. Anchoring the
+  bound to the already-frozen `d_min` (rather than a second, ad hoc ratio)
+  means calibration is allowed to cost at most one "smallest economically
+  useful effect" of edge before the calibrated (tradeable) arm fails GO on
+  its own. Next step on GO: the standard blend gate chain (screen → frozen
   confirmatory prereg on disjoint seeds → shadow). NOT a promotion.
 - **KILL (as an alpha source)** — `t_d ≤ 0.5` with the 90% CI upper bound
-  of `d` below `d_min = 0.01`. PatchTST is then closed as a scorer; the
-  corpus is kept as a PIT artefact.
+  of `d` (per the §3 CI construction above) below `d_min = 0.01`. PatchTST
+  is then closed as a scorer; the corpus is kept as a PIT artefact.
 - **UNDERPOWERED** — anything between. Then the honest finding is that 43
   folds still cannot resolve it, and the decision is a COST question
   (more seeds / a larger model / more folds), not a signal question. No
