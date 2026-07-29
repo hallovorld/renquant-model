@@ -19,6 +19,15 @@ WHAT:     Adds `doc/research/2026-07-28-patchtst-wf-signal-existence-prereg.md`:
           (120d shift matched to the WF gate + within-date shuffle), calibrated-vs-raw
           both computed, and a frozen three-way decision rule (GO third blend leg /
           KILL as alpha source / UNDERPOWERED) with ties resolving to UNDERPOWERED.
+          Round 3 (codex HIGH): the `shift120` arm needs label dates past the
+          panel's covered range for cutoffs near the end of the 43-fold span, so
+          `df=42` can't be assumed for every fold. Added a frozen fold-eligibility
+          rule (§2): a fold counts toward the `real − shift120` statistic iff its
+          shifted window is fully within the panel's actual max date, checked
+          programmatically at evaluation time — never hand-counted here. `df` for
+          `t_d`/its CI is `n_eligible_shift120_folds − 1`, computed the same way
+          for both `raw` and `calibrated`, not hardcoded. The `real`-only and
+          `shuffle` arms are unaffected and still use the full `n=43`/`df=42`.
 
 WHY/DIR:  The single-window read is not decidable. Measured on the fresh serving fold
           (val 2025-05-20 → 2026-04-27, 235 dates, 33,370 rows)

@@ -82,17 +82,42 @@ disagree, IC t=1.15 vs spread t=2.92).
 Report REAL − PLACEBO differences with their fold-level dispersion; never
 an absolute IC alone.
 
+**Fold eligibility for the `shift120` arm (frozen rule, decided before any
+run — codex r3 finding).** A fold's `shift120` placebo needs label dates
+120 trading days past its own OOS window; for cutoffs near the end of the
+43-fold span (2023-10-02 → 2026-03-02), that shifted window can run past
+the last date the served panel actually covers. A fold is **eligible** for
+the `real − shift120` difference (and therefore counted in `n_folds` / `df`
+for THAT specific arm only) iff its full shift120-shifted label window is
+`<=` the panel's max available date, checked programmatically at
+evaluation time against the panel's actual max date — never hand-counted
+or hardcoded in this document, and never chosen after seeing results.
+Folds excluded from `shift120` are NOT excluded from arms that don't need
+it (`real` alone, `shuffle`): those always use the full 43. The `real`
+arm's own `t_fold`/CI uses `n=43`/`df=42` throughout, unaffected by
+`shift120` eligibility. **Only the `real − shift120` difference statistic**
+(and the `t_d` in §3's decision rule, which is built from it) uses
+`df = n_eligible_shift120_folds − 1`, computed by the same eligibility
+check, applied identically to the `raw` and `calibrated` arms. The
+evaluation script must print `n_eligible_shift120_folds` and the excluded
+cutoff dates in its output for audit; the results doc must report both
+`t_d` and the `n`/`df` actually used to compute it, not the nominal 43.
+
 **Calibrated-vs-raw:** compute both. The serving path consumes calibrated
 probabilities, so a signal visible only in raw scores is not tradeable and
 must be reported as such.
 
 ## 3. Decision rule (frozen)
 
-Let `d` = fold-level mean of (real IC − shift-placebo IC), with the
+Let `d` = fold-level mean of (real IC − shift-placebo IC), over only the
+folds eligible for `shift120` per §2's frozen eligibility rule, with the
 Newey-West HAC t-statistic `t_d` defined in §2 (Bartlett kernel, lag
-L = 2). The 90% CI on `d` is `mean(d) ± t_{0.95}(df=42) × SE_HAC(d)`,
-critical value from `scipy.stats.t.ppf(0.95, df=42)` (df = n_folds − 1 = 42,
-a conservative small-sample adjustment on top of the HAC-corrected SE).
+L = 2). The 90% CI on `d` is
+`mean(d) ± t_{0.95}(df=n_eligible_shift120_folds−1) × SE_HAC(d)`, critical
+value from `scipy.stats.t.ppf(0.95, df)` — **`df` is computed from the
+eligibility check at evaluation time, not hardcoded here.** (If all 43
+folds turn out eligible, `df=42`; this document does not assume that.) This
+is a conservative small-sample adjustment on top of the HAC-corrected SE.
 
 **Smallest economically useful effect (frozen numeric threshold):**
 `d_min = 0.01` (IC units). This is `min_oos_mean_ic` — the OOS mean-IC
