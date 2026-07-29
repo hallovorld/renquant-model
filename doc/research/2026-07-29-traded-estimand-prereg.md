@@ -132,6 +132,40 @@ not merged there — so this PR stays unmergeable until #96 lands, at which
 point it must be rebased onto the post-merge `main` and §D re-run from that
 tree before the freeze holds there too.
 
+
+### §5 AMENDMENT 1 (2026-07-29, before any confirmatory run)
+
+The false-flag rate of the `|t| > 2.0` bar is **not a constant of the rule**.
+It depends on the corpus geometry, and the first revision registered only one
+end of the range:
+
+| corpus | names x folds | per-arm false-flag | ALL-clean void rate |
+|---|---|---:|---:|
+| clf walk-forward | 292 x 43 | 3% (1/30) `[VERIFIED — calibration §D]` | 14% `[DERIVED — 1-0.97^5]` |
+| synthetic signal-free panel | 60 x 44 | **8.0% (12/150)** `[VERIFIED — runner tests]` | **34%** `[DERIVED — 1-0.92^5]` |
+
+So the same frozen rule discards between **14% and 34%** of valid work
+depending on panel shape. On clean synthetic arms the `|t|` distribution runs
+median 0.69, p90 1.85, **max 3.71** `[VERIFIED]`.
+
+**Registered consequence.** Before a subject is run, its corpus's own per-arm
+false-flag rate MUST be measured on 30 clean shuffles and reported alongside
+the verdict. A VOID is then interpretable — a reader can tell "this control is
+genuinely carrying signal" from "this panel's geometry makes the bar strict".
+An unreported VOID is not a result.
+
+**The threshold is NOT changed.** Loosening a bar after discovering it is
+strict is moving the goalpost, and no re-run allowance is granted either: a
+"re-run with fresh seeds on a VOID" rule is a garden of forking paths. The
+cost stays, it is now stated at its true width, and it is paid knowingly.
+
+A mechanism I hypothesised and DISCARDED rather than registered: that 60-day
+overlapping labels make fold means autocorrelated, breaking the plain
+one-sample `t`. Measured lag-1 autocorrelation of null fold means: mean
+`+0.001`, median `+0.040`, `|ac| > 0.2` in 3/20 arms `[VERIFIED]`. The
+independence assumption holds; the bar is simply not calibrated to this
+statistic's tails.
+
 **A shift/displacement placebo may NOT be used.** Measured on the **PatchTST**
 corpus — NOT the clf one; the two are different subjects and conflating them
 was an error in this document's first revision — the `shift120`
@@ -191,7 +225,7 @@ no turnover model, and no capacity model. Money is a separate, later question.
 | T2 | Estimator swapped after seeing the answer | §4 fixed, substitution forbidden |
 | T3 | Arms on drifting samples | §4 common-sample rule; slice comparisons void on sight |
 | T4 | Control that cannot fail | §5 shift placebo banned with the measurement that banned it |
-| T5 | Control bar that voids valid work silently | §5 false-flag rate measured (3%) and its 16% cost registered |
+| T5 | Control bar that voids valid work silently | §5 Amendment 1: rate measured per corpus (3%-8%), void cost registered as a RANGE (14%-34%), and each subject must report its own rate with the verdict |
 | T6 | Unit confusion | §2 records `sd = 0.9982`; P&L claims forbidden |
 | T7 | Reading UNRESOLVED as a negative | §6 and §3 rule it out explicitly |
 | T8 | Reusing a consumed corpus | §3 lists which corpora are consumed and which are not |

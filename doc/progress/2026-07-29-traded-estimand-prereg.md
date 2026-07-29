@@ -104,6 +104,20 @@ VERIFICATION:
           to null), so a known-broken control cannot be reintroduced by
           default.
 
+AMENDMENT 1 (this push, before any confirmatory run):
+          §5's false-flag rate is corpus-geometry dependent, and the first
+          revision registered only one end. Measured: 3% per arm on the clf
+          corpus (292 names x 43 folds) -> 14% void; 8.0% per arm (12/150) on a
+          synthetic signal-free panel (60 names x 44 folds) -> 34% void. The
+          same frozen rule therefore discards 14%-34% of valid work depending
+          on panel shape. Registered consequence: each subject must MEASURE its
+          own corpus's rate on 30 clean shuffles and report it with the
+          verdict, so a VOID is interpretable rather than mute. The threshold
+          is NOT loosened and no re-run-on-VOID allowance is granted — both
+          would be moving the goalpost after seeing the cost.
+          Surfaced by building the executable runner (renquant-model#100): its
+          FIRST synthetic run VOIDed a signal-free corpus.
+
 NEXT:     When #96 merges, GitHub retargets this PR to main; rebase onto that
           main commit and re-run
           `tools/traded_estimand_calibration.py` to confirm §D reproduces
