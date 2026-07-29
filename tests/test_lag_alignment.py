@@ -1,9 +1,10 @@
-"""Pins the 2026-07-28/29 defect: cross-lag comparison on a drifting sample.
+"""Pins the sample-drift defect class: cross-lag comparison on a drifting
+sample.
 
-The study these tests exist for concluded "IC rises with label lag" across
-two models and a follow-up frozen test returned CLOSE on that basis. Both
-were artifacts of `Y.shift(-lag)` nulling the newest rows, so each longer lag
-silently evaluated a different — older — set of dates.
+`Y.shift(-lag)` nulls the newest `lag` rows, so each longer lag silently
+evaluates a different — older — set of dates. See lag_alignment.py's module
+docstring for the correction on a specific study this was originally
+(and incorrectly) attributed to.
 """
 from __future__ import annotations
 
@@ -50,15 +51,13 @@ def test_common_sample_is_identical_across_lags():
 
 
 def test_the_lag0_statistic_itself_moves_between_full_and_common_samples():
-    """The precise mechanism that inflated the real finding.
+    """Demonstrates the mechanism on synthetic data (not a real-study replay).
 
     Longer lags never see the newest dates. If those dates carry weaker
     skill, the SHORT-lag statistic is dragged down by dates the LONG-lag
     statistic was never charged for — so the two are not comparable and the
-    difference reads as a rising profile. Measured in the real study: lag-0
-    IC rose from +0.028 to +0.043 (PatchTST) and +0.069 to +0.100 (prod XGB)
-    once the sample was held common, which is where 60% of the apparent rise
-    went, and where the second model's profile reversed outright.
+    difference reads as a rising profile purely from which dates each lag's
+    sample happened to include.
     """
     rng = np.random.default_rng(0)
     tickers = [f"T{i:02d}" for i in range(30)]

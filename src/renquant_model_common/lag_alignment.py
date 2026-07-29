@@ -1,26 +1,30 @@
 """Sample-stable lag alignment for score-vs-label evaluation.
 
-WHY THIS EXISTS — the defect it makes unrepresentable
------------------------------------------------------
-2026-07-28/29, a walk-forward study concluded that per-date cross-sectional
-IC "rises with label lag" across two independent models, and a follow-up
-frozen test returned CLOSE on that basis. An adversarial audit found the
-conclusion was mostly a changing SAMPLE, not a changing signal.
+WHY THIS EXISTS — the defect class it makes unrepresentable
+-------------------------------------------------------------
+CORRECTION (2026-07-29, per long-term-agreements.md entry 10): an earlier
+version of this docstring cited a specific study ("IC rises with label
+lag" across two models, a "CLOSE" verdict, a common-sample recomputation
+with a z=-2.09 reversal) tagged `[VERIFIED — bughunt/h9_fix.py]`. That
+path does not exist anywhere in this repo or any sibling RenQuant repo
+`[VERIFIED — git ls-tree -r across every branch of model/orchestrator/
+backtesting/pipeline/common, checked 2026-07-29]`; the specific numbers
+were not independently reproduced and are not restated. What follows
+describes the general defect CLASS this module guards against, not a
+verified incident.
 
 The mechanism is a one-liner that reads as obviously correct:
 
     Y_lagged = Y.shift(-lag)          # WRONG for cross-lag comparison
 
 `shift(-lag)` nulls the newest `lag` rows. Every longer lag therefore drops
-the most RECENT dates — and in that study those were precisely the dates
-carrying ~0 or negative IC. Recomputed on a date set common to all lags:
-the first model's rise lost 60% of its size and the second model's profile
-REVERSED (z = -2.09), destroying the "two models agree" corroboration.
-
-A second form of the same defect: comparing an arm built from `scores[L:N]`
-against an arm built from `scores[0:N-L)`. The two arms are paired on the
-label date but drawn from different score windows, so any time-variation in
-skill leaks in as an "effect" — measured at 19-28% of the statistic.
+the most RECENT dates from the comparison. If a model's recent performance
+differs systematically from its older performance — regime drift, staleness,
+anything — then a naive per-lag IC computed this way is not measuring "does
+longer lag help", it is partly measuring "which dates did this lag's sample
+happen to include". Two arms built from `scores[L:N]` vs `scores[0:N-L)` have
+the same failure mode: paired on label date, drawn from different score
+windows, so any time-variation in skill leaks in as an apparent lag effect.
 
 THE RULE this module enforces: when statistics are compared ACROSS lags (or
 across arms with different lags), every lag must be evaluated on the SAME
