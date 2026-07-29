@@ -39,10 +39,19 @@ WHY/DIR:  model#90 froze the design and merged; its numbers had been stripped be
           these numbers from the bundle alone.
 
 EVIDENCE:
-artifact:      /Users/renhao/renquant_bundles/corrected-eval-20260729/ (44 files, root
-               digest f6b6ef6d5055600df190da9d56c32453e31b71c54ff5beeda88e12caac0df38a
-               over OUTPUT files only, re-verifiable with `tools/corpus_index.py
-               verify`, model#91 — does NOT cover inputs, see WHY/DIR)
+artifact:      /Users/renhao/renquant_bundles/corrected-eval-20260729/ (61 files, root
+               digest 901f0addd19b7381775f9dd593e046b862863b8bb04bb0de7260eb405423810a
+               over OUTPUT files only, re-verified this session with
+               `tools/corpus_index.py verify` — VERIFY OK, 61 files, 6969817 bytes;
+               model#91 — does NOT cover inputs, see WHY/DIR). An earlier citation
+               here (44 files, root f6b6ef6d…) was to a since-mutated snapshot of
+               this same directory — outputs were appended after that digest was
+               taken, which is exactly why `doc/research/2026-07-29-patchtst-
+               closure-retraction.md` retracted it as invalid. This citation is
+               against the CURRENT, freshly-sealed state (an `INDEX.json` now
+               lives in the bundle root itself, self-excluded from its own digest
+               per model#93's fix) — any further appends to this directory will
+               again invalidate this digest and must be re-verified before citing.
 prod or exp:   experiment — signal-evaluation research artifact, not a production/live
                path
 existing data: model#90's Q1 result was stripped for citing an unauditable

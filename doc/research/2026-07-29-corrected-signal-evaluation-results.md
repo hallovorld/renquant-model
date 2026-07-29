@@ -29,9 +29,16 @@ Every number below is tied to a content-addressed artifact root over the
 against the exact inputs is NOT yet independently verifiable:
 
 - artifacts `/Users/renhao/renquant_bundles/corrected-eval-20260729/`
-- root digest `f6b6ef6d5055600df190da9d56c32453e31b71c54ff5beeda88e12caac0df38a`
-  over 44 files, verifiable with
-  `python tools/corpus_index.py verify --root <path> --index <index>` (model#91)
+- root digest `901f0addd19b7381775f9dd593e046b862863b8bb04bb0de7260eb405423810a`
+  over 61 files, re-verified this session (`VERIFY OK: 61 files, 6969817 bytes`)
+  with `python tools/corpus_index.py verify --root <path> --index
+  <path>/INDEX.json` (model#91; INDEX.json now lives in the bundle root
+  itself and self-excludes from its own digest per model#93). The prior
+  `f6b6ef6d…/44 files` citation here was to a since-mutated snapshot —
+  outputs were appended to this directory after that digest was taken;
+  see `doc/research/2026-07-29-patchtst-closure-retraction.md` for how that
+  was caught. Any further writes into this directory invalidate the digest
+  above and require re-verification before being cited again.
 
 Inference is `renquant_model_common.dependence_aware_mean` (model#89): an
 effect counts as resolved only when the block t, a moving-block bootstrap CI
