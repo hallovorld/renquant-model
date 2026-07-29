@@ -1,7 +1,11 @@
 # Progress: freeze the traded estimand before measuring anything with it
 
-STATUS:   delivered (frozen prereg only). Contains NO result. The confirmatory
-          runs begin after this merges.
+STATUS:   delivered (frozen prereg only), MERGE BLOCKED pending
+          renquant-model#96. §D's registered false-flag rates depend on
+          `control_calibration.assess_control`, which only exists on #96 and
+          is unauditable from this branch — this PR carries the
+          `agent:manual-hold` label until #96 merges. Contains NO result. The
+          confirmatory runs begin after this merges.
 
 WHAT:     `doc/research/2026-07-29-traded-estimand-prereg.md`. Registers the
           top-decile spread — the cut the live buy path already trades — as the
@@ -81,18 +85,22 @@ SCOPE/LIMITS:
 
 VERIFICATION:
           `tools/traded_estimand_calibration.py` run against the three pinned
-          inputs: PIN OK on all three, and §A-§E reproduce the prereg's stated
-          numbers exactly. Section D self-reports SKIPPED when
-          `control_calibration` is unimportable — it lands in renquant-model#96,
-          APPROVED but NOT YET MERGED, so that section is unauditable until #96
-          merges. The dependency is printed rather than hidden.
+          inputs: PIN OK on all three, and §A, §B, §C, §E reproduce the
+          prereg's stated numbers exactly. §D is NOT reproduced — it
+          self-reports SKIPPED because `control_calibration` is unimportable
+          on this branch; it lands in renquant-model#96, APPROVED but NOT YET
+          MERGED, so that section is unauditable until #96 merges. The
+          dependency is printed rather than hidden.
           The document contains no outcome; that is the deliverable. Its own
           §5 records the measurement that disqualifies the `shift120`
           displacement placebo (control `t=+2.90`, more significant than the
           real arm it was meant to null), so a known-broken control cannot be
           reintroduced by default.
 
-NEXT:     On merge, run the frozen rule against PatchTST and prod XGB — the two
-          subjects unseen on this estimand — controls first, real arm only if
-          the controls pass, verdict withheld pending commissioned adversarial
-          review.
+NEXT:     Merge #96 first, rebase this branch on that main commit, re-run
+          `tools/traded_estimand_calibration.py` to confirm §D reproduces
+          from the canonical import path, retag it `[VERIFIED]`, then remove
+          `agent:manual-hold` and merge this PR. Only then run the frozen
+          rule against PatchTST and prod XGB — the two subjects unseen on
+          this estimand — controls first, real arm only if the controls
+          pass, verdict withheld pending commissioned adversarial review.
