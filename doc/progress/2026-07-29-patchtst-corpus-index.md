@@ -1,51 +1,39 @@
-# Progress: content-addressed index for the PatchTST 43-fold corpus
+# Progress: verifiable content-addressed reference for the PatchTST corpus
 
-STATUS:   delivered. Resolves the cross-repo factual contradiction blocking orch#590
-          (HIGH) — two repositories were carrying opposite existence claims about the
-          same input.
+STATUS:   delivered. Round-2 rework after codex HIGH: v1 was an inventory, not a
+          reference — a reader could only trust an asserted hash.
 
-WHAT:     Adds `doc/research/evidence/2026-07-29-patchtst-43fold-corpus-index.json`
-          (schema `artifact_corpus_index.v1`): per-file sha256 and byte size for every
-          file in every fold, the top-level manifest and provenance sidecar, a root
-          digest over the sorted `path:sha256` list, the Modal block, the dispatch app
-          ids, the budget contract, and `failed_folds`. Both repos cite this file
-          instead of asserting existence or non-existence in prose.
+WHAT:     (1) `tools/corpus_index.py` — a self-contained generator/verifier with a
+          stable CLI (`generate --root --out`, `verify --root --index`, exit 1 on any
+          mismatch); (2) the digest construction written into the artifact itself
+          (line format, sort, join, hash, symlink and directory handling) so it is
+          reproducible without reading the implementation; (3) the corpus RETAINED at
+          a durable path outside session scratch; (4) the regenerated index.
 
-WHY/DIR:  One repo's memory record asserted the corpus "does not exist"; the other
-          asserted a directly inspected 43-fold corpus. Both were reasoning from
-          different evidence: the corpus is quarantined in session scratch BY the
-          governing prereg — it must not enter any repo or the umbrella tree — so
-          "absent from git" is the designed outcome and proves nothing either way. A
-          content-addressed index is the reconciliation: it is inspectable, citable,
-          and falsifiable by recomputation.
+WHY/DIR:  codex, correctly: "a reader can only trust an asserted hash; they cannot
+          reproduce or fetch the identified bytes once the session disappears." All
+          three defects are addressed rather than argued with — the location was
+          ephemeral, the digest existed only in prose, and nothing could recompute it.
 
-EVIDENCE:
-  artifact:      `doc/research/evidence/2026-07-29-patchtst-43fold-corpus-index.json`
-                 (schema `artifact_corpus_index.v1`)
-  prod or exp:   experiment — quarantined WF corpus, `n_folds_promotable: 0`,
-                 calibrators fitted separately; nothing here is a prod artifact.
-  existing data: `[VERIFIED — hashed 2026-07-29 by direct file reads]` root digest
-                 `b8aa2d998c51fcd19c06afa3e63753f2ad5522cd2651d9f30bf60e038b291aa5`;
-                 43 fold dirs / 43 `*_model.pt` / 43 `*calibration.json`; cutoffs
-                 2023-10-02 … 2026-03-02; Modal `app_name: renquant-wf-patchtst` with
-                 dispatch app ids `ap-RIc3qj4D3yFfU9z7tAx4Rd` and
-                 `ap-HHid4LhAAD0heLm7Mlk4aW`; `budget_contract {max_total_usd: 25.0,
-                 pre_spend_usd: 1.45, rate_usd_per_hour: 0.59, timeout_seconds: 2900}`;
-                 `failed_folds: []`. The provenance's `code_git_heads` pin all seven
-                 sibling repos at states that independently matched this machine's
-                 checkouts hours after the run.
-  best-known?:   n/a — this is a provenance/existence index, not a competing model
-                 variant. It replaces two contradictory prose claims (model#85/#86
-                 said the corpus "does not exist"; orch#590 said it was "directly
-                 inspected") with one citable, recomputable artifact.
-  scope:         this index proves WHAT is on disk and its digests (43/43 folds
-                 present, root-digest-verifiable), NOT that the bytes were produced
-                 by the run they claim — the Modal app ids and `code_git_heads`
-                 correspondence are corroboration, not proof. No model/IC/Sharpe
-                 claim is made.
+EVIDENCE: corpus retained at `/Users/renhao/renquant_bundles/patchtst-wf-corpus-b4e47e2c`
+          (14 MB, alongside the existing frozen bundles) `[VERIFIED — rsync + du]`.
+          The regenerated index over the RETAINED copy reproduces the root digest
+          computed earlier over the scratch original, byte for byte:
+          `b8aa2d998c51fcd19c06afa3e63753f2ad5522cd2651d9f30bf60e038b291aa5`
+          `[VERIFIED — tools/corpus_index.py generate + verify, 133 files,
+          14,808,677 bytes, VERIFY OK]`. That agreement is independent evidence on two
+          counts: the copy preserved bytes exactly, and the formalised construction is
+          equivalent to the prose one it replaces. Verifier suite 7/7
+          `[VERIFIED — pytest tests/test_corpus_index.py]`, pinning what an asserted
+          hash cannot catch: one flipped byte, a missing file, an extra file, mtime
+          changes NOT altering the digest while content changes do, and symlinks
+          rejected rather than silently followed.
 
-NEXT:     Cite this index from the model-side evidence trail and from the orchestrator
-          MID record, replacing both the existence and the non-existence assertions.
-          Honest limitation stated in the index itself: it proves WHAT is on disk and
-          its digests, not that the bytes were produced by the run they claim — the
-          Modal app ids and the git-head correspondence are corroboration, not proof.
+          Scope, stated so it is not overclaimed: this proves WHAT bytes exist and that
+          any future claim about them is falsifiable by recomputation. It does not
+          prove those bytes came from the run they claim — the Modal app ids and the
+          per-repo git heads in the provenance remain corroboration, not proof.
+
+NEXT:     With a verifiable reference in place, #590 / #85 / #87 can cite it to settle
+          the existence question. They still may not cite the numbers computed with
+          the defective harness — that is a separate blocker resolved by model#89/#90.
