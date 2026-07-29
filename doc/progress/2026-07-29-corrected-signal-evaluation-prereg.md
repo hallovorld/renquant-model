@@ -19,8 +19,10 @@ artifact:      quarantined local scratch (not committed to git, by this
                project's "scratch-only writes" convention — §4):
                `bughunt/h9_fix.py` + `h9_results.json`,
                `bughunt/h6_closure.py` + `h6_results.json`; also
-               `src/renquant_model_common/lag_alignment.py` (model#89, merged)
-               which formalizes the same defect class as checklist rows
+               `src/renquant_model_common/lag_alignment.py` (model#89, APPROVED
+               but not yet merged as of 2026-07-29 — this design depends on
+               it landing, per NEXT below) which formalizes the same defect
+               class as checklist rows
                T11/T12 in doc/research/2026-07-29-corrected-signal-evaluation-prereg.md
 prod or exp:   experiment — bug-hunt scripts re-measuring a methodology defect
                in the prior (superseded) harness, not a model performance
