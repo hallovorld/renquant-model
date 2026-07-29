@@ -1,22 +1,37 @@
 # PREREG (FROZEN) — PatchTST signal-existence over the 43-fold WF corpus
 
-Frozen: 2026-07-28, before any evaluation run over the corpus AND before the
-corpus itself has been generated.
-Corpus: NOT YET GENERATED. The frozen dispatch plan is renquant-model#82 /
-renquant-backtesting#81-#82 (43 folds, T4, train-only, recipe
-`b4e47e2c`, $16.8 projected against a $20 hard cap enforced at execute
-time; a 1-fold staged smoke test under this exact recipe has run and
-passed feasibility — `wf-pt-b4e47e2c-20260727T195313Z`, 1/1 fold — the
-remaining 42 have not been dispatched).
+Frozen: 2026-07-28, before any evaluation run over the corpus.
+Corpus: EXISTS, quarantined outside git (see RECONCILIATION below); not yet
+committed to a stable path this evaluation script can read from. The frozen
+dispatch plan was renquant-model#82 / renquant-backtesting#81-#82 (43 folds,
+T4, train-only, recipe `b4e47e2c`, $16.8 projected against a $20 hard cap
+enforced at execute time; a 1-fold staged smoke test under this exact recipe
+ran and passed feasibility — `wf-pt-b4e47e2c-20260727T195313Z`, 1/1 fold).
 CORRECTION (visible, per long-term-agreements.md entry 10, not a silent
 overwrite): an earlier version of this line claimed a completed corpus
 under run-id `wf-pt-b4e47e2c-batch1`, "43/43 folds trained on Modal,
 $18.30 of the $25 cap," "audited on disk as 43 manifest retrains = 43
-fold dirs." No run by that name exists in this repo's history and no
-such corpus exists on disk (checked: the only `walkforward_patchtst_runs`
-namespace found anywhere contains the single 07-27 smoke fold, and the
-production manifest this doc's own evaluation script would read from has
-1 retrain, not 43). Retracted, not restated.
+fold dirs." At the time, no run by that name could be found in this repo's
+git history, so it was retracted as unlocatable.
+RECONCILIATION (this pass, per model#91's queued corpus-index evidence):
+that retraction was itself imprecise. model#91 (queued, unmerged) commits
+a content-addressed index — `[VERIFIED — doc/research/evidence/2026-07-29-
+patchtst-43fold-corpus-index.json` on the model#91 branch, read directly
+this session]` — whose `corpus_id` is literally `wf-pt-b4e47e2c-batch1`,
+recipe `b4e47e2c`, cutoff range 2023-10-02 → 2026-03-02, counts
+`{fold_dirs: 43, model_pt: 43, calibration_json: 43}`, `failed_folds: []`,
+and `budget_contract.max_total_usd = 25.0` — matching the earlier claim's
+run-id, fold count, and $25 cap exactly. The batch is real; it is
+quarantined in Claude-session scratch BY the governing dispatch design
+("must not enter any repo or the umbrella tree"), which is why a
+git-history-only check found nothing — quarantined-from-git is not the
+same as nonexistent, and the original retraction over-read it that way.
+Net effect: the corpus exists (43/43 folds, root digest `b8aa2d99...`),
+but remains outside any committed/citable path, so this prereg's own
+evaluation script still cannot run against it until it is pinned to a
+stable location (model#91's NEXT) or promoted from the quarantined path.
+This document's own frozen design and decision rule are unaffected by
+this reconciliation — only the corpus-status claim changes.
 Author: claude · Adversarial reviewer: codex.
 **Alignment with model#86 (GOAL-6 Stage 0):** the `shift+120d` placebo T1
 finding (documented in model#86) landed the shift near the score's own

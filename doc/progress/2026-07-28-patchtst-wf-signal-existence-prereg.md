@@ -1,17 +1,32 @@
 # Progress: frozen prereg — PatchTST signal existence over the 43-fold WF corpus
 
-STATUS:   prereg FROZEN (no evaluation run yet; corpus not yet generated either —
-          see CORRECTION below). Docs only.
+STATUS:   prereg FROZEN (no evaluation run yet; corpus exists but is not yet
+          pinned to a stable, citable path — see RECONCILIATION below).
+          Docs only.
           CORRECTION (visible, per long-term-agreements.md entry 10, not a
           silent overwrite): an earlier version of this doc claimed the
           43-fold corpus was already trained and quarantined under run-id
           `wf-pt-b4e47e2c-batch1`, "audited on disk as 43 manifest retrains
-          = 43 fold dirs = 43 model.pt = 43 calibration files." That does
-          not check out — no such run exists in this repo's history or on
-          disk; only a 1-fold staged smoke test under this recipe has run.
-          Retracted, not restated. The frozen dispatch plan is model#82 /
-          backtesting#81-#82 ($16.8 projected / $20 hard cap); it has not
-          been executed.
+          = 43 fold dirs = 43 model.pt = 43 calibration files." At the time,
+          no run by that name could be found in this repo's git history, so
+          it was retracted as unlocatable.
+          RECONCILIATION (this pass, per model#91's queued corpus-index
+          evidence): that retraction was itself imprecise. model#91 commits
+          a content-addressed index (`corpus_id: wf-pt-b4e47e2c-batch1`,
+          recipe `b4e47e2c`, cutoffs 2023-10-02 → 2026-03-02, `{fold_dirs:
+          43, model_pt: 43, calibration_json: 43}`, `failed_folds: []`,
+          `budget_contract.max_total_usd = 25.0`) that matches the earlier
+          claim's run-id, fold count, and $25 cap exactly `[VERIFIED —
+          doc/research/evidence/2026-07-29-patchtst-43fold-corpus-index.json
+          on the model#91 branch, read directly this session]`. The batch
+          is real, quarantined in session scratch BY the governing dispatch
+          design (not committed to any repo by design) — a git-history-only
+          check finds nothing there, which is not the same as nonexistence.
+          The corpus exists (root digest `b8aa2d99...`) but is still not at
+          a stable, citable path this prereg's evaluation script can read
+          from. The frozen dispatch plan was model#82 / backtesting#81-#82
+          ($16.8 projected / $20 hard cap); separately, it has not itself
+          been executed to 43/43.
 
 WHAT:     Adds `doc/research/2026-07-28-patchtst-wf-signal-existence-prereg.md`:
           fold-level IC + decile-spread statistics over the 43-fold corpus
@@ -63,14 +78,17 @@ EVIDENCE: artifact:      `hf_patchtst_all_seed44_val_preds.parquet`, found at
           2025-05-20 → 2026-04-27, 235 dates × 142 tickers, 33,370 rows)
           `[VERIFIED — recomputed directly from the parquet's own pred/label
           columns this session, exact match to all figures below]`; the
-          43-fold corpus itself
-          is NOT YET GENERATED — model#82's frozen dispatch plan
-          (43 folds, $16.8 projected / $20 cap) has a proven 1-fold smoke
-          test (`wf-pt-b4e47e2c-20260727T195313Z`) but the remaining 42
-          folds have not been dispatched.
-           prod or exp:   experiment (prereg only — neither the corpus nor the
-          frozen 43-fold evaluation exist yet; this PR adds no model/data
-          claim beyond the single-fold motivating measurement above).
+          43-fold corpus itself EXISTS (`corpus_id: wf-pt-b4e47e2c-batch1`,
+          43/43 fold_dirs/model_pt/calibration_json, root digest
+          `b8aa2d99...`) per model#91's content-addressed index `[VERIFIED —
+          doc/research/evidence/2026-07-29-patchtst-43fold-corpus-index.json
+          on the model#91 branch, read directly this session]`, but is
+          quarantined in session scratch and not yet pinned to a stable,
+          citable path this evaluation script can read from.
+           prod or exp:   experiment (prereg only — the 43-fold corpus
+          exists but is not yet pinned to a committed path, and the frozen
+          43-fold evaluation has not run; this PR adds no model/data claim
+          beyond the single-fold motivating measurement above).
            existing data: single serving fold — per-date rank IC +0.0430,
           naive t +5.39, block-adjusted t (60-trading-day label overlap,
           n_eff ≈ 4) +0.70, within-date shuffle placebo (5 seeds) −0.0008,
@@ -85,6 +103,10 @@ EVIDENCE: artifact:      `hf_patchtst_all_seed44_val_preds.parquet`, found at
           triad applies to the RESULTS doc that follows the evaluation
           run, not to this PR."
 
-NEXT:     Run the frozen evaluation over the 43 folds (read-only, quarantined corpus,
-          frozen input bundle root 8072ca77…), then a results doc carrying every arm
-          with its matched placebo, and the verdict under the frozen rule.
+NEXT:     Pin the quarantined corpus (`wf-pt-b4e47e2c-batch1`, root digest
+          `b8aa2d99...` per model#91) to a stable, citable path — an
+          ephemeral session-scratch location is not itself a valid prereg
+          input, per model#87's same requirement. Then run the frozen
+          evaluation over the 43 folds (read-only, frozen input bundle root
+          8072ca77…), and produce a results doc carrying every arm with its
+          matched placebo and the verdict under the frozen rule.
