@@ -1,13 +1,24 @@
 # Progress: frozen prereg — PatchTST signal existence over the 43-fold WF corpus
 
-STATUS:   prereg FROZEN (no evaluation run yet). Docs only.
+STATUS:   prereg FROZEN (no evaluation run yet; corpus not yet generated either —
+          see CORRECTION below). Docs only.
+          CORRECTION (visible, per long-term-agreements.md entry 10, not a
+          silent overwrite): an earlier version of this doc claimed the
+          43-fold corpus was already trained and quarantined under run-id
+          `wf-pt-b4e47e2c-batch1`, "audited on disk as 43 manifest retrains
+          = 43 fold dirs = 43 model.pt = 43 calibration files." That does
+          not check out — no such run exists in this repo's history or on
+          disk; only a 1-fold staged smoke test under this recipe has run.
+          Retracted, not restated. The frozen dispatch plan is model#82 /
+          backtesting#81-#82 ($16.8 projected / $20 hard cap); it has not
+          been executed.
 
 WHAT:     Adds `doc/research/2026-07-28-patchtst-wf-signal-existence-prereg.md`:
           fold-level IC + decile-spread statistics over the 43-fold corpus
-          (`wf-pt-b4e47e2c-batch1`), two placebo arms (120d shift matched to the WF
-          gate + within-date shuffle), calibrated-vs-raw both computed, and a frozen
-          three-way decision rule (GO third blend leg / KILL as alpha source /
-          UNDERPOWERED) with ties resolving to UNDERPOWERED.
+          (to be generated per model#82's frozen dispatch plan), two placebo arms
+          (120d shift matched to the WF gate + within-date shuffle), calibrated-vs-raw
+          both computed, and a frozen three-way decision rule (GO third blend leg /
+          KILL as alpha source / UNDERPOWERED) with ties resolving to UNDERPOWERED.
 
 WHY/DIR:  The single-window read is not decidable. Measured on the fresh serving fold
           (val 2025-05-20 → 2026-04-27, 235 dates, 33,370 rows)
@@ -24,15 +35,14 @@ WHY/DIR:  The single-window read is not decidable. Measured on the fresh serving
 
 EVIDENCE: artifact:      `hf_patchtst_all_seed44_val_preds.parquet` (single serving
           fold, val 2025-05-20 → 2026-04-27, 235 dates × ~142 tickers, 33,370
-          rows) `[VERIFIED — direct parquet read]`; corpus
-          `wf-pt-b4e47e2c-batch1` — 43/43 folds trained ($18.30 of the $25
-          cap, exact prereg quarantine signature) + 43/43 calibrators
-          fitted locally, audited on disk as 43 manifest retrains = 43 fold
-          dirs = 43 `model.pt` = 43 calibration files.
-           prod or exp:   experiment (prereg only — the corpus is trained
-          and quarantined, but the frozen 43-fold evaluation itself has not
-          run yet; this PR adds no model/data claim beyond the single-fold
-          motivating measurement above).
+          rows) `[VERIFIED — direct parquet read]`; the 43-fold corpus itself
+          is NOT YET GENERATED — model#82's frozen dispatch plan
+          (43 folds, $16.8 projected / $20 cap) has a proven 1-fold smoke
+          test (`wf-pt-b4e47e2c-20260727T195313Z`) but the remaining 42
+          folds have not been dispatched.
+           prod or exp:   experiment (prereg only — neither the corpus nor the
+          frozen 43-fold evaluation exist yet; this PR adds no model/data
+          claim beyond the single-fold motivating measurement above).
            existing data: single serving fold — per-date rank IC +0.0430,
           naive t +5.39, block-adjusted t (60-trading-day label overlap,
           n_eff ≈ 4) +0.70, within-date shuffle placebo (5 seeds) −0.0008,

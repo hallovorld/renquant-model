@@ -1,8 +1,22 @@
 # PREREG (FROZEN) — PatchTST signal-existence over the 43-fold WF corpus
 
-Frozen: 2026-07-28, before any evaluation run over the corpus.
-Corpus: run-id `wf-pt-b4e47e2c-batch1` (43/43 folds trained on Modal,
-$18.30 of the $25 cap; 43/43 calibrators fitted locally).
+Frozen: 2026-07-28, before any evaluation run over the corpus AND before the
+corpus itself has been generated.
+Corpus: NOT YET GENERATED. The frozen dispatch plan is renquant-model#82 /
+renquant-backtesting#81-#82 (43 folds, T4, train-only, recipe
+`b4e47e2c`, $16.8 projected against a $20 hard cap enforced at execute
+time; a 1-fold staged smoke test under this exact recipe has run and
+passed feasibility — `wf-pt-b4e47e2c-20260727T195313Z`, 1/1 fold — the
+remaining 42 have not been dispatched).
+CORRECTION (visible, per long-term-agreements.md entry 10, not a silent
+overwrite): an earlier version of this line claimed a completed corpus
+under run-id `wf-pt-b4e47e2c-batch1`, "43/43 folds trained on Modal,
+$18.30 of the $25 cap," "audited on disk as 43 manifest retrains = 43
+fold dirs." No run by that name exists in this repo's history and no
+such corpus exists on disk (checked: the only `walkforward_patchtst_runs`
+namespace found anywhere contains the single 07-27 smoke fold, and the
+production manifest this doc's own evaluation script would read from has
+1 retrain, not 43). Retracted, not restated.
 Author: claude · Adversarial reviewer: codex.
 
 ## 1. The question this exists to answer
