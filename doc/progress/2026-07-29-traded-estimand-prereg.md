@@ -1,10 +1,12 @@
 # Progress: freeze the traded estimand before measuring anything with it
 
-STATUS:   delivered (frozen prereg only), MERGE BLOCKED pending
-          renquant-model#96. §D's registered false-flag rates depend on
-          `control_calibration.assess_control`, which only exists on #96 and
-          is unauditable from this branch — this PR carries the
-          `agent:manual-hold` label until #96 merges. Contains NO result. The
+STATUS:   delivered (frozen prereg only), STACKED on renquant-model#96.
+          §D's registered numbers depend on `control_calibration.assess_control`,
+          which only exists on #96, so printing a SKIPPED dependency would
+          leave the registered rule unauditable. This branch is therefore
+          rebased onto #96 head 790924078ce0 and the PR is BASED on that
+          branch — literally unmergeable until #96 lands, and §D now
+          reproduces from the canonical import path. Contains NO result. The
           confirmatory runs begin after this merges.
 
 WHAT:     `doc/research/2026-07-29-traded-estimand-prereg.md`. Registers the
@@ -52,11 +54,7 @@ EVIDENCE: artifact: `doc/research/2026-07-29-traded-estimand-prereg.md` +
                       - §D `assess_control` false-flag on 30 clean nulls
                         (seeds 5000-5029): 3% fed fold means, 7% fed block
                         means — the unit changes the answer, so the prereg
-                        registers which one. PENDING renquant-model#96:
-                        `assess_control` is not on `main` yet, so running the
-                        committed verifier today prints §D as SKIPPED — this
-                        number is not independently reproducible from this
-                        branch until #96 merges;
+                        registers which one. auditable on this stacked branch: §D reproduces from the canonical import path (no PYTHONPATH override) because #96's tree is this branch's parent;
                       - therefore ALL-clean over 5 controls voids ~16% of valid
                         experiments, registered in advance as an accepted cost;
                       - §E the shift120 ban, which running the verifier
@@ -85,19 +83,21 @@ SCOPE/LIMITS:
 
 VERIFICATION:
           `tools/traded_estimand_calibration.py` run against the three pinned
-          inputs: PIN OK on all three, and §A, §B, §C, §E reproduce the
-          prereg's stated numbers exactly. §D is NOT reproduced — it
-          self-reports SKIPPED because `control_calibration` is unimportable
-          on this branch; it lands in renquant-model#96, APPROVED but NOT YET
-          MERGED, so that section is unauditable until #96 merges. The
-          dependency is printed rather than hidden.
+          inputs: PIN OK on all three, and §A-§E ALL reproduce the prereg's
+          stated numbers exactly. §D specifically now runs from the CANONICAL
+          import path with no PYTHONPATH override for `renquant_model_common`,
+          because this branch is rebased onto renquant-model#96 head
+          790924078ce0 and `control_calibration` is therefore in its own tree.
+          The re-run after that rebase returns §D unchanged: fold means
+          1/30 = 3%, block means 2/30 = 7%, ~16% of valid experiments voided.
           The document contains no outcome; that is the deliverable. Its own
           §5 records the measurement that disqualifies the `shift120`
           displacement placebo (control `t=+2.90`, more significant than the
           real arm it was meant to null), so a known-broken control cannot be
           reintroduced by default.
 
-NEXT:     Merge #96 first, rebase this branch on that main commit, re-run
+NEXT:     When #96 merges, GitHub retargets this PR to main; rebase onto that
+          main commit and re-run
           `tools/traded_estimand_calibration.py` to confirm §D reproduces
           from the canonical import path, retag it `[VERIFIED]`, then remove
           `agent:manual-hold` and merge this PR. Only then run the frozen

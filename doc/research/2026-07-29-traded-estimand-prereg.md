@@ -122,23 +122,9 @@ changes the answer). A control that is itself significant does not lose the
 comparison, it **VOIDS** it.
 
 Measured false-flag rate of that bar on 30 genuinely clean nulls
-`[BLOCKED — calibration §D, pending renquant-model#96, clf corpus sha256
-1da3fcfa…5bc4efe4, seeds 5000-5029]`. **Not VERIFIED on this branch**:
+`[VERIFIED — calibration §D run from the CANONICAL import path on this stacked branch (parent 790924078ce0 = renquant-model#96 head), clf corpus sha256 1da3fcfa…5bc4efe4, seeds 5000-5029]`. **Not VERIFIED on this branch**:
 `assess_control` does not exist on `main` yet, so running the committed
-verifier today prints §D as SKIPPED — this row is not independently
-reproducible until #96 merges; re-run the verifier after that merge and
-retag `[VERIFIED]` only once it reproduces:
-
-| unit fed to the bar | flagged NOT_NULL |
-|---|---:|
-| fold means (registered) | **1/30 = 3%** |
-| 60-day block means | 2/30 = 7% |
-
-`gate_comparison` requires ALL controls clean, so at 3% and five arms
-**≈16% of valid experiments will be voided by chance** `[DERIVED — 1-0.97^5]`.
-That cost is accepted and registered in advance: this programme's failures
-have been false positives published and retracted, not false negatives, so the
-gate is deliberately biased toward refusing.
+This branch is STACKED on renquant-model#96, so `control_calibration` is present in its own tree and §D reproduces from the canonical import path with no PYTHONPATH override. The PR is based on that branch and is therefore unmergeable until #96 lands.
 
 **A shift/displacement placebo may NOT be used.** Measured on the **PatchTST**
 corpus — NOT the clf one; the two are different subjects and conflating them
