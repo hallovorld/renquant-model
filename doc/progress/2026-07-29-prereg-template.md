@@ -2,7 +2,12 @@
 
 STATUS:   delivered. Template only; changes no existing prereg.
 
-WHAT:     Adds `doc/research/templates/PREREG_TEMPLATE.md`: mandatory sections plus a
+WHAT:     Adds `doc/research/templates/PREREG_TEMPLATE.md` with a two-tier
+          applicability gate (codex MED): BASELINE for any study that changes what we
+          believe, CONFIRMATORY only when the rule would change a model's STATUS or
+          trigger a production action. Control calibration (§5) and pre-publication
+          adversarial review (§7) are CONFIRMATORY-only; the trap checklist, estimand
+          naming and input provenance are BASELINE. Mandatory sections plus a
           15-row known-trap checklist, three rows of which (T13 HARKed estimand, T14
           uncalibrated control, T15 stale digest citation) were paid for in the last
           few hours.

@@ -71,7 +71,9 @@ re-verify each input digest and REFUSE to proceed on a mismatch.
 
 ## 5. Control calibration (T14) — confirmatory-only, see Applicability gate
 
-A control arm is only a control if it can FAIL. Report, before the real run:
+Skip this section at BASELINE tier and say so explicitly rather than leaving
+it blank. At CONFIRMATORY tier it is mandatory: a control arm is only a
+control if it can FAIL. Report, before the real run:
 
 - the control's measured **false-pass rate** under a signal-free null matched
   to the treatment's autocorrelation, over ≥ 40 replications;
@@ -85,6 +87,9 @@ never a live change). Ties, ambiguity, broken arms and invalid controls all
 resolve to the conservative branch, named explicitly.
 
 ## 7. Publication discipline — confirmatory-only, see Applicability gate
+
+At BASELINE tier, ordinary review suffices; say so and move on. At
+CONFIRMATORY tier this is mandatory.
 
 **Commission an adversarial review BEFORE publishing a verdict, not after.**
 On 2026-07-29 a CLOSE was withheld pending attack; the attack destroyed it on
