@@ -67,13 +67,27 @@ must be reported as such.
 Let `d` = fold-level mean of (real IC − shift-placebo IC), with fold-level
 t-statistic `t_d` over the 43 folds.
 
+**Smallest economically useful effect (frozen numeric threshold):**
+`d_min = 0.01` (IC units). This is `min_oos_mean_ic` — the OOS mean-IC
+floor coded as the production model-admission bar in the
+`renquant-pipeline` repo (`renquant_pipeline.model_admission._check_oos_ic`,
+mirrored to the umbrella's `kernel/panel_pipeline/admission_tasks.py`;
+exercised at this value in `tests/test_panel_scoring_contract.py` and
+`tests/test_model_admission.py`). It is the one number the RenQuant
+codebase already treats as "the OOS edge floor below which a scorer does
+not clear admission for live sizing," and it sits inside the standard
+equity cross-sectional-IC usefulness band (Grinold & Kahn, *Active
+Portfolio Management*, 2nd ed. — IC ≈ 0.02-0.05 "good," IC < 0.01
+noise-level for a single signal). Reusing it here avoids inventing a
+second, prereg-only bar with no operational meaning.
+
 - **GO (third blend leg)** — `t_d ≥ 2.0` AND the decile-spread arm agrees in
   sign AND the calibrated arm is not materially weaker than the raw arm.
   Next step on GO: the standard blend gate chain (screen → frozen
   confirmatory prereg on disjoint seeds → shadow). NOT a promotion.
 - **KILL (as an alpha source)** — `t_d ≤ 0.5` with the 90% CI upper bound
-  below the smallest economically useful effect. PatchTST is then closed as
-  a scorer; the corpus is kept as a PIT artefact.
+  of `d` below `d_min = 0.01`. PatchTST is then closed as a scorer; the
+  corpus is kept as a PIT artefact.
 - **UNDERPOWERED** — anything between. Then the honest finding is that 43
   folds still cannot resolve it, and the decision is a COST question
   (more seeds / a larger model / more folds), not a signal question. No

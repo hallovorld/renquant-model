@@ -22,11 +22,30 @@ WHY/DIR:  The single-window read is not decidable. Measured on the fresh serving
           diagnostic `doc/memory/mid-term/model-edge.md` requires before closing or
           switching architecture.
 
-EVIDENCE: corpus 43/43 folds trained ($18.30 of the $25 cap, exact prereg quarantine
-          signature) + 43/43 calibrators fitted locally; audited on disk as
-          43 manifest retrains = 43 fold dirs = 43 `model.pt` = 43 calibration files.
-          No IC/Sharpe claim is made in this PR — it freezes the test that will produce
-          one, so the §4(b) sanity triad applies to the RESULTS doc, not here.
+EVIDENCE: artifact:      `hf_patchtst_all_seed44_val_preds.parquet` (single serving
+          fold, val 2025-05-20 → 2026-04-27, 235 dates × ~142 tickers, 33,370
+          rows) `[VERIFIED — direct parquet read]`; corpus
+          `wf-pt-b4e47e2c-batch1` — 43/43 folds trained ($18.30 of the $25
+          cap, exact prereg quarantine signature) + 43/43 calibrators
+          fitted locally, audited on disk as 43 manifest retrains = 43 fold
+          dirs = 43 `model.pt` = 43 calibration files.
+           prod or exp:   experiment (prereg only — the corpus is trained
+          and quarantined, but the frozen 43-fold evaluation itself has not
+          run yet; this PR adds no model/data claim beyond the single-fold
+          motivating measurement above).
+           existing data: single serving fold — per-date rank IC +0.0430,
+          naive t +5.39, block-adjusted t (60-trading-day label overlap,
+          n_eff ≈ 4) +0.70, within-date shuffle placebo (5 seeds) −0.0008,
+          real − placebo +0.0438; live funnel independently showed
+          calibrated conviction ≈ 0.50 (IQR 0.011), sized to zero.
+           best-known?:   n/a — no IC/Sharpe number is claimed for the
+          43-fold corpus yet; this PR freezes the test design (including
+          the KILL threshold `d_min = 0.01`, see the research doc) that
+          will produce one.
+           scope:         "this is a frozen prereg document (test design +
+          decision rule), not a model/IC/Sharpe result — the §4(b) sanity
+          triad applies to the RESULTS doc that follows the evaluation
+          run, not to this PR."
 
 NEXT:     Run the frozen evaluation over the 43 folds (read-only, quarantined corpus,
           frozen input bundle root 8072ca77…), then a results doc carrying every arm
