@@ -20,29 +20,51 @@ WHAT:     Adds `doc/research/2026-07-28-patchtst-closure-prereg.md`: a registere
           positive control, a permuted-score negative control, block-level inference,
           and a frozen CLOSE / KEEP-OPEN / INCONCLUSIVE rule. No results in this PR.
 
-WHY/DIR:  GOAL-6 Stage 0 (model#86) measured `REAL - persistence` as negative in all
-          six cells for PatchTST while the prod XGB was positive in all six
-          `[VERIFIED - goal6-stage0/results.json]`. That looks decisive, which is
-          exactly why it may not be acted on where it was found: it was a by-product
-          of a MEASUREMENT study, not a registered kill test. New trap T9 in the
-          checklist names that failure mode explicitly. Caveat: model#86 itself is
-          currently under active codex review with 5 unresolved design findings and
-          is not yet approved — this prereg's motivation is provisional on that
-          review closing, though this document's OWN test design does not depend on
-          Stage 0's specific numbers being final.
+WHY/DIR:  GOAL-6 Stage 0 (model#86) is reported to have measured `REAL - persistence`
+          as trending negative for PatchTST and positive for the prod XGB, in an
+          as-yet-unapproved design (5 unresolved review findings as of 2026-07-29,
+          model#86 STATUS: "no run yet"). That looks decisive, which is exactly why
+          it may not be acted on where it was found: it was a by-product of a
+          MEASUREMENT study, not a registered kill test. New trap T9 in the
+          checklist names that failure mode explicitly; this document's OWN test
+          design does not depend on Stage 0's specific numbers being final, or even
+          real.
 
-EVIDENCE: n/a
-          (this is a frozen test-design document, not a model/IC/Sharpe result —
-          the §4(b) sanity triad applies to the results doc that follows an
-          actual run, which does not exist in this PR. Supporting internal
-          consistency check for the design's own logic, not a decision input:
-          `[DERIVED - verdict.log]` lag-0 IC +0.0278 vs lag-60 IC +0.0705
-          predicts a -0.043 persistence effect against -0.056 measured by
-          Stage 0 — the two are in the same direction and rough magnitude,
-          which is why a registered confirmatory test is worth running rather
-          than dismissing the Stage-0 finding outright.)
+          CORRECTION (visible, per long-term-agreements.md entry 10, not a silent
+          overwrite): this line previously cited specific six-cell numbers tagged
+          `[VERIFIED - goal6-stage0/results.json]`. That artifact cannot exist —
+          model#86 has no approved/executed result. Citation and numbers dropped.
 
-NEXT:     Generate the corpus (model#82's frozen dispatch plan), run the confirmatory
-          test, then a NEW results doc applying §3 mechanically. A CLOSE verdict
-          authorises only the deprecation PR, which the standard chain then reviews -
-          it changes nothing live by itself.
+          Separately: an actually-executed confirmatory run under this exact design
+          was audited before acting on its verdict, and found a sample-composition
+          defect (new trap T11, §2/§0 of the research doc) — the REAL and PERSIST
+          arms were drawn from different, non-overlapping score-date windows.
+          Recomputed on a common date set, PatchTST's result fell from 4/4 to 0/4
+          and the prod-XGB control fell from 4/4 to 1/4 (control invalid) — the
+          verdict is INCONCLUSIVE, not CLOSE. PatchTST is UNRESOLVED. This is now a
+          frozen precondition (T11) on any future confirmatory run under this design.
+
+EVIDENCE: artifact:      `doc/research/2026-07-28-patchtst-closure-prereg.md`
+                         (design only, this PR)
+          prod or exp:   experiment — a frozen test design; no valid confirmatory
+                         run exists under it; no production artifact touched
+          existing data: model#86's own (unapproved) design measurement motivates
+                         this prereg qualitatively, not numerically (see WHY/DIR
+                         correction); a prior confirmatory run under an earlier
+                         version of this same design produced CLOSE, but that run
+                         is retracted for the T11 sample-composition defect
+          best-known?:   n/a — no valid verdict exists yet under this design;
+                         the retracted run is not the best-known result, it is a
+                         known-invalid one
+          scope:         this is a frozen pre-run design plus a retraction of an
+                         invalid prior run under it; the §4(b) sanity triad applies
+                         in full to the NEXT results doc, once T11 is fixed and the
+                         corpus (whichever audit of its existence is correct) is
+                         independently re-verified
+
+NEXT:     Independently re-verify whether the PatchTST corpus exists at its claimed
+          quarantined-namespace location (contested — see research doc §2), fix the
+          harness per T11 (common score-date set for REAL/PERSIST), re-run the
+          confirmatory test, then a NEW results doc applying §3 mechanically. A
+          CLOSE verdict authorises only the deprecation PR, which the standard
+          chain then reviews - it changes nothing live by itself.
