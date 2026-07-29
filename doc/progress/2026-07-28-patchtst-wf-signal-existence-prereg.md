@@ -15,19 +15,30 @@ STATUS:   prereg FROZEN (no evaluation run yet; corpus not yet generated either 
 
 WHAT:     Adds `doc/research/2026-07-28-patchtst-wf-signal-existence-prereg.md`:
           fold-level IC + decile-spread statistics over the 43-fold corpus
-          (to be generated per model#82's frozen dispatch plan), two placebo arms
-          (120d shift matched to the WF gate + within-date shuffle), calibrated-vs-raw
-          both computed, and a frozen three-way decision rule (GO third blend leg /
-          KILL as alpha source / UNDERPOWERED) with ties resolving to UNDERPOWERED.
+          (to be generated per model#82's frozen dispatch plan), three placebo arms
+          (within-date shuffle, decision-weighted + 120d shift, descriptive-only +
+          persistence-matched, veto), calibrated-vs-raw both computed, and a frozen
+          three-way decision rule (GO third blend leg / KILL as alpha source /
+          UNDERPOWERED) with ties resolving to UNDERPOWERED.
           Round 3 (codex HIGH): the `shift120` arm needs label dates past the
           panel's covered range for cutoffs near the end of the 43-fold span, so
           `df=42` can't be assumed for every fold. Added a frozen fold-eligibility
-          rule (§2): a fold counts toward the `real − shift120` statistic iff its
+          rule (§2): a fold counts toward the `real − shift120` report iff its
           shifted window is fully within the panel's actual max date, checked
-          programmatically at evaluation time — never hand-counted here. `df` for
-          `t_d`/its CI is `n_eligible_shift120_folds − 1`, computed the same way
-          for both `raw` and `calibrated`, not hardcoded. The `real`-only and
-          `shuffle` arms are unaffected and still use the full `n=43`/`df=42`.
+          programmatically at evaluation time — never hand-counted here.
+          Round 4 (codex HIGH, this pass): T1 (documented in model#86) showed the
+          `shift+120d` placebo lands near the score's own predictive peak
+          (lag-100d IC = +0.078, t=3.21), making `real − shift120` structurally
+          negative, not a null — so it could not remain the decision statistic.
+          Retired `shift120` to a descriptive-only report; `t_d` (and GO/KILL/
+          UNDERPOWERED) is now built from `real − within-date-shuffle` over the
+          full 43 folds (`df=42`, no eligibility exclusion), matching model#86
+          §3's independently-frozen null choice — no run of Stage 0 was needed to
+          borrow this, only its already-frozen design. Also added the
+          persistence-matched control as a third arm (veto), mirroring model#86
+          §3.2/§5 exactly (same alignment/coverage/variance rules): GO cannot be
+          declared if `real − persistence` is not positive at t ≥ 1.0, since that
+          pattern is stale-score persistence, not fresh information.
 
 WHY/DIR:  The single-window read is not decidable. Measured on the fresh serving fold
           (val 2025-05-20 → 2026-04-27, 235 dates, 33,370 rows)

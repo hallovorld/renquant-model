@@ -18,6 +18,17 @@ namespace found anywhere contains the single 07-27 smoke fold, and the
 production manifest this doc's own evaluation script would read from has
 1 retrain, not 43). Retracted, not restated.
 Author: claude · Adversarial reviewer: codex.
+**Alignment with model#86 (GOAL-6 Stage 0):** the `shift+120d` placebo T1
+finding (documented in model#86) landed the shift near the score's own
+predictive peak (IC lag-100d = +0.078, t=3.21), making `real − shift120`
+structurally negative, not a null comparison — it is retired below as this
+document's decision statistic (kept only as a descriptive report) in favour
+of the within-date-shuffle null, matching Stage 0's own frozen null choice
+(model#86 §3: within-date permutation + persistence-matched control). This
+document commits to IC as its primary statistic and the 60d training
+horizon independently of Stage 0's H1/H2 (which choose among IC/spread/hit
+and 20d/60d for GENERAL measurement use, a different question); it borrows
+only Stage 0's null selection, which needed no run to freeze.
 
 ## 1. The question this exists to answer
 
@@ -59,13 +70,16 @@ label window for `⌈60/21⌉ − 1 = 2` lags (fold i is dependent with fold
 i+1 and i+2; fold i+3, at 63 trading days, is the first fold outside the
 horizon). **Decision statistic (frozen):** a Newey-West (1987, *Econometrica*
 55(3):703) HAC t-statistic on the fold-level series `d_i` = real IC −
-shift-placebo IC per fold (i = 1..43, ordered by cutoff date), Bartlett
-kernel, truncation lag **L = 2** — fixed by the known overlap order above,
-not selected from the data (equivalent to treating each independent block
-as 3 folds / 63 trading days, matching Hansen-Hodrick (1980, *JPE* 88(5):829)
-practice for overlapping-horizon regressions). Denote this `t_d`. The naive
-per-date t and a naive iid-across-fold t are still reported for
-comparability with prior docs, but carry no decision weight.
+within-date-shuffle-placebo IC per fold (i = 1..43, ordered by cutoff
+date), Bartlett kernel, truncation lag **L = 2** — fixed by the known
+overlap order above, not selected from the data (equivalent to treating
+each independent block as 3 folds / 63 trading days, matching
+Hansen-Hodrick (1980, *JPE* 88(5):829) practice for overlapping-horizon
+regressions). Denote this `t_d`. The naive per-date t and a naive
+iid-across-fold t are still reported for comparability with prior docs,
+but carry no decision weight. The shuffle placebo has the full 43-fold
+`df=42` (no tail-truncation issue — every fold's own dates support a
+within-date shuffle, unlike a 120d-forward shift).
 
 **Secondary statistic:** top-decile minus bottom-decile forward-return
 spread per date, aggregated the same way (this is the statistic the panel
@@ -73,35 +87,53 @@ line is actually traded on — see the 2026-07-24 finding that IC and spread
 disagree, IC t=1.15 vs spread t=2.92).
 
 **Placebo arms (run per fold, matched to the gate's convention):**
-1. `shift` placebo — labels shifted by 120 trading days, matching the WF
-   gate's own placebo, to capture the embargo/overlap leakage floor
-   (documented ≈ +0.04 for this horizon; if the real arm does not clear
-   its OWN placebo, the corpus says nothing).
-2. `within-date shuffle` placebo — 5 seeds, destroys cross-sectional
-   ordering only.
+1. `within-date shuffle` placebo — 5 seeds, destroys cross-sectional
+   ordering only. **This is the decision-weighted null** (§3) — verified
+   clean in prior single-fold work (−0.0008), and, unlike `shift120`, has
+   no lag-dependent structural bias (T1).
+2. `shift` placebo — labels shifted by 120 trading days, matching the WF
+   gate's own placebo. **Descriptive only, never decision-weighted** (T1:
+   the shift lands near the score's own predictive peak at lag ≈100d,
+   making `real − shift120` structurally negative rather than a null
+   comparison — retired as a decision statistic, kept only to report the
+   defect itself, consistent with model#86's T1 remediation). The fold-
+   eligibility rule below still applies to this arm's reporting.
+3. **Persistence-matched control (veto, added per model#86 §3's frozen
+   null pair)** — for each (date, ticker) cell, the persistence-arm score
+   is that ticker's own score from 60 trading days earlier, evaluated
+   against the SAME label as the real arm; cells with no eligible `t-60`
+   score are dropped from this arm only (never imputed), with the arm's
+   own coverage and block-level SE reported independently (same alignment
+   and variance rules as model#86 §3.2). **Veto:** if `real − persistence`
+   is not positive at t ≥ 1.0, GO cannot be declared regardless of the
+   shuffle-based `t_d`, per §3 — an apparent edge that is really stale-
+   score persistence is not fresh information.
+
 Report REAL − PLACEBO differences with their fold-level dispersion; never
 an absolute IC alone.
 
-**Fold eligibility for the `shift120` arm (frozen rule, decided before any
-run — codex r3 finding).** A fold's `shift120` placebo needs label dates
-120 trading days past its own OOS window; for cutoffs near the end of the
-43-fold span (2023-10-02 → 2026-03-02), that shifted window can run past
-the last date the served panel actually covers. A fold is **eligible** for
-the `real − shift120` difference (and therefore counted in `n_folds` / `df`
-for THAT specific arm only) iff its full shift120-shifted label window is
-`<=` the panel's max available date, checked programmatically at
-evaluation time against the panel's actual max date — never hand-counted
-or hardcoded in this document, and never chosen after seeing results.
-Folds excluded from `shift120` are NOT excluded from arms that don't need
-it (`real` alone, `shuffle`): those always use the full 43. The `real`
+**Fold eligibility for the (now descriptive-only) `shift120` arm (frozen
+rule, decided before any run — codex r3 finding).** A fold's `shift120`
+placebo needs label dates 120 trading days past its own OOS window; for
+cutoffs near the end of the 43-fold span (2023-10-02 → 2026-03-02), that
+shifted window can run past the last date the served panel actually
+covers. A fold is **eligible** for the `real − shift120` difference (and
+therefore counted in `n_folds` / `df` for THAT specific report only) iff
+its full shift120-shifted label window is `<=` the panel's max available
+date, checked programmatically at evaluation time against the panel's
+actual max date — never hand-counted or hardcoded in this document, and
+never chosen after seeing results. Folds excluded from `shift120` are NOT
+excluded from any other arm (`real` alone, `shuffle`, `persistence`): those
+always use their own full/eligible coverage per their own rule. The `real`
 arm's own `t_fold`/CI uses `n=43`/`df=42` throughout, unaffected by
-`shift120` eligibility. **Only the `real − shift120` difference statistic**
-(and the `t_d` in §3's decision rule, which is built from it) uses
+`shift120` eligibility. `real − shift120` uses
 `df = n_eligible_shift120_folds − 1`, computed by the same eligibility
-check, applied identically to the `raw` and `calibrated` arms. The
+check, applied identically to the `raw` and `calibrated` arms — this
+number is reported for the record (T1's defect) but **carries no decision
+weight**; §3's `t_d` is built from `real − shuffle`, not from this arm. The
 evaluation script must print `n_eligible_shift120_folds` and the excluded
-cutoff dates in its output for audit; the results doc must report both
-`t_d` and the `n`/`df` actually used to compute it, not the nominal 43.
+cutoff dates in its output for audit alongside the descriptive `shift120`
+report.
 
 **Calibrated-vs-raw:** compute both. The serving path consumes calibrated
 probabilities, so a signal visible only in raw scores is not tradeable and
@@ -109,15 +141,15 @@ must be reported as such.
 
 ## 3. Decision rule (frozen)
 
-Let `d` = fold-level mean of (real IC − shift-placebo IC), over only the
-folds eligible for `shift120` per §2's frozen eligibility rule, with the
-Newey-West HAC t-statistic `t_d` defined in §2 (Bartlett kernel, lag
-L = 2). The 90% CI on `d` is
-`mean(d) ± t_{0.95}(df=n_eligible_shift120_folds−1) × SE_HAC(d)`, critical
-value from `scipy.stats.t.ppf(0.95, df)` — **`df` is computed from the
-eligibility check at evaluation time, not hardcoded here.** (If all 43
-folds turn out eligible, `df=42`; this document does not assume that.) This
-is a conservative small-sample adjustment on top of the HAC-corrected SE.
+Let `d` = fold-level mean of (real IC − within-date-shuffle-placebo IC),
+over the full 43 folds (no eligibility exclusion — shuffle has no missing-
+data case, unlike `shift120`), with the Newey-West HAC t-statistic `t_d`
+defined in §2 (Bartlett kernel, lag L = 2). The 90% CI on `d` is
+`mean(d) ± t_{0.95}(df=42) × SE_HAC(d)`, critical value from
+`scipy.stats.t.ppf(0.95, df=42)`, a conservative small-sample adjustment on
+top of the HAC-corrected SE. The `shift120` arm (§2) and its own
+`n_eligible_shift120_folds`/`df` are reported alongside for the T1 record
+but do not feed `t_d`, the CI, or any GO/KILL/UNDERPOWERED branch below.
 
 **Smallest economically useful effect (frozen numeric threshold):**
 `d_min = 0.01` (IC units). This is `min_oos_mean_ic` — the OOS mean-IC
@@ -137,11 +169,12 @@ second, prereg-only bar with no operational meaning.
   sign AND the calibrated arm is not materially weaker than the raw arm,
   frozen as: `d_raw − d_calibrated ≤ d_min` (0.01 IC units), where
   `d_calibrated` is the same fold-level mean of (calibrated real IC −
-  calibrated shift-placebo IC) and `d_raw` is `d` as defined above. Anchoring the
-  bound to the already-frozen `d_min` (rather than a second, ad hoc ratio)
-  means calibration is allowed to cost at most one "smallest economically
-  useful effect" of edge before the calibrated (tradeable) arm fails GO on
-  its own. Next step on GO: the standard blend gate chain (screen → frozen
+  calibrated shuffle-placebo IC) and `d_raw` is `d` as defined above, AND
+  the persistence veto (§2, arm 3) does NOT fire. Anchoring the bound to
+  the already-frozen `d_min` (rather than a second, ad hoc ratio) means
+  calibration is allowed to cost at most one "smallest economically useful
+  effect" of edge before the calibrated (tradeable) arm fails GO on its
+  own. Next step on GO: the standard blend gate chain (screen → frozen
   confirmatory prereg on disjoint seeds → shadow). NOT a promotion.
 - **KILL (as an alpha source)** — `t_d ≤ 0.5` with the 90% CI upper bound
   of `d` (per the §3 CI construction above) below `d_min = 0.01`. PatchTST
@@ -150,6 +183,14 @@ second, prereg-only bar with no operational meaning.
   folds still cannot resolve it, and the decision is a COST question
   (more seeds / a larger model / more folds), not a signal question. No
   promotion, no kill, and no third run without a new frozen prereg.
+
+**Persistence veto** (§2, placebo arm 3, mirroring model#86 §3.2/§5's
+frozen null): if `real − persistence` is not positive at t ≥ 1.0 on its own
+eligible-date coverage, GO cannot be declared even if `t_d` clears 2.0 —
+an apparent edge from a stale 60-trading-day-old score is not fresh
+information. A vetoed GO resolves to UNDERPOWERED, not KILL (the veto
+diagnoses the SOURCE of an apparent edge, it does not itself certify
+there is none).
 
 Ties, ambiguity, or a broken run resolve to UNDERPOWERED. No post-hoc
 subgroup search (regimes, sectors, date ranges) may change the verdict;
