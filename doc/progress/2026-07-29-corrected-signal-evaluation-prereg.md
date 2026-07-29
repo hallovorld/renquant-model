@@ -50,7 +50,14 @@ enter git; re-verified directly against the files on disk (timestamps
 2026-07-28 22:48-23:00, real script + real JSON output), the struck numbers
 are exactly what is recorded. Restored, not fabricated.
 
-NEXT:     Run it on the corrected primitive. The prod XGB doubles as the positive
-          control: if it lands UNRESOLVED, every verdict becomes UNRESOLVED, because
-          a design that cannot detect the model that trades cannot speak about the
-          others.
+NEXT:     Run it on the corrected primitive, once (1) model#89 (the primitive this
+          design pins every comparison to) is MERGED, not just approved, and (2)
+          the joint/multiplicity inference procedure across the three subjects and
+          two statistics is fully frozen here, not left implicit. A results doc was
+          drafted against an earlier revision of this design before both of those
+          were true and was removed from this PR per codex BLOCKER — a prereg PR
+          carries the frozen design only; results are a separate PR against
+          immutable inputs once execution is actually authorized. The prod XGB
+          doubles as the positive control: if it lands UNRESOLVED, every verdict
+          becomes UNRESOLVED, because a design that cannot detect the model that
+          trades cannot speak about the others.
