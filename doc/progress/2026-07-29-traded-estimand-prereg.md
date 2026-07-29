@@ -19,23 +19,42 @@ WHY/DIR:  Every gate in this programme has been read off full cross-section IC,
           not more data, more breadth, or more compute. It was measuring the
           decision we actually make.
 
-EVIDENCE: artifact: `doc/research/2026-07-29-traded-estimand-prereg.md`, this
-                    branch on `renquant-model` @ origin/main 8579fa7. Inputs
-                    read READ-ONLY from the quarantined scratch namespace.
+EVIDENCE: artifact: `doc/research/2026-07-29-traded-estimand-prereg.md` +
+                    `tools/traded_estimand_calibration.py` (this PR), on
+                    `renquant-model` @ origin/main 8579fa7. Every number is
+                    reproduced by:
+                      `python3 tools/traded_estimand_calibration.py
+                       --clf-corpus <scratch>/clf-wf/clf_wf_scores.parquet
+                       --patchtst-corpus <scratch>/wf-eval/scores.parquet
+                       --panel RenQuant/data/transformer_v4_wl200_clean.parquet`
+                    which pins each input by sha256 and ABORTS on mismatch:
+                      clf_wf_scores.parquet      1da3fcfab06af1e5…5bc4efe4
+                      wf-eval/scores.parquet     6eb209e2491b26b1…e2606d18
+                      transformer_v4_wl200_clean 3982ca545d4c109b…668f0676
+                    Corpora READ-ONLY in the quarantined scratch namespace;
+                    the panel is a production file, opened for read only.
   prod or exp:      EXPERIMENT design. No production data, config, or artifact
                     written. No confirmatory run performed.
-  existing data:    Yes — every calibration number in the prereg was measured
-                    this session on NULL arms only, so no confirmatory evidence
-                    was consumed to write it:
-                      - label units `mean=-0.0000, sd=0.9982` (so the statistic
-                        is in sd, not return — a P&L reading would have been
-                        wrong by construction);
-                      - null CI half-width `0.0124 sd` over 12 clean shuffles;
-                      - `assess_control` false-flag rate on 30 clean nulls:
-                        3% on fold means, 7% on block means — the unit changes
-                        the answer, so the prereg registers which one;
+  existing data:    Yes — every calibration number is now traceable to a
+                    section of the committed verifier (§A-§E) rather than to
+                    "this session", and all of them except the named SCREEN
+                    come from NULL arms, so no confirmatory evidence was spent
+                    writing the registration:
+                      - §A label units `mean=-0.0000, sd=0.9982` (so the
+                        statistic is in sd, not return — a P&L reading would
+                        have been wrong by construction);
+                      - §C null CI half-width `0.0124 sd`, seeds 1000-1011;
+                      - §D `assess_control` false-flag on 30 clean nulls
+                        (seeds 5000-5029): 3% fed fold means, 7% fed block
+                        means — the unit changes the answer, so the prereg
+                        registers which one;
                       - therefore ALL-clean over 5 controls voids ~16% of valid
-                        experiments, registered in advance as an accepted cost.
+                        experiments, registered in advance as an accepted cost;
+                      - §E the shift120 ban, which running the verifier
+                        CORRECTED: that measurement is on the PatchTST corpus,
+                        not the clf one, and the first revision of the prereg
+                        said "this corpus". Two different subjects were
+                        conflated; the text now names each.
                     The SCREEN result that motivated the prereg (clf spread
                     +0.368 sd, t=+3.03, 5/5 placebos null, max |t|=0.84) is
                     named IN the prereg as a screen that cannot confirm itself.
@@ -56,6 +75,12 @@ SCOPE/LIMITS:
           turnover, or capacity model.
 
 VERIFICATION:
+          `tools/traded_estimand_calibration.py` run against the three pinned
+          inputs: PIN OK on all three, and §A-§E reproduce the prereg's stated
+          numbers exactly. Section D self-reports SKIPPED when
+          `control_calibration` is unimportable — it lands in renquant-model#96,
+          APPROVED but NOT YET MERGED, so that section is unauditable until #96
+          merges. The dependency is printed rather than hidden.
           The document contains no outcome; that is the deliverable. Its own
           §5 records the measurement that disqualifies the `shift120`
           displacement placebo (control `t=+2.90`, more significant than the

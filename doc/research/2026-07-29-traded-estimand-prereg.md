@@ -7,6 +7,30 @@ outcome.
 
 ---
 
+## 0. How to audit every number in this document
+
+```
+python3 tools/traded_estimand_calibration.py \
+    --clf-corpus      <scratch>/clf-wf/clf_wf_scores.parquet \
+    --patchtst-corpus <scratch>/wf-eval/scores.parquet \
+    --panel /Users/renhao/git/github/RenQuant/data/transformer_v4_wl200_clean.parquet
+```
+
+The script pins each input by sha256 and **aborts** on a mismatch, so a
+different corpus cannot reproduce different numbers under this document's
+name. Its sections A-E map 1:1 onto §2, §3, §6, §5, §5 below.
+
+| input | sha256 | supplies |
+|---|---|---|
+| `clf-wf/clf_wf_scores.parquet` | `1da3fcfab06af1e597ac0eb83dff4741ed3dd027de8b8a6b4d58979f5bc4efe4` | §2 units, §3 screen, §5 false-flag, §6 null |
+| `wf-eval/scores.parquet` | `6eb209e2491b26b18b7b687c7683f27f8e5cbe56592186bfbac68381e2606d18` | §5 shift120 ban |
+| `data/transformer_v4_wl200_clean.parquet` | `3982ca545d4c109b4809b887f2f9bbfc1a9363f7889b6a2ba08504e2668f0676` | §5 label panel (production file, opened READ-ONLY) |
+
+Both corpora live in the quarantined scratch namespace, as their own preregs
+require; the panel is a production data file and is read, never written.
+
+---
+
 ## 1. The claim being registered
 
 Every gate in this programme has been read off **full cross-section IC** — the
@@ -33,7 +57,7 @@ spread(d) = mean(fwd_60d_excess | top-k by score)
 Aggregated over dates by the estimator in §4.
 
 **Units.** `fwd_60d_excess` is **cross-sectionally standardised** — measured on
-the clf corpus: `mean = -0.0000`, `sd = 0.9982` `[VERIFIED — this session]`. A
+the clf corpus: `mean = -0.0000`, `sd = 0.9982` `[VERIFIED — calibration §A, clf corpus sha256 1da3fcfa…5bc4efe4]`. A
 spread of `0.30` therefore means **0.30 standard deviations of the forward
 return distribution, NOT 30% return.** Converting to money requires the raw
 return dispersion this label has standardised away, and is explicitly OUT OF
@@ -50,7 +74,7 @@ registration.
 corpus (625 score dates, 43 folds, 292 tickers) was run on this estimand
 *before* this document was written: spread `+0.368 sd`, block `t = +3.03`,
 resolving on all three views, with 5/5 label-shuffle placebos null (max
-`|t| = 0.84`) `[VERIFIED — this session]`.
+`|t| = 0.84`) `[VERIFIED — calibration §B, clf corpus sha256 1da3fcfa…5bc4efe4]`.
 
 That result is **why this prereg exists**. It is a screen. It cannot also be
 its own confirmation, and quoting it as evidence for the registered hypothesis
@@ -98,7 +122,7 @@ changes the answer). A control that is itself significant does not lose the
 comparison, it **VOIDS** it.
 
 Measured false-flag rate of that bar on 30 genuinely clean nulls
-`[VERIFIED — this session]`:
+`[VERIFIED — calibration §D, clf corpus sha256 1da3fcfa…5bc4efe4, seeds 5000-5029]`:
 
 | unit fed to the bar | flagged NOT_NULL |
 |---|---:|
@@ -111,19 +135,23 @@ That cost is accepted and registered in advance: this programme's failures
 have been false positives published and retracted, not false negatives, so the
 gate is deliberately biased toward refusing.
 
-**A shift/displacement placebo may NOT be used.** Measured on this corpus, the
-`shift120` label-displacement arm scores `+0.0715` at `t = +2.90` — a control
-more significant than the real arm it was meant to null `[VERIFIED — this
-session]`. Displacing a label does not destroy alignment when the score
-carries slow-moving structure.
+**A shift/displacement placebo may NOT be used.** Measured on the **PatchTST**
+corpus — NOT the clf one; the two are different subjects and conflating them
+was an error in this document's first revision — the `shift120`
+label-displacement arm scores fold-mean IC `+0.0715` at `t = +2.90` (37 folds)
+against the real arm's `+0.0278` at `t = +1.22` (43 folds)
+`[VERIFIED — calibration §E, corpus sha256 6eb209e2…e2606d18 joined to panel
+sha256 3982ca54…668f0676]`. A control more significant than the arm it is
+meant to null is not a control. Displacing a label does not destroy alignment
+when the score carries slow-moving cross-sectional structure.
 
 ## 6. Power, stated honestly
 
 Under a pure null the estimator is tight: median CI half-width `0.0124 sd`
-across 12 clean shuffles `[VERIFIED — this session]`. That is **not** the MDE,
+across 12 clean shuffles `[VERIFIED — calibration §C, seeds 1000-1011]`. That is **not** the MDE,
 because a real effect brings its own per-date dispersion: the screen's real
-arm carried half-width `0.218 sd` at an effect of `0.368 sd`
-`[VERIFIED — screen]`.
+arm carried half-width `0.2176 sd` at an effect of `0.3680 sd`
+`[VERIFIED — calibration §C]`.
 
 So: an effect whose per-date series is as disperse as the screen's needs to be
 of order **`0.22 sd` or larger** to resolve at 11 blocks `[DERIVED]`. A subject
