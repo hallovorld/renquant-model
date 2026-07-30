@@ -134,3 +134,90 @@ is why M1 is in the design.
 ---
 
 **Nothing in this revision is a result.**
+
+---
+
+# RESULTS (appended 2026-07-29, after the design commit `192f1b1`)
+
+Verbatim output: `doc/research/data/2026-07-29-screen2.log`. JSON:
+`doc/research/data/2026-07-29-screen2.json`. `[VERIFIED — this session]`, corpus
+PIN OK, 725,547 rows / 2,597 dates / 292 tickers, label `mean = −0.0000`,
+`sd = 0.9982` — units are **standard deviations, not return.**
+
+## The registered verdict: OUTCOME 2. Momentum is not supported here.
+
+| arm | E1 IC | t | ctl | E2 spread | t | ctl | E2 status |
+|---|---:|---:|---:|---:|---:|---:|---|
+| M1 `ret(20)` *(near-replication)* | −0.0250 | −1.81 | 1.85 | **−0.0460** | **−2.52** | 0.95 | clean, resolves |
+| M2 `ret(60)−ret(5)` *(12−1 style)* | +0.0004 | +0.09 | 0.87 | **−0.0571** | **−2.66** | 1.00 | clean, resolves |
+| M3 `ret(60)/STD60` *(vol-scaled)* | +0.0016 | +0.15 | 1.12 | +0.0079 | +0.20 | 1.05 | null |
+| **M4 `ret(60)` gated to high `STD60`** | −0.0007 | −0.04 | 1.16 | **+0.0773** | **+2.41** | 1.46 | clean, resolves |
+
+Joint 18-test bar `|t| ≥ 2.99`. **Nothing clears it.** Across both screens,
+**0 of 18 registered tests are screen-interesting.**
+
+## M1 behaved as the tripwire was meant to: it did NOT rehabilitate
+
+§6 registered that a *positive* M1 would be a plumbing red flag. M1 came back
+**−0.0460 (t = −2.52)**, consistent with the prior sealed result that killed the
+family. The tripwire is silent, so the plumbing is not implicated — and the
+positive controls in `tests/test_trend_screens.py` (9 passed) independently show
+the estimator recovers a planted `+0.30` effect and stays null without one, so a
+negative here is a real negative rather than a dead estimator.
+
+## Answering the operator's preference directly, with the numbers
+
+Stated preference (2026-07-29): *"我其实更偏向动量模型"*. Measured on this corpus:
+
+**Unconditional momentum is priced NEGATIVELY on the cut the system trades, at
+three independent horizons, every one with clean controls:**
+
+| construction | E2 spread | t | control max\|t\| |
+|---|---:|---:|---:|
+| `ret(60)` *(screen 1 R1)* | −0.0519 | −2.59 | **0.38** |
+| `ret(20)` *(M1)* | −0.0460 | −2.52 | 0.95 |
+| `ret(60) − ret(5)` *(M2)* | −0.0571 | −2.66 | 1.00 |
+
+Three horizons, three clean controls, same sign, similar magnitude. Each is
+individually below the 2.99 bar, and their **agreement is not a fourth test** —
+they are three views of the same underlying trend axis on the same corpus, so
+they cannot be pooled into significance. What they do establish is that the
+negative sign is **not one horizon's artifact.**
+
+**The positive sign on this universe sits with reversion, not momentum:**
+`rev20` **+0.1268** (t +2.82, control 1.54, clean) — screen 1 R3.
+
+**One momentum construction flips the sign, and it is the GATE, not the
+scaling:** vol-**gated** `ret(60)` (M4) = **+0.0773** (t +2.41, control 1.46,
+resolves), against plain `ret(60)` at −0.0519 — a sign flip from restricting
+momentum to above-median-`STD60` names. Vol-**scaled** `ret(60)/STD60` (M3) is
+**+0.0079, t +0.20** — nothing. So dividing by volatility does not help;
+*conditioning on* it does.
+
+**But M4 is not a finding, for two stated reasons, and I am not going to soften
+either:**
+1. `|t| = 2.41` is **below the registered 2.99 bar**, which I raised myself in
+   §5 before any number existed.
+2. It **conflicts in sign with screen 1's N1** (−0.0346, VOID), which applied a
+   related vol-conditioning (high *tercile* momentum + low-tercile reversion).
+   Two registered arms built on the same conditioning idea disagree in sign. An
+   effect that flips with an incidental construction choice is not an effect
+   yet.
+
+M4 is therefore **the only thread in 18 tests worth a properly-powered
+confirmatory test on a corpus neither screen has touched** — which is exactly
+and only what §6 outcome 1 would have licensed, and it did not even reach that.
+
+## A defect in my own control rule, disclosed
+
+Every arm whose real `|t|` is near zero is labelled **VOID** — e.g. M2's E1 at
+`t = +0.09` against a control max of 0.87. That is the registered rule ("a
+control above the arm's own `|t|` VOIDs it") applied literally, but for a null
+arm *any* control noise exceeds it, so the VOID label is mechanically guaranteed
+and carries **no information beyond "this arm is null".** It should not be read
+as "something is broken".
+
+This is a design flaw in the rule, not in these results, and disclosing it makes
+*more* of this output null rather than less. The rule is **not amended
+retroactively.** A future registration should gate VOID on the control clearing
+an absolute bar, not on it merely out-scoring a null arm.
