@@ -152,3 +152,81 @@ deviations.
 ---
 
 **Nothing in this revision is a result.**
+
+---
+
+# RESULT: ABORTED at AC-0. The gate caught MY bug, not a production bug.
+
+`[VERIFIED — this session]` Runner output: `doc/research/data/2026-07-30-m1-abort.log`.
+
+## The registered gate fired
+
+Only **1 of 172** standardised columns (0.6%) landed within `|mean| ≤ 0.15` and
+`sd ∈ [0.8, 1.25]`, against the registered floor of **90%**. Per §7.1 the run
+aborted and **no arm was reported**. Worst offenders: `book_to_price`
+(mean `+1.4e17`), `earnings_yield` (`+2.8e16`), `VWAP0` (`−106.15`),
+`HIGH0` (`−72.42`), `LOW0` (`−71.56`).
+
+## Why it fired — the honest answer is that the runner was wrong
+
+I read the code rather than inferring from the numbers, and the design is
+deliberate and documented:
+
+- `RenQuant/scripts/train_production_model.py:240` logs, verbatim:
+  *"Loading R1K + 5-fund panel (**already normalized**: alpha158=zscore,
+  fund=robust-zscore)"*
+- `build_normalization()` at `:358`, verbatim: *"Build the **inference**
+  normalization chain stored in the artifact. For each feature, (mean, std) such
+  that **(raw − mean) / std = normalized value**"*, sourced from
+  `data/alpha158_qlib_dataset.stats.json`.
+
+So the on-disk training panel is **already in the model's input space**, and the
+artifact's `feature_means` / `feature_stds` exist so the **serving** path can map
+freshly-computed RAW features into that space. My runner applied them to the
+already-normalised panel — **a double standardisation.** The measured signature
+matches exactly: `VWAP0` stored `mu = 1.0` (a vwap/close ratio) versus panel mean
+`−0.0065, sd 0.966`; `STD60` stored `mu = 0.0576` versus a freshly computed raw
+`std(close,60)/close` of 0.047–0.055 on five names.
+
+**There is no train/serve standardisation bug.** I was one report away from
+claiming one, and AC-0 is the only reason I did not. That is what the gate was
+for, and it is the most useful thing this document produced.
+
+## M1's question remains OPEN, and needs a different instrument
+
+The vol-cap support question is neither answered nor refuted. Answering it needs
+the model's score on this panel, which requires feeding the **already-normalised**
+columns to the booster directly, with no second standardisation — a one-line
+change to the runner. That is a **new registration**, not a re-run of this one:
+§7.4 forbids revising a verdict by changing the procedure, and this document's
+verdict is ABORT.
+
+## What the abort DID establish — a real, function-level defect
+
+`[VERIFIED — this session]`
+
+| | |
+|---|---|
+| `feature_raw_clip_low` / `_high` set for | **158 of 172** columns |
+| set for the 14 fundamental columns | **none — all `None`** |
+| `stats.json` clip entries | **158** |
+| `STD60` (Alpha158) raw clip | `[0.00843, 0.59738]` — bounded |
+| `book_to_price` panel values | mean **+3.96e16**, max **+1.68e19** |
+| rows with `|book_to_price| > 1e6` | **11,006 = 1.52%** |
+| rows with `|earnings_yield| > 1e6` | **10,338 = 1.42%** |
+| `book_to_price` share of model gain | **2.0%** |
+
+Generator: `RenQuant/scripts/fetch_sec_fundamentals.py:318`,
+`result["book_to_price"] = _safe_ratio(eq, mktcap)` — `StockholdersEquity /
+market_cap`, with no denominator floor and no output winsorisation. The same file
+at `:308` already carries a comment about previously *"poisoned earnings_yield /
+book_to_price for ~45 tickers"*, so this failure mode is known and was only
+partly addressed.
+
+**Impact, bounded honestly:** XGBoost splits are rank-based, so 1e19 values do
+not corrupt the training arithmetic. What they do is make those 1.5% of rows fall
+on the same side of **every** `book_to_price` split, which turns a feature
+carrying 2.0% of gain into a garbage-row indicator for that slice. Not
+catastrophic, and not nothing. **No claim is made here about the effect on any
+score**, because that would need the score reconstruction this document just
+failed to perform.
