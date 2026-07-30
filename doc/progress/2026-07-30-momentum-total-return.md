@@ -60,7 +60,7 @@ Validation `[all VERIFIED-now]`:
 |---|---|
 | **ex-div-day gap, raw → adjusted** | **−66.6 bp (t=−20.6) → −4.8 bp (t=−1.55)** — 92.7% removed |
 | same, with ticker+date fixed effects | **−63.7 bp (t=−25.1) → −3.2 bp (t=−1.33)** |
-| negative control, 34 non-payers | `max\|new−old\| = 0.0`, **bitwise** identical |
+| negative control, 34 non-payers | `max\|new−old\| = 0.0`, **bitwise** identical — but it is a TAUTOLOGY (§7 Correction 3): tests plumbing, not the arithmetic |
 | converse: payers must move | 111/111 moved |
 | return identity, 4,344 events | `max` error `4.44e−16` |
 | `_px` twin vs the pinned price library `544701ba…` | `0.000e+00` on **all 14** factors, 364,736 rows |
@@ -93,8 +93,9 @@ code is perfectly fine, so any natural fixture passes it.
 
 **Defect 2 (biased empirical selection).** Removed, not re-tuned. The horizon is
 **declared from theory before running** — 12−1 formation, `h = 120` trading days
-(≈6 months, Jegadeesh–Titman's headline `J=12/K=6` cell and the midpoint of the
-classic 1–12 month holding band) — with a data-independent block-count floor of
+(≈6 months; **the JT citation here is WRONG — see §7 Correction 4**: `J=12/K=6` is
+not JT-1993's headline cell, 12−1 is Fama-French/Carhart/Asness, and JT's band is
+3–12 months) — with a data-independent block-count floor of
 ≥8 blocks that excludes the long end of the band *by the estimator's
 requirement*, stated in advance. One arm, one horizon, one estimand, one test.
 
@@ -131,10 +132,16 @@ paths exercised) without computing the primary or reading holdout dates.
 1. **The dividend adjustment validated.** Ex-div-day gap **−66.6 bp (t=−20.6) →
    −4.8 bp (t=−1.55)**, 92.7% removed; with ticker+date fixed effects −63.7 →
    **−3.2 bp (t=−1.33)**. Negative control exactly 0.0, bitwise, on all 34
-   non-payers.
+   non-payers — but see §7 review Correction 3: that control is a **tautology**
+   and is not independent evidence of correctness.
 2. **§6 verdict: `UNRESOLVED / TILT-NOT-EXCLUDED`. NOTHING IS LICENSED.** No
    model, no shadow deployment, no capital action.
-3. The primary cleared every bar it owns — E2 = **+0.4310 SD**, block
+3. **CORRECTED by the §7 review (Corrections 1–2) — read those first.** The
+   primary cleared every bar the frozen design *contains*, but they are all
+   date-dimension; it FAILS a name-dimension or robust-location check (drop 5 of
+   145 names → `t` +1.871; **median** spread instead of mean → +1.964), and the
+   defensible block count is 9, not 10, giving **`t` = +3.258** rather than
+   +3.767. As originally reported: E2 = **+0.4310 SD**, block
    `t = +3.767` on 10 blocks (programme bar 3.1019), CI `[+0.2705, +0.6256]`,
    three views agree, placebos max \|t\| 1.25 vs bar 2.0, 40-shuffle false-flag
    rate **2.5%**, leave-one-block-out `t ∈ [+3.26, +5.34]` with zero sign flips
@@ -193,3 +200,64 @@ forward-cumulative index that at each `t` uses only dividends up to `t`:
 per-ticker constant (max relative spread 1.8e−15). The only anchor-sensitive
 quantity is the TR **level**, which prereg §3.2 forbids using — that prohibition
 is load-bearing, not stylistic.
+
+---
+
+# §7 ADVERSARIAL REVIEW — returned before merge, and it broke things
+
+**1 CRITICAL, 4 MAJOR, 8 MINOR, 2 NIT, 5 claims survived.** It independently
+re-ran the runner and got a bit-identical `results.json`. Not a confirming review.
+Every number below was reproduced by me before recording it `[VERIFIED-now]`.
+Full findings and my point-by-point responses: prereg §7 (Corrections 1–5).
+
+**The verdict does not change — it was already the most conservative branch — but
+two of my claims above are corrected:**
+
+1. **CRITICAL — my headline was an overclaim.** "Cleared every bar it owns,
+   decisively" holds only for the bars the frozen design *contains*, and those are
+   all **date-dimension**. There is no name-dimension or robust-location check,
+   and the effect fails one: drop the 5 largest name contributors (`SMCI, APP,
+   LITE, PLTR, VRT`, 3.4% of names) → `t` +3.767 → **+1.871**; winsorize the label
+   z at ±1 → **+1.990**; use the **median** spread instead of the mean →
+   **+1.964** (and +1.562 on full blocks). The last two select on nothing. So the
+   passing statistic is carried by tail realisations in a few names — the same
+   conclusion as the U-shaped decile profile and the near-zero IC, from a third
+   direction.
+2. **MAJOR — the negative control is a TAUTOLOGY.** All 34 non-payers have
+   `dividend == 0.0` on every row, so `g ≡ 1.0` and `TR = P` **necessarily**,
+   bitwise, whether the arithmetic is right or wrong. It tests plumbing, not
+   correctness. The adjustment's validation rests on the gap collapse, the
+   machine-precision identity, the `0.000e+00` price-library reproduction and the
+   anchor-invariance proof — **not** on the negative control, and the table above
+   overstated it.
+3. **MAJOR / ERRATUM to frozen §2** — `1205/120 = 10` is wrong: the labelled
+   statistic series is **1,085** dates, so it is `9`, and the shipped 10th "block"
+   holds **5 dates** weighted equally with 120-date blocks. **The defensible
+   number is `t = +3.258` on 9 blocks; the headline +3.767 is 15.6% inflated.**
+   Floor still met (9 ≥ 8).
+4. **MAJOR — my h=120 defence answered the wrong question.** I argued it was "not
+   effect-maximising" on E2; the gate keys on `|t|`. On the holdout h=120 is ex
+   post the **argmax of `|t|`** across the whole declared band (2.473 / 2.686 /
+   **3.767** / 3.052) and the **only** one clearing the programme bar. Git order
+   rules out post-holdout HARKing; the coincidence is recorded, not explained
+   away. Also ERRATUM: `J=12/K=6` is not JT-1993's headline cell (that is
+   `J=6/K=6`), 12−1 is Fama-French/Carhart/Asness, and JT's band is 3–12 months
+   whose midpoint (≈157 days) my own block floor would have excluded.
+5. **MAJOR — the §5b gate was near-incapable of passing** and "Holm-corrected" did
+   nothing on it: the baseline's block variance (0.206) exceeds the subject's
+   (0.145) and the two correlate −0.401, so differencing inflates block sd +83.9%;
+   and the failing arm always has the largest p, so its Holm threshold is always
+   0.05, i.e. uncorrected.
+
+**Survived:** the TR construction end-to-end (formula, `P[s]` convention, anchor,
+no look-ahead, split axis, identity at 2 ULP) — and the reviewer strengthened my
+own proof, showing anchor-invariance is an algebraic identity rather than a
+1.8e-15 numerical coincidence; the git order and determinism; the gap collapse;
+the false-flag calibration; date-dimension LOBO; and D1's conclusion.
+
+**The one residual gap worth flagging for the successor:** both shuffle fixtures
+use a `RangeIndex` while the real call site's frame index is non-contiguous. The
+reviewer verified `groupby().indices` is positional in pandas 2.3.3 so there is
+**no bug** — but had it been label-based, the guard would have passed while the
+shuffle broke. That is precisely the "fixture nicer than the call site" shape that
+killed the previous run.

@@ -192,7 +192,11 @@ had failed, the study would not be run at all.
 * **NEGATIVE CONTROL:** over all 34 non-paying names, `max|new − old| = 0.0`
   exactly, and the series are **bitwise** identical (checked explicitly on
   TSLA, AMZN, NFLX). Converse: all 111 payers moved, so the adjustment is not
-  inert.
+  inert. **CORRECTED after the §7 review — see Correction 3: this control is a
+  TAUTOLOGY and cannot fail.** All 34 have `dividend == 0.0` on every row, so
+  `g ≡ 1.0` and `TR = P` necessarily. It tests plumbing (no cross-ticker
+  contamination), NOT the adjustment arithmetic, and it is not independent
+  evidence that the adjustment is correct.
 * **Return identity:** `max |TR[k]/TR[k−1] − (P[k]+D[k])/P[k−1]| = 4.44e−16`
   over all 4,344 events.
 * **The `_px` twin reproduces the pinned price-only library
@@ -467,10 +471,17 @@ frames, so the control mechanism is certified before any data was read.
    excludes the benchmark, dropping its 42 low-volatility ex-div days —
    4,344 → 4,302 events. Same measurement, one name removed, and it is the
    collapse that is the finding, not the third significant figure.)*
-2. **The study returned NOTHING LICENSED.** The primary cleared every bar it
-   owns, decisively, and then **failed the §5b paired baseline gate**. By the
-   frozen §6 rule that is `UNRESOLVED / TILT-NOT-EXCLUDED`. No model is built,
-   nothing is deployed, not even to shadow.
+2. **The study returned NOTHING LICENSED.** By the frozen §6 rule the verdict is
+   `UNRESOLVED / TILT-NOT-EXCLUDED`. No model is built, nothing is deployed, not
+   even to shadow.
+
+   **CORRECTED after the §7 adversarial review — read Correction 1 before §1
+   below.** An earlier revision of this sentence said the primary "cleared every
+   bar it owns, decisively" before failing the §5b gate. It cleared every bar the
+   frozen design *contains*, but the design has **no name-dimension or robust-
+   location check**, and the effect fails one: dropping 5 of 145 names, or simply
+   using the **median** spread instead of the mean, drops `t` below the registered
+   bar. The primary is materially more fragile than the §1 table alone reads.
 3. **The dividend confound is REFUTED as the explanation of the aborted run's
    headline pattern** — which is the one thing this study establishes positively,
    and it is a statement about the DATA, not about momentum.
@@ -768,3 +779,216 @@ because the frozen rule licenses none.
    (§4b), or state why a benchmark belongs inside the cross-section it defines.
    Measured immaterial here (`t` +3.767 → +3.759 without SPY, +3.669 without all
    nine), but immaterial is not correct.
+
+---
+
+# §7 ADVERSARIAL REVIEW — RETURNED, AND IT BROKE THINGS
+
+The commissioned review (brief: "assume the conclusion is wrong and try to break
+it") returned after the results commit and **before merge**, as §8 promised.
+Verdict of the review: **1 CRITICAL, 4 MAJOR, 8 MINOR, 2 NIT, 5 claims survived.**
+It independently re-ran the runner and obtained a **bit-identical**
+`results.json`, confirming determinism.
+
+**It was not a confirming review, and its two headline findings materially weaken
+what I wrote above.** I reproduced every number it cites before recording it
+`[all VERIFIED-now]`. Corrections follow; the frozen §§0–9 are **not edited** —
+errors in them are recorded here as errata, per §8's freeze discipline.
+
+## CORRECTION 1 (their CRITICAL) — my §1 headline was an overclaim
+
+I wrote that the primary "cleared every bar it owns, decisively". **That is not
+supportable.** `resolves` and leave-one-block-out are both **date-dimension**
+checks; the frozen design contains **no name-dimension, influence, or robust-
+location check at all**, and the effect does not survive one:
+
+| variant | E2 | block `t` | vs bar 2.2414 |
+|---|---:|---:|:--|
+| as registered (mean spread, 10 blocks) | +0.4532 | **+3.767** | passes |
+| **9 full blocks** (see Correction 2) | +0.4532 | **+3.258** | passes |
+| drop the 3 largest name contributors | +0.2506 | +2.463 | passes, barely |
+| **drop the 5 largest** (3.4% of names) | +0.1716 | **+1.871** | **FAILS** |
+| drop the 8 largest | +0.1070 | +1.197 | FAILS |
+| winsorize label z at ±3 | +0.3599 | +3.212 | passes |
+| winsorize label z at ±2 | +0.2862 | +2.749 | passes |
+| **winsorize label z at ±1** | +0.1594 | **+1.990** | **FAILS** |
+| **MEDIAN spread instead of mean** | +0.2708 | **+1.964** | **FAILS** |
+| median spread, 9 full blocks | +0.2298 | **+1.562** | **FAILS** |
+
+Drop-top-N selects on the outcome, so it is suggestive only — but **winsorizing
+and using the median select on nothing**, and both drop below the registered bar.
+The five names are `SMCI, APP, LITE, PLTR, VRT`.
+
+**So the passing statistic is carried by extreme realisations in a handful of
+names.** That is the same finding as §4's U-shaped decile profile and §1's
+near-zero IC (`t = +0.589`), arriving from a third direction: near-zero IC +
+U-shaped deciles + median-below-bar = a **top-decile selection statistic driven
+by tail outcomes**, not a momentum ordering. The verdict was already
+`UNRESOLVED — nothing licensed`, so nothing changes operationally; what changes is
+that **"the primary was strong and only the baseline gate stopped it" is the wrong
+reading, and I had written something close to it.**
+
+## CORRECTION 2 (their MAJOR M4) — ERRATUM to the frozen §2's block arithmetic
+
+Frozen §2 states `1205 / 120 = 10 [DERIVED]` and `1205 / 250 = 4.8`. **Both are
+wrong**, and the error is mine: 1,205 is the count of holdout *dates*, but the
+last `h` dates carry no label, so the statistic series has **1,085** dates. The
+correct counts are `1085/120 = 9` and `1085/250 = 3`.
+
+Worse, `_blocks()` emits `ceil` blocks, so the shipped run used **10** blocks of
+which the 10th holds **5 dates** — and it is weighted equally with the 120-date
+blocks. **The defensible number is `t = +3.258` on 9 full blocks; the headline
+`+3.767` is 15.6% inflated by a 5-observation block.** I had this in a
+parenthetical; the reviewer is right that it belongs in the headline, and it is
+now in the table above.
+
+The floor of ≥8 blocks is still met (9 ≥ 8), so the run was not `VOID`. At h=250
+the true count is 3, not 4.8 — which strengthens rather than weakens §2's reason
+for excluding the long end.
+
+## CORRECTION 3 (their MAJOR, question b) — the negative control is a TAUTOLOGY
+
+This one I should have seen. All 34 non-payers have `dividend` exactly `0.0` on
+**every** row, so `ev = d > 0` is empty, `g ≡ 1.0`, `np.cumprod(ones)` is exactly
+`ones` in IEEE-754, and `TR = P / 1.0 = P` **bitwise — necessarily**. The negative
+control therefore **cannot fail**, whether the adjustment arithmetic is right or
+wrong.
+
+**§3.3 and the progress doc are corrected:** the negative control is **not**
+independent evidence that the adjustment is correct. What it does test is
+*plumbing* — that no ticker's series is contaminated by another ticker's
+dividends, and that the code path doesn't touch names it shouldn't. That is worth
+having, and the task asked for it, but it is a much weaker claim than I made.
+**The validation of the adjustment rests on the ex-div-day gap collapse, the
+machine-precision return identity, the `0.000e+00` reproduction of the pinned
+price library, and the anchor-invariance proof — not on the negative control.**
+The reviewer also notes this makes the "34 names identified by column absence"
+worry the *lesser* problem: the tautology holds even if non-payment were
+independently verified.
+
+## CORRECTION 4 (their MAJOR, question c) — my h=120 defence answered the wrong question
+
+I argued the declaration was "not effect-maximising" because h=250 gives a larger
+**spread**. **The gate keys on `|t|`, not on E2, so that rebuttal is irrelevant.**
+On the holdout:
+
+| h | E2 | block `t` | clears the programme bar 3.1019? |
+|---:|---:|---:|:--|
+| 20 | +0.2058 | +2.473 | no |
+| 60 | +0.3022 | +2.686 | no |
+| **120** | +0.4310 | **+3.767** | **YES** |
+| 250 | +0.4885 | +3.052 | no |
+
+**`h = 120` is ex post the argmax of `|t|` across the entire declared band, and
+the only one of the four that clears the programme bar.** The git order rules out
+post-holdout HARKing — `048975f` predates `results.json` and the reviewer timed
+the full runner at 22s — but the coincidence is uncomfortable and it is recorded
+rather than explained away. (On 9-full-block counts the argmax is nearly a tie:
+h=20 → +3.245 vs h=120 → +3.258.)
+
+**And the frozen §2's citations are wrong.** ERRATUM: `J=12 / K=6` is **not**
+Jegadeesh–Titman 1993's headline cell (that is `J=6 / K=6`); 12−1 skip-a-month
+formation is Fama–French / Carhart / Asness, not JT. JT's stated holding band is
+**3–12 months**, whose midpoint is ≈7.5 months ≈ 157 trading days — which my own
+block floor of 8 would have **excluded** (1085/157 = 6.9). The reviewer's point
+stands: the particular triple I declared (band 1–12 months, midpoint 6 months =
+120 days, floor 8 blocks) is the one combination that lands on 120. I do not have
+a defence beyond the git order.
+
+## CORRECTION 5 (their MAJOR, question d) — the §5b gate could not have passed
+
+The reviewer shows the gate was arithmetically near-incapable of passing: at block
+level the subject has mean +0.4532 / var 0.145 while the *null* baseline has var
+**0.206** — the baseline is **noisier than the signal** — and the two block-mean
+series correlate **−0.401**, so differencing inflates the block sd by **+83.9%**
+(0.3805 → 0.6995) while removing only 18% of the mean. `t` falls 3.767 → 1.682
+mechanically. Their calibration of the paired contrast's own null (40 shuffles,
+same permutation applied to both arms so cross-arm dependence is preserved) gives
+mean \|t\| 0.82, p95 1.47, false-flag 2.5% — **well calibrated, simply
+low-powered.**
+
+**And "Holm-corrected" was doing nothing on the decisive gate:** the failing arm
+always has the largest p, so its Holm threshold is always 0.05 — i.e.
+**uncorrected**. The framing in §5b.4 overstated the stringency of the test that
+decided the verdict. This compounds §2's admission that the baseline's own
+placebos were dirty.
+
+## Minor findings accepted, recorded, not fixed in place
+
+* **The CI is a 90% interval** (`ci_level = 0.90`, the helper's default), never
+  stated in frozen §4.1 — and mismatched against a Bonferroni `m=2` t-bar.
+* **§4.1 promised leave-one-block-out bounds but `agg()` discards them**; they are
+  unrecoverable from `results.json` and survive only in `robustness.json`.
+* **D1 at h=250 formally has `resolves = true`** (`ci_high = −0.000113`) on 3–4
+  blocks, so my "never significant" is not what the JSON says. The direction is
+  unchanged and the conclusion is *strengthened*, not weakened: the delta is
+  negative on both halves, so the adjustment **shrinks** the spread.
+* **D1's factor leg is near-vacuous** (Spearman 0.998 into a pure rank statistic
+  forces delta ≈ 0); the informative half is the label side.
+* **The conditional-quintile low buckets are yield-degenerate** — `qcut` on
+  `rank(method="first")` splits the 34 exact-zero names **alphabetically**, so
+  that arm is vacuous across 23% of the cross-section. Not a bias, but it is not
+  the test I described.
+* **`method="first"` tie-breaking is alphabetical** — harmless here, a footgun for
+  any successor arm with mass at one value (A6 zeroes half the cross-section).
+* **A residual gap in the shuffle guard I am glad they found:** both fixtures use a
+  `RangeIndex`, while the real call site's frame has a **non-contiguous** index.
+  They verified `groupby().indices` is positional in pandas 2.3.3 and the shuffle
+  is correct over 200 seeds on a scrambled index — **no bug** — but had `.indices`
+  been label-based, the guard would have passed while the shuffle broke. That is
+  *exactly* the "fixture nicer than the call site" shape that killed the previous
+  run, and the successor's fixture must carry a non-contiguous index.
+* Part-1 validations ride on bare `assert`, which vanish under `python -O`.
+* Yahoo's factor is `(1 − D/C[s−1])`; my §3.2 wrote the sign loosely.
+
+## What survived their attack
+
+The TR construction end-to-end — formula, `P[s]` convention, anchor,
+**no look-ahead**, split-axis consistency, the identity at 4.441e-16 (= 2 ULP).
+They improved my own proof: anchor-invariance is an **algebraic identity**
+(`R_back · R_fwd = prod_all g`, a per-ticker constant), not a 1.8e-15 numerical
+coincidence. Also surviving: the git order and determinism; the ex-div-day gap
+collapse; the 40-shuffle false-flag calibration; leave-one-block-out in the
+**date** dimension (all 10 LOBO `t` ∈ [+3.258, +5.340], no sign flip — the
+fragility is entirely in the **name** dimension); and D1's conclusion.
+
+## Their residual risks, carried forward unresolved
+
+1. Whether the 34 no-column names truly paid nothing — unresolvable inside this
+   corpus, and (per Correction 3) the negative control gives **no** evidence on it.
+2. Whether the ~2.5%/yr `P[s]` vs `P[s−1]` level difference matters for any
+   non-rank statistic — untested, and it would matter for a dollar-denominated
+   successor.
+3. Whether `h = 120` was *subjectively* screen-informed. Git order rules out
+   post-holdout HARKing; no artifact can rule this out.
+4. Their paired-contrast null preserves cross-arm dependence but is not the exact
+   "no advantage" null, so p ≈ 0.05–0.08 is indicative.
+5. Whether the top-decile tail effect is a stable regime feature or the 2023–25 AI
+   trade — only forward dates answer it, and their CRITICAL says this holdout
+   cannot.
+
+## The review's bottom line, quoted because it is better than mine
+
+> "the verdict `UNRESOLVED / TILT-NOT-EXCLUDED` is the **right** bottom line
+> reached through a **mis-specified** gate, and the primary is materially more
+> fragile than '+3.767, clears every bar' reads — 5 of 145 names, or simply using
+> the median instead of the mean, drops it below its own bar."
+
+I accept that in full. The verdict does not change — it was already the most
+conservative branch — but the **reason** it is right is different from the reason
+I gave, and the primary is weaker than I presented it.
+
+## Additions to §7's successor list
+
+6. **Register a name-dimension robustness gate** — influence/jackknife over
+   tickers, plus a robust-location variant (median spread or winsorized label) —
+   and require the effect to survive it. A date-dimension `resolves` is not
+   enough; this study passed every date-dimension check and failed the name one.
+7. **Fix the block partition:** drop or down-weight partial blocks, and compute
+   the floor from the **labelled** statistic length, not the raw date count.
+8. **State the CI level in the frozen text** and match it to the decision bar;
+   persist the leave-one-block-out bounds the estimator already computes.
+9. **Give the shuffle fixture a non-contiguous index**, matching the real call site.
+10. **Do not build a paired gate against an arm that is noisier than the subject**
+    without a power calculation; and do not describe a gate as multiplicity-
+    corrected when the correction cannot bind on it.
