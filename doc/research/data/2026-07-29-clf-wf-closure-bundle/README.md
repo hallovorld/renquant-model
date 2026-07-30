@@ -19,6 +19,28 @@ is garbage-collected and the definition is the part that makes them verifiable a
 `[VERIFIED — json read of the surviving index plus an os.path.exists sweep over its 61
 relative paths, 2026-07-30]`
 
+## Integrity verified 2026-07-30
+
+| | value |
+|---|---|
+| files in the index | **61** |
+| per-file sha256 **matched** | **61** |
+| drifted | **0** |
+| missing | **0** |
+| root rebuilt from the index's own digests | `901f0addd19b7381775f9dd593e046b862863b8bb04bb0de7260eb405423810a` |
+| matches the recorded root | **True** |
+
+`[VERIFIED — verification.json in this directory; sha256 of every file at its recorded
+relative path, plus a root rebuild per the index's own `digest_construction`]`
+
+So the artifacts are not merely present — they are **byte-identical to what the index
+describes**, and the index is **self-consistent**: rebuilding the root from its own
+per-file digests reproduces the recorded value exactly. Every citation of
+`901f0add…` refers to these bytes.
+
+That raises the stakes rather than lowering them: the evidence is *verifiably* the thing
+the citations mean, and it is sitting in a directory that will be garbage-collected.
+
 ## What this settles, and what it does not
 
 **Settles (model#115 step 1):** the bundle is **not lost**. Its definition survives with
