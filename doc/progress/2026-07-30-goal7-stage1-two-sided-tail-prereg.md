@@ -13,7 +13,7 @@ WHY/DIR:   GOAL-7 is a standalone momentum model for shadow, at most ten factors
            middle does not, so a linear ranker cancels the two ends against each other.
 EVIDENCE:  n/a — this PR makes NO model or data claim. Every number is tagged as prior
            work with a reference; nothing was measured for it.
-NEXT:      Run the §6 self-checks against the §2A-pinned split, then the screen.
+NEXT:      Run the §6 self-checks against the Amendment 3 partition, then the screen.
            Verdict withheld pending adversarial review.
 
 ## Review round 1 — the registration was not executable, and now is
@@ -54,6 +54,11 @@ Disclosed rather than papered over: the 60-date embargo is **shorter than the
 120-trading-day label horizon**, so late-screen labels overlap early-holdout dates. A
 TWO-SIDED-SUPPORTED verdict now carries a mandatory 120-date-embargo robustness re-run.
 
+> Round-1 figures above are kept as written for auditability. **Two are superseded by
+> round 2:** the split (screen 1,600 / holdout 627 / `n_blocks = 10`) and the
+> 120-embargo robustness obligation, which round 2 discharges by adopting 120 as the
+> registered primary. See "Review round 2" below.
+
 ## The one clause that decides whether the result will mean anything
 
 §4, and it is registered as a **kill condition rather than a caveat**: `|z|` of momentum
@@ -92,6 +97,42 @@ change, no capital. The ten-factor budget is deliberately NOT spent here: Stage 
 one transform precisely so the budget is not committed before the formulation is known
 to have anything — the cheap-screen-before-cathedral rule.
 
+## Review round 2 — Amendment 3: the partition, computed instead of promised
+
+Codex was right that Amendment 2 reopened what Amendment 1 had closed. Burning
+2021-10-08 onward was correct, but leaving `n_blocks` to be "recomputed" at run time
+means the partition and its power condition are still mutable when the run starts —
+and a mutable partition is not a registration, whatever the surrounding prose says.
+Amendment 3 computes them against the pinned corpus and supersedes the stale figures
+in place (§2A's table, §3's `n_blocks = 10`) rather than editing history.
+
+Measured `[VERIFIED — computed on the §2A-pinned matrix, this session]`:
+
+* uncontaminated admissible window **1,202 dates, 2016-12-29 → 2021-10-07**
+* **evaluation 1,082 dates → `n_blocks = 18`**, trailing remainder **2** dropped and
+  named (2021-04-16, 2021-04-19), so the drop is checkable
+* **`t_{0.975,17} = 2.1098`**
+
+Two things worth flagging beyond what was asked.
+
+**`n_blocks = 18` — nearly double Amendment 1's 10.** Amendment 2 registered
+"UNRESOLVED (underpowered)" as a live outcome if the uncontaminated window could not
+supply 6 blocks. It supplies 18, so that branch does not fire. Burning the
+contaminated period cost regime relevance, not power — the honest framing is that the
+older window is *longer*, and A2.3's stated cost stands as a regime cost only.
+
+**I tightened the embargo from 60 to 120 rather than pinning the 60 codex asked to see
+named.** Amendment 1 disclosed that a 60-date embargo is shorter than the
+120-trading-day label horizon, so late-evaluation labels reach forward into excluded
+dates — and post-Amendment-2 those excluded dates are the *contaminated* ones, which
+is precisely the leak this chain exists to close. At Amendment 1's geometry closing it
+cost 2 of 10 blocks and was disclosed instead; at this geometry it costs **1 of 19**
+(60 → 19 blocks, `t` 2.1009; 120 → 18 blocks, `t` 2.1098). Paying one block to remove
+the leak entirely, before any arm runs, in the direction that makes the test harder,
+is the obvious trade. Consequence: Amendment 1's 120-embargo robustness obligation is
+**discharged, not carried** — there is no 60/120 gap left to re-run. Both sets of
+figures are recorded so the choice is auditable.
+
 ## Live-surface impact
 
-None. Two documents. No run has been executed.
+Still none. Documents only. No run has been executed.

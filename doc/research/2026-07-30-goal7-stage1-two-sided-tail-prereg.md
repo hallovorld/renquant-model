@@ -98,6 +98,13 @@ exists. **Per date:** at least `MIN_NAMES = 20` eligible names, matching the sib
 harness. No liquidity, price or sector filter is applied — none is registered, so
 none may be added.
 
+> ⚠️ **The split table below is SUPERSEDED by AMENDMENT 3 §A3.1.** Amendment 2 burned
+> 2021-10-08 onward, which voids this partition. The live partition is
+> **evaluation 2016-12-29 → 2021-04-19 (1,082 dates, `n_blocks = 18`,
+> `t_{0.975,17} = 2.1098`), embargo 120 dates to 2021-10-07.** The inputs,
+> eligibility rules and digests above remain in force. Retained unedited because an
+> amendment chain that rewrites its own history is not auditable.
+
 **The split — chronological, 70% by admissible-date count, embargo carved from the
 boundary.** Screen is the earlier partition; the holdout is later in time, so the
 one-use test is also a genuine forward test. Resolved against the pinned corpus:
@@ -148,7 +155,10 @@ equal-weighted** — model#110 formed 10 blocks where 9 was correct and equal-we
 
 `P95_null` = 95th percentile of `|t|` from **200** within-date permutations of `u`
 through the identical harness. The Student-t leg uses the **realised** `n_blocks` after
-the drop. §2A pins the holdout at `n_blocks = 10`, so the expected Student-t leg is
+the drop. **⚠️ The `n_blocks = 10` figure in this paragraph is SUPERSEDED by
+AMENDMENT 3 §A3.1 — the live values are `n_blocks = 18` and `t_{0.975,17} = 2.1098`.**
+The formula above is unchanged; only the realised leg moved. §2A pinned the holdout at
+`n_blocks = 10`, so the expected Student-t leg was
 `t_{0.975,9} = 2.2622`; the neighbouring values are `t_{0.975,8} = 2.3060`,
 `t_{0.975,7} = 2.3646`, `t_{0.975,5} = 2.5706`
 `[DERIVED — scipy.stats.t.ppf(0.975, n−1), this session]`. Frozen at 1.96 this screen
@@ -161,8 +171,9 @@ the failure direction is safe.
 
 **Mandatory in the report:** `N_eval`, `n_blocks`, dropped remainder days, `P95_null`,
 `t_{0.975,n_blocks−1}`, which leg bound `T_crit`, `|t|` as a quantile of the null, and
-the realised screen/embargo/holdout date counts against §2A's pinned table (a
-divergence means the corpus moved and the run is not the registered one).
+the realised evaluation/embargo date counts and dropped dates against **Amendment 3
+§A3.1's** table (a divergence means the corpus moved and the run is not the registered
+one).
 
 ## §4 THE CONTROL THAT MATTERS MOST — the volatility trap
 
@@ -363,3 +374,74 @@ cannot distinguish signal from the reason the study was written.
 **SCREEN-INTERESTING on a pre-2021 regime**, and licenses only writing the Stage-2 design.
 It does not license a claim about the current regime, which would need dates that do not
 exist uncontaminated in this corpus.
+
+---
+
+# AMENDMENT 3 — the post-contamination partition, computed and frozen
+
+Registered 2026-07-30, before any run. Amendment 2 correctly burned 2021-10-08 onward
+but left `n_blocks` to be "recomputed" at run time, which reopened the freeze point
+Amendment 1 had just closed: a partition and a power condition that are still mutable
+when the run starts are not registered, whatever the prose says. This amendment closes
+it with measured values and supersedes every stale figure.
+
+## A3.1 The partition, resolved against the pinned corpus
+
+Eligibility, block rule and drop rule are Amendment 1's, unchanged. Applied to the
+uncontaminated window there are **1,202 admissible dates, 2016-12-29 → 2021-10-07**
+`[VERIFIED — computed on the §2A-pinned matrix, this session]`.
+
+| segment | dates | range |
+|---|---|---|
+| **evaluation, ONE use** | **1,082** | 2016-12-29 → 2021-04-19 |
+| — of which used (18 × 60) | 1,080 | 2016-12-29 → **2021-04-15** |
+| — dropped remainder | **2** | 2021-04-16, 2021-04-19 |
+| embargo (used by no arm) | **120** | **2021-04-20 → 2021-10-07** |
+| burned (Amendment 2) | — | 2021-10-08 → 2026-07-29 |
+
+> **`n_blocks = 18`**, so **`t_{0.975,17} = 2.1098`**
+> `[DERIVED — scipy.stats.t.ppf(0.975, 17), this session]`.
+
+`T_crit = max(P95_null, 2.1098)` under §3's unchanged formula. `n_blocks = 18` clears
+§7's `n_blocks < 6` floor, so the **UNRESOLVED (underpowered)** branch Amendment 2
+registered as a live possibility **does not fire**. The two dropped dates are the
+*trailing* remainder — blocks are contiguous from the start of the window — and they
+are named above so the drop is checkable rather than merely asserted.
+
+## A3.2 The embargo is 120, not 60 — and this is a tightening, not a re-choice
+
+Amendment 1 registered a 60-date embargo and **disclosed that it was shorter than the
+120-trading-day label horizon**, so late-evaluation labels reach into the excluded
+region. At Amendment 1's geometry, closing that leak cost 2 of 10 blocks, and the leak
+was disclosed instead. **At this geometry it costs 1 of 19** `[VERIFIED — same
+computation at both embargo widths, this session: 60 → 1,142 dates / 19 blocks /
+`t_{0.975,18}` = 2.1009; 120 → 1,082 dates / 18 blocks / `t_{0.975,17}` = 2.1098]`.
+
+A leak that reaches into the *burned* window is exactly the leak this amendment chain
+exists to stop: a label computed from returns inside the contaminated period carries
+the contamination into the evaluation statistic no matter which side of the boundary
+its date sits on. Paying one block to remove it entirely is the obvious trade, and it
+is registered **before** any arm is run, in the direction that makes the test harder.
+Amendment 1's robustness obligation is therefore **discharged, not carried**: there is
+no longer a 60/120 gap to re-run, because 120 is the registered primary. The 60-date
+figures are recorded above so the cost of the choice is auditable.
+
+## A3.3 Superseded figures
+
+These are **void** and must not be cited from this document:
+
+* §2A's split table (screen 1,600 / embargo 60 / holdout 627) — superseded by A3.1.
+  Its **inputs, eligibility rules and digests remain in force**; only the partition
+  changed.
+* §2A's and §3's `n_blocks = 10`, `t_{0.975,9} = 2.2622`, and the "86.6% of the correct
+  bar" arithmetic keyed to it. The live values are `n_blocks = 18`, `t_{0.975,17} =
+  2.1098`; at that leg a frozen 1.96 would sit at **92.9% of the correct bar**
+  `[DERIVED — 1.96/2.1098 = 0.9290, this session]`.
+* §2A's closing paragraph obliging a 120-date-embargo robustness re-run — discharged
+  by A3.2, which adopts 120 as primary.
+* Amendment 2's "`n_blocks` is recomputed from the realised admissible dates" — it is
+  computed here and frozen. Nothing about the partition is left to run time.
+
+**Mandatory in the report** (extending §3): the realised evaluation/embargo date counts
+and the two dropped dates, checked against A3.1. A divergence means the corpus moved
+and the run is not the registered one.
