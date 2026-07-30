@@ -1,0 +1,84 @@
+==============================================================================
+§6 SELF-CHECKS (each must pass or the screen VOIDs)
+==============================================================================
+SELF-CHECK — the within-date shuffle (Defect 1 of the aborted run)
+  (a) fixed impl: pools respected + within-group permutation + seed-sensitive on BOTH interleaved frames  -> PASS
+  (b) known-broken lexsort impl REJECTED on seeds [0, 1, 2, 3, 4, 5] (4-row) and [0, 1, 2, 3, 4, 5] (77-row)  -> the check discriminates
+  (c) PR#105 reproducer: dates [d1,d2,d1,d2] labels [10,20,11,21]
+      broken -> [np.float64(11.0), np.float64(10.0), np.float64(21.0), np.float64(20.0)]   (row 1 is d2 and must not hold 10/11)
+      fixed  -> [np.float64(10.0), np.float64(20.0), np.float64(11.0), np.float64(21.0)]
+
+  raw-input manifest (refuses on MISSING or MALFORMED, not just mismatching):
+RAW INPUT PIN OK  corpus_fingerprint=48728e24bf2a043a…  config_sha256=f52d096e0a491008…
+
+§2A INPUT PINS
+  momentum_factor_matrix_tr.parquet  sha256=85c27fc1d5a56a4c…  PIN OK  (76,310,040 B)
+  total_return_close.parquet  sha256=8c23496ee351757e…  PIN OK  (4,007,937 B)
+
+  matrix rows=364,736 tickers=145 dates=3161 2014-01-02→2026-07-29
+
+  A4.2 rule — last t whose 120th following corpus trading day precedes the burn 2021-10-08: 2021-04-19 (its 120th following day is 2021-10-07)
+
+§2A LABEL — forward 120-trading-day excess return vs SPY, both legs on the TOTAL-RETURN series
+  contiguity: 0 of 145 tickers have interior calendar gaps → a 120-row forward shift is a complete 120-trading-day window
+  primary label == model#110 build_labels()['fwd_120_tr'] exactly on 346,807 paired rows (max|diff|=0.0e+00)
+
+==============================================================================
+A4.4 PARTITION — realised vs pinned
+==============================================================================
+  quantity                                    realised          pinned
+  N_eval                                          1082            1082   MATCH
+  n_blocks                                          18              18   MATCH
+  dropped remainder                                  2               2   MATCH
+  eval window                       2016-12-29→2021-04-19     2016-12-29→2021-04-19
+  blocks span end                           2021-04-15      2021-04-15
+  dropped dates                     ['2021-04-16', '2021-04-19']['2021-04-16', '2021-04-19']
+  admissible names per date: min=126 median=128 max=135 (A4.5 pinned min 126 / median 128; floor 20)
+  dates in window dropped by the <20-name rule: 0
+  excluded band (label would touch the burn): 120 dates 2021-04-20→2021-10-07, 16,226 rows
+  §6 no-undersized-block check: 18 blocks × 60 dates = 1080 used, 2 dropped (never equal-weighted) → PASS
+  t_{0.975,17} = 2.1098 (A4.4 pins 2.1098)
+
+  §4 setup: corr(u, |z(vol_60_tr)|) = +0.4066 pooled; per-date OLS with intercept, residual arm = top decile by residual rank
+
+==============================================================================
+§5.1 POSITIVE CONTROL — closed form, asserted, never re-calibrated
+==============================================================================
+  α = 2·sin(π·0.05/6) = 0.0523538966; (6/π)·asin(α/2) = 0.0500000000
+  realised mean per-date Spearman IC = +0.044347 (target 0.05, tolerance ±0.01)
+  |mean − 0.05| = 0.005653 → PASS
+
+==============================================================================
+NULL CONTROL — 200 within-date permutations of u, through the IDENTICAL harness
+==============================================================================
+  non-tautology: the permutation changes the per-date statistic on 100.0000% of dates (floor 95%) → PASS
+  [raw  ] P95_null=2.0960  t_0.975,17=2.1098  → T_crit=2.1098 (bound by t_student)  false-pass vs T_crit=4.5%  vs t-leg=4.5%
+  [resid] P95_null=2.0562  t_0.975,17=2.1098  → T_crit=2.1098 (bound by t_student)  false-pass vs T_crit=5.0%  vs t-leg=5.0%
+
+==============================================================================
+ARMS (primary label = per-date z-scored forward 120d excess return)
+==============================================================================
+  arm                          harness     spread      |t|   T_crit  clears   null q
+  treatment_u                      raw    +0.2381    3.270    2.110    True    0.990
+  treatment_u_residualised       resid    +0.1161    1.644    2.110   False    0.875
+  reference_z_mom                  raw    +0.2116    2.009    2.110   False    0.935
+  positive_control_u_pc            raw    +0.0547    8.137    2.110    True    1.000
+
+§4 addendum — residual statistic pooled WITHIN vol_60_tr deciles
+  pooled-within-vol-decile residual spread = +0.0533 (|t|=0.861); full-cross-section residual +0.1161 → sign preserved = True
+
+==============================================================================
+§7 VERDICT
+==============================================================================
+  gate positive_control_clears_T_crit         = True
+  gate positive_control_construction_ic_ok    = True
+  gate input_digests_match                    = True
+  gate null_false_pass_rate_le_10pct          = True
+  gate non_tautology_ok                       = True
+  gate n_blocks_ge_6                          = True
+
+  VOLATILITY-TILT — the raw arm clears (|t|=3.270 ≥ 2.110) but the §4 residual does not (|t|=1.644 < 2.110). The two-sided hypothesis is NOT supported. Nothing licensed.
+
+  PUBLICATION DISCIPLINE (§8): this verdict is WITHHELD pending adversarial review.
+
+wrote doc/research/data/2026-07-30-goal7-stage1-two-sided-tail/results.json
