@@ -1,5 +1,8 @@
 # PREREG (FROZEN): momentum on a DIVIDEND-ADJUSTED total-return series
 
+> **ERRATUM 2026-07-30 — see `doc/research/2026-07-30-erratum-block-length-equals-horizon.md`.** This document registers `block_length = h` as the answer to T2 (overlapping labels). At `L = h` the crossing fraction is `min(1, h/L)` = **1.00**, so the block means are NOT independent and no critical value taken over them is supported. The published verdict (`UNRESOLVED / TILT-NOT-EXCLUDED`, nothing licensed) is unchanged; the erratum withdraws a supporting claim, not the conclusion.
+
+
 **Frozen:** 2026-07-30, before the primary arm was computed and before the
 holdout was touched in this study. **The frozen revision — everything above the
 `RESULT` heading — contained NO result;** it was committed as `048975f`, which

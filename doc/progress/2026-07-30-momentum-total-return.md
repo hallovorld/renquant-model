@@ -1,5 +1,8 @@
 # Dividend-adjusted total-return series + a re-registered momentum study   (PR #110)
 
+> **ERRATUM 2026-07-30 — see `doc/research/2026-07-30-erratum-block-length-equals-horizon.md`.** This document registers `block_length = h` as the answer to T2 (overlapping labels). At `L = h` the crossing fraction is `min(1, h/L)` = **1.00**, so the block means are NOT independent and no critical value taken over them is supported. The published verdict (`UNRESOLVED / TILT-NOT-EXCLUDED`, nothing licensed) is unchanged; the erratum withdraws a supporting claim, not the conclusion.
+
+
 STATUS:   delivered as `UNRESOLVED / TILT-NOT-EXCLUDED` — nothing licensed, no
           model, no shadow deployment, no capital action. Part 1 (the data
           fix) is VALIDATED. Part 2 (the momentum study built on it) cleared
