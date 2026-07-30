@@ -197,3 +197,90 @@ requires a resolvable `B_v1_lag − B_v2` contrast on **at least one** feature a
 `|t| ≥ 3.24` with clean placebos on both contributing arms.
 
 **Nothing in this amendment is a result.**
+
+---
+
+# STAGE A RESULT (appended after design `c0ecf0d` and Amendment 1 `3a88551`)
+
+Verbatim: `doc/research/data/2026-07-30-v1-v2-ab-stageA.log`. JSON alongside.
+`[VERIFIED — this session]`
+
+**§4 pre-flight PASSED before any arm ran:** the shuffle is a true within-date
+permutation on a deliberately *interleaved* frame, and the self-check was itself
+shown to **reject** an unsorted frame — so it certifies something rather than
+passing vacuously. That gate exists because the immediately preceding study was
+ABORTED for exactly this defect.
+
+**Common support (§2):** v1 qualifying tickers 592, v2 515, **intersection 507**;
+**3,158** common dates; per-arm per-date observations **n = 2,597**. Label
+`sd = 0.9984` ⇒ units are SD of the cross-section, **not return**.
+
+## §6 verdict: STAGE B GATE CLOSED. The retrain A/B is NOT run.
+
+No feature shows a resolvable source difference. Largest is `asset_growth` at
+`|t| = 1.37`, against the registered bar of **3.24**.
+
+| feature | look-ahead `B_v1 − B_v1_lag` | value/source `B_v1_lag − B_v2` |
+|---|---:|---:|
+| `roe` | **+0.0002** (t=+0.22) | +0.0324 (t=+1.18) |
+| `gross_profitability` | **−0.0188** (t=−2.08) | −0.0166 (t=−0.27) |
+| `asset_growth` | **+0.0005** (t=−0.11) | +0.0323 (t=+1.37) |
+
+Arm levels, for context (all below the bar):
+
+| arm | roe | gross_profitability | asset_growth |
+|---|---:|---:|---:|
+| `B_v1` | +0.0376 (t=+1.33) | −0.0603 (t=−1.50) | +0.1308 (t=+2.33) |
+| `B_v1_lag` | +0.0373 (t=+1.30) | −0.0415 (t=−1.00) | +0.1303 (t=+2.34) |
+| `B_v2` | +0.0049 (t=+0.35) | −0.0249 (t=−0.69) | +0.0981 (t=+1.84) **PLACEBO-DIRTY** (ctl 2.29) |
+
+`B_v2 | asset_growth` is **VOID** per §4 — its placebo max `|t| = 2.29` exceeds the
+2.0 bar. The Stage-B gate check required *both* contributing arms clean, so that
+feature could not have opened the gate regardless of its contrast.
+
+## The registered expectation did NOT materialise, and that is the finding
+
+§3 registered, before any number: *"if look-ahead helps in-sample, `B_v1` should
+score better than `B_v1_lag`"*. Measured:
+
+- `roe`: better by **+0.0002** — three orders of magnitude below the arm level.
+- `asset_growth`: better by **+0.0005**, with `t = −0.11`, i.e. the per-date
+  differences are noise around zero.
+- `gross_profitability`: **worse by −0.0188** (`t = −2.08`) — the *contaminated*
+  arm lost.
+
+So the contamination bought essentially nothing predictively. **That does not make
+it acceptable.** §6 registered the asymmetry in advance and it binds here: 19% of
+filing events asserting a value was knowable before it was filed is a correctness
+defect, and correctness is not decided by a predictive horse race. What this run
+establishes is the *size* of the defect's predictive footprint — small — which is
+worth knowing precisely because it removes the temptation to argue either way from
+performance.
+
+The `gross_profitability` sign deserves one sentence of restraint: at `|t| = 2.08`
+against a 3.24 bar, "contamination made it worse" is **not** a claim. It is a
+counterweight to any story in which look-ahead reliably inflates results, and
+nothing more.
+
+## What Stage A did NOT establish
+
+- **Nothing about the two features the production scorer leans on most.**
+  `earnings_yield` and `book_to_price` were excluded from every arm (§2), and
+  `book_to_price` alone carries 2.0% of that scorer's gain. The split-factor
+  repair has to land before they can be compared at all.
+- **Nothing about model capability.** Stage A compares feature content on a common
+  support; a retrain was neither run nor licensed.
+- **No signal claim for any of the three features.** The best arm level is
+  `asset_growth` at `t = +2.33`, below the bar — and its positive sign runs
+  *against* the classical asset-growth anomaly, which is a reason for more
+  caution, not less.
+- **Nothing out-of-sample.** All in-sample on overlapping history.
+
+## Consequence for the lane
+
+The expensive stage is closed by measurement rather than by opinion, which is what
+the gate was for. **v2 remains the preferred input on correctness grounds alone.**
+The remaining blockers on making it usable are unchanged and are not
+model-capability questions: the split-adjustment mismatch on share counts, and
+v2's own unverified provenance (`data/edgar_pit/` gitignored, no refresh job,
+harvester never code-reviewed — base-data #51/#53, both OPEN).
