@@ -29,9 +29,55 @@ edited away.
 | claim | status |
 |---|---|
 | `t_student = 2.3646` as the operative bar | **INVALID** — no legitimate `df` at crossing 1.00 |
-| `P95_null = 1.9131` | **VALID** — the within-date permutation runs through the *identical* harness and block structure, so it absorbs the overlap `[VERIFIED — results.json `main.P95_null`, 200 permutations]` |
+| `P95_null = 1.9131` | **NOT ESTABLISHED — see §0a.** I called it dependence-valid; review rejected that and is right. |
 | "no gain detected" | **SURVIVES** — observed `\|t\| = 1.0029` sits at the **70th percentile** of that valid null `[VERIFIED — `main.abs_t_quantile_of_null` = 0.70]`. It fails against the valid bar too. |
 | `MDE = +0.02570` and every block-count / year projection in §2 | **WITHDRAWN** — derived as `T_crit x s.e.` with `s.e.` scaled `1/sqrt(n)` over *independent* blocks. Both inputs are unjustified at crossing 1.00. |
+
+### §0a SECOND CORRECTION — the permutation null is not established either
+
+Review (2026-07-30, second pass) rejected my rescue:
+
+> *"Running a within-date permutation through the same overlapping-block harness
+> preserves label overlap, but it can **destroy serial dependence in the score or
+> selection process**; identical block construction is not enough to establish
+> exchangeability or finite-sample calibration."*
+
+That is correct and I did not see it. My argument was *"same harness, same blocks,
+therefore the overlap is absorbed"*. The overlap it absorbs is the **label's**. A
+**within-date** permutation shuffles scores independently on each date, which
+destroys the **score's own across-date autocorrelation**. If the statistic's
+variance depends on that too — and for a block mean of a persistent score it does —
+the permutation null **understates** it. Review notes the same failure was already
+recorded on GOAL-7, where a per-date permutation made the raw-arm null
+anti-conservative.
+
+**The direction of the error is knowable even though its size is not**
+`[DERIVED — an understated null variance gives a bar that is too LOW]`:
+
+> true bar **>** 1.9131
+
+And that cuts **opposite ways** for my two claims, which is why "all of it is void"
+would be the wrong summary:
+
+| claim | effect of an anti-conservative null |
+|---|---|
+| **"no gain detected"** (observed `\|t\| = 1.0029`) | **STRENGTHENED.** It failed to clear even a bar that is too low; a correct, higher bar can only make the non-detection more secure. Survives *a fortiori*. |
+| **detection floor ≈ member IC 0.10** | **WITHDRAWN as a number.** It was read off the same too-low bar, so the true floor is **higher** — the wall is **worse** than I published, not better. |
+| **"the qualitative wall stands"** | survives *directionally*, for the same reason as the row above — but it may **not** be quantified until the null is fixed. |
+
+**So: both directional conclusions hold; neither number may be cited.**
+
+**What a corrected null owes**, added to §4.5's prerequisite list: a
+**dependence-preserving** resampling scheme — a moving-block or circular-block
+bootstrap over the per-date statistic series, with the block length justified
+against the score's measured autocorrelation — plus either a documented
+exchangeability argument or an **empirical** calibration showing the null's false-
+positive rate at the realised geometry. Not the within-date permutation.
+
+**The flip count is untouched by this.** It reads no labels and computes no
+statistic against any bar (§8).
+
+---
 
 **The defensible power statement is the empirical one**, read off the registered
 α-sweep against the *valid* bar rather than computed from a fabricated `s.e.`
@@ -43,9 +89,10 @@ edited away.
 | **0.1018** | 2.211 | **✓** | ✗ |
 | 0.1794 | 4.601 | ✓ | ✓ |
 
-So the screen's minimum detectable **member IC** is ≈ **0.10** against the valid bar,
-not ≈ 0.18. That is still **~1.4x the best member's own IC of 0.0731**, so the
-qualitative wall stands — but the number I published was wrong and derived wrongly.
+~~So the screen's minimum detectable member IC is ≈ 0.10 against the valid bar~~ —
+**withdrawn per §0a**: that reading used a bar now shown to be un-established and
+probably too low, so the true floor is **higher** and the wall is **worse**. The
+table above is retained as the shape of the argument, not as numbers to cite.
 
 **Consequences for §4:** option **A** is no longer shown "arithmetically dead", and
 option **D** is no longer justified "on power grounds". Both rested on the withdrawn

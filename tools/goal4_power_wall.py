@@ -77,9 +77,16 @@ def build(probe: dict) -> dict:
         "WITHDRAWN_note": (
             "block_se, minimum_detectable_gain and every row of `rows` assume "
             "independent blocks and are WITHDRAWN at crossing 1.00 (design §0). "
-            "The valid bar is the permutation P95_null; the valid power statement is "
-            "the empirical alpha-sweep."
+            "The permutation P95_null is ALSO not established (design §0a): a "
+            "within-date permutation destroys the score's across-date "
+            "autocorrelation, so its null variance is understated and the bar it "
+            "yields is too LOW. Direction is knowable, size is not: the true bar is "
+            "HIGHER, which strengthens the non-detection and worsens the detection "
+            "floor. Cite neither number."
         ) if crossing >= 1.0 else None,
+        # Emitted so no caller can read a detection floor off this tool while the
+        # null is unresolved. The first version of the design did exactly that.
+        "null_calibration_established": False,
         "n_eval": ne, "n_blocks": nb, "dates_per_block": round(ne / nb, 1),
         "observed_gain": arm["mean"], "observed_t": arm["t"],
         "block_se": se, "t_crit": t_crit,
