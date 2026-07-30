@@ -549,7 +549,13 @@ def main(argv=None) -> int:
     gates = {
         "positive_control_clears_T_crit": bool(pc["clears_T_crit"]),
         "positive_control_construction_ic_ok": bool(pc_construction_ok),
-        "input_digests_match": True,
+        # Read back from the recorded digests, NOT a literal True. check_pin()
+        # already aborts on a mismatch, so this can only ever be True in a run
+        # that completes -- but a gate whose value is a constant is the "guard
+        # that validates the wrong object" shape, and a reader cannot tell the
+        # difference between "checked" and "asserted" from the output.
+        "input_digests_match": bool(R["pins"]["matrix"] == PIN_MATRIX
+                                    and R["pins"]["tr"] == PIN_TR),
         "null_false_pass_rate_le_10pct": bool(fp_rate <= NULL_FALSE_PASS_CEILING),
         "non_tautology_ok": bool(nontaut_ok),
         "n_blocks_ge_6": bool(n_blocks >= MIN_BLOCKS_VOID)}

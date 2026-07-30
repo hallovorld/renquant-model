@@ -1,0 +1,78 @@
+{
+  "note": "POST-VERDICT diagnostics; not registered; cannot change the verdict computed at 97245c2",
+  "n_eval": 1082,
+  "n_blocks": 18,
+  "t_crit_leg": 2.1098155778331806,
+  "asymmetry": {
+    "u = |z(mom_12_1_tr)|                     [registered treatment]": {
+      "spread": 0.23812433200824298,
+      "t": 3.270184251538543,
+      "clears_t_leg": true
+    },
+    "u  \u27c2 |z(vol_60_tr)|                      [registered \u00a74 kill]": {
+      "spread": 0.11612038797749996,
+      "t": 1.6437243211481314,
+      "clears_t_leg": false
+    },
+    "z(vol_60_tr)": {
+      "spread": 0.3476653194299109,
+      "t": 4.610156452390584,
+      "clears_t_leg": true
+    },
+    "|z(vol_60_tr)|": {
+      "spread": 0.27275552241808715,
+      "t": 3.9110881360807244,
+      "clears_t_leg": true
+    },
+    "z(vol_60_tr)  \u27c2 u": {
+      "spread": 0.22999743880262347,
+      "t": 2.5968032677538764,
+      "clears_t_leg": true
+    },
+    "|z(vol_60_tr)| \u27c2 u": {
+      "spread": 0.14400218580996374,
+      "t": 2.1050907577425075,
+      "clears_t_leg": false
+    }
+  },
+  "mean_per_date_r2_u_on_absz_vol": 0.18265355884918383,
+  "pooled_corr_u_absz_vol": 0.4065561788430805,
+  "power": {
+    "residual_block_sd": 0.29972001770546314,
+    "MDE_spread": 0.14904725829440568,
+    "observed_spread": 0.11612038797749996,
+    "observed_over_MDE": 0.7790843609355973,
+    "power_at_observed_effect": 0.3415830637179404,
+    "retention_required_of_raw_spread": 0.6259220006515177,
+    "retention_achieved": 0.4876460418731182
+  },
+  "positive_control_finite_width_bias": {
+    "31": {
+      "mean_ic": 0.021216532258064517,
+      "mc_se": 0.0012897545536421165,
+      "draws": 20000,
+      "per_date_sd": 0.18239883818931388
+    },
+    "128": {
+      "mean_ic": 0.04148504080067753,
+      "mc_se": 0.0006235953903119294,
+      "draws": 20000,
+      "per_date_sd": 0.08818970584124743
+    },
+    "512": {
+      "mean_ic": 0.048409931994119144,
+      "mc_se": 0.00031161433009485324,
+      "draws": 20000,
+      "per_date_sd": 0.0440689211849948
+    },
+    "4096": {
+      "mean_ic": 0.04962498601758769,
+      "mc_se": 0.0002860110099287239,
+      "draws": 3000,
+      "per_date_sd": 0.015665468183279612
+    },
+    "prior_void_probability_at_this_width": 0.2899977290233035,
+    "run_se_of_mean_ic": 0.002683527290499796,
+    "corpus_median_width": 128
+  }
+}

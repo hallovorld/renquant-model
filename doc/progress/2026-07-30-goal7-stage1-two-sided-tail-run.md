@@ -1,8 +1,8 @@
-# GOAL-7 Stage 1 — executed: VOLATILITY-TILT (verdict WITHHELD pending adversarial review)
+# GOAL-7 Stage 1 — executed: VOLATILITY-TILT (adversarial review appended; verdict unchanged)
 
-STATUS:    done (run executed, verdict WITHHELD per §8 until the appended adversarial
-           review and its disposition are in the file); the evaluation window is now
-           SPENT — §2 registered it as used ONCE
+STATUS:    done (run executed; §8 adversarial review COMMISSIONED, appended VERBATIM
+           with a per-finding disposition, verdict UNCHANGED after review). The
+           evaluation window is now SPENT — §2 registered it as used ONCE.
 WHAT:      Executed the frozen prereg doc/research/2026-07-30-goal7-stage1-two-sided-tail-prereg.md
            (model#117) exactly as written, under AMENDMENT 4 — the sole authoritative
            partition (A4.6 makes both sections titled "AMENDMENT 3" non-executable).
@@ -54,18 +54,47 @@ EVIDENCE:  doc/research/2026-07-30-goal7-stage1-two-sided-tail-results.md
            - verdict is IDENTICAL under both readings of §3's label wording (z-scored
              primary and raw-excess-return secondary, both run in full with their own
              nulls)  [VERIFIED - results.json arms.z / arms.raw]
-NEXT:      1. Append the commissioned adversarial review + its disposition VERBATIM to
-              §10 of the results doc; the verdict stays WITHHELD until then (§8).
-           2. No Stage-2 work. GOAL-7 does not have a formulation that survives the
+           - §8 ADVERSARIAL REVIEW, appended VERBATIM at results §10, disposition
+             §10.1: "NOT UPHELD as a challenge to the verdict — VOLATILITY-TILT stands."
+           The reviewer re-implemented the estimand independently from the pinned
+           parquets and reproduced every headline to six decimals. Two MATERIAL
+           findings, both accepted, both now in the doc, and they cut opposite ways:
+           - the KILL leg is STRONGER than the doc argued. The asymmetry test (which
+             I then re-measured myself): z(vol_60_tr) alone pays +0.3477 SD t=+4.610,
+             MORE than the two-sided arm, and volatility SURVIVES orthogonalisation
+             to u (+0.2300, t=+2.597) while u does NOT survive orthogonalisation to
+             volatility. Direction of explanation identified, not asserted.
+           - the RAW leg is WEAKER than its 0.990 null quantile implies. u's per-date
+             statistic has lag-1 autocorrelation 0.94; the REGISTERED null permutes
+             within date and destroys that persistence, so it is anti-conservative.
+             Under persistence-preserving nulls the raw arm's p is 0.044 / 0.24, not
+             0.010. A defect in the registered DESIGN, not the execution. I did not
+             swap the bar after seeing the result — that is the move prereg
+             discipline forbids — I disclosed the direction.
+           Also accepted: residual-arm power was never stated (MDE 0.1490 SD vs
+           observed 0.1161 = 77.9% of MDE, power 34.2% — so "did not clear" and "a
+           real 0.116 SD effect this window could not see" are NOT distinguishable);
+           "largely a dispersion ranking" overstated corr=+0.4066 (per-date R2 = 0.183)
+           and was deleted; 5 provenance-tag defects repaired; the n=512 Monte-Carlo
+           figure corrected +0.049 -> +0.048; the input_digests_match gate was a
+           literal True (the "guard that validates the wrong object" shape) and is
+           fixed in code AFTER the run — results.json was produced by 97245c2.
+NEXT:      1. No Stage-2 work. GOAL-7 does not have a formulation that survives the
               volatility control on this window, and the window is spent.
-           3. Carry forward, if GOAL-7 is re-pitched: §5.1's positive-control constant
+           2. Carry forward, if GOAL-7 is re-pitched: §5.1's positive-control constant
               is mis-calibrated at finite cross-section width (the closed-form alpha
               inverts the ASYMPTOTIC Spearman-Pearson relation; the van-der-Waerden
-              construction realises ~0.020 at n=31, ~0.043 at n=128, ~0.049 at n=512
-              [VERIFIED - Monte-Carlo of the registered construction, this session]).
-              It passed here with 0.0043 of margin because this corpus is 128 names
-              wide. On a narrower panel the same correct code VOIDs the screen. Fix the
-              constant in the NEXT registration, never in a running one.
+              construction realises +0.021 at n=31, +0.041 at n=128, +0.048 at n=512,
+              +0.050 at n=4096  [VERIFIED - tools/goal7_stage1_postreview_diagnostics.py,
+              postreview_diagnostics.json]). It passed here with 0.0043 of realised
+              margin, but the EXPECTED margin above the VOID floor was only ~0.0015,
+              i.e. a ~29% prior chance of a spurious VOID. On a narrower panel the same
+              correct code VOIDs outright. Fix the constant in the NEXT registration,
+              never in a running one.
+           3. Carry forward: the REGISTERED null (independent within-date permutation)
+              cannot calibrate a persistent score. Any future registration on this
+              programme that permutes within date must either preserve the score's
+              cross-date persistence or state that its bar is anti-conservative.
            4. A re-test of the two-sided hypothesis needs dates OUTSIDE this corpus:
               2021-10-08 onward is burned (it is where the U-shape was observed) and
               2016-12-29 -> 2021-04-19 is now spent.
