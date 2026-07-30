@@ -10,14 +10,66 @@ commits in 20 hours.
 
 ---
 
+## §0 CORRECTION — I carried the defect I was writing about
+
+Review (2026-07-30) rejected the power-wall arithmetic on a ground I should have
+checked first: **the Phase-0 estimator's blocks are not independent.** Its frozen
+prereg specifies a forward label of `h = 60` trading days and *"non-overlapping
+contiguous blocks of **60** trading days"* `[VERIFIED — prereg §, lines 123 and 138]`.
+The *blocks* do not overlap; their **label windows overlap completely** —
+crossing fraction `min(1, h/L) = 60/60 =` **1.00** `[DERIVED]`. Every block's labels
+reach entirely into the next.
+
+I spent this same day rejecting exactly this arithmetic in GOAL-7 (`L = h` is not a
+fix, it is 100% crossing) and then built a power table on top of it. Recorded, not
+edited away.
+
+**What survives and what does not**, measured rather than argued:
+
+| claim | status |
+|---|---|
+| `t_student = 2.3646` as the operative bar | **INVALID** — no legitimate `df` at crossing 1.00 |
+| `P95_null = 1.9131` | **VALID** — the within-date permutation runs through the *identical* harness and block structure, so it absorbs the overlap `[VERIFIED — results.json `main.P95_null`, 200 permutations]` |
+| "no gain detected" | **SURVIVES** — observed `\|t\| = 1.0029` sits at the **70th percentile** of that valid null `[VERIFIED — `main.abs_t_quantile_of_null` = 0.70]`. It fails against the valid bar too. |
+| `MDE = +0.02570` and every block-count / year projection in §2 | **WITHDRAWN** — derived as `T_crit x s.e.` with `s.e.` scaled `1/sqrt(n)` over *independent* blocks. Both inputs are unjustified at crossing 1.00. |
+
+**The defensible power statement is the empirical one**, read off the registered
+α-sweep against the *valid* bar rather than computed from a fabricated `s.e.`
+`[VERIFIED — control_power_probe.json `alpha_sweep`]`:
+
+| member IC | block `t` | clears `P95_null` 1.9131 | clears `t_student` 2.3646 |
+|---:|---:|:---:|:---:|
+| 0.0633 | 0.969 | ✗ | ✗ |
+| **0.1018** | 2.211 | **✓** | ✗ |
+| 0.1794 | 4.601 | ✓ | ✓ |
+
+So the screen's minimum detectable **member IC** is ≈ **0.10** against the valid bar,
+not ≈ 0.18. That is still **~1.4x the best member's own IC of 0.0731**, so the
+qualitative wall stands — but the number I published was wrong and derived wrongly.
+
+**Consequences for §4:** option **A** is no longer shown "arithmetically dead", and
+option **D** is no longer justified "on power grounds". Both rested on the withdrawn
+projections. They stay on the table as options; their *justifications* are now
+pending the calibration in §4.5, which review asked to be made a prerequisite to
+choosing among A–D. Everything in §2 below is **PROVISIONAL** and must be read
+through this section.
+
+---
+
 ## 1. Bottom line
 
 The Phase-0 screen did not fail because of a calibration bug. It has a
-**structural power wall**: the smallest ensemble gain it could ever have declared
-is **+0.0257 IC**, and it is measuring a quantity whose observed value is
-**−0.0109 IC** (t = −1.0029, 8 blocks). Re-running it, with more compute or a
-repaired positive control, cannot change that. The wall is set by the geometry —
-508 evaluation dates, a 60-day label, therefore 8 independent blocks.
+**structural power wall** — but stated in the only currently defensible terms
+(§0): against the **dependence-valid** permutation bar `P95_null = 1.9131`, the
+smallest **member IC** the screen could have detected is ≈ **0.10**, versus the best
+member's own IC of **0.0731**. The observed ensemble gain is **−0.0109 IC**
+(`t = −1.0029`), sitting at the **70th percentile** of that valid null. Re-running
+the screen cannot change this; the wall is set by 508 evaluation dates under a
+60-day label.
+
+~~the smallest ensemble gain it could ever have declared is +0.0257 IC ... 8
+independent blocks~~ — **withdrawn, §0.** The blocks are not independent
+(crossing 1.00) and that figure was derived assuming they were.
 
 So the open question is **not** "is the ensemble good?" It is **"what size of gain
 is worth buying, and are we willing to pay what it costs to see one?"** That is a
@@ -31,21 +83,26 @@ All from the committed probe
 | quantity | value | provenance |
 |---|---|---|
 | evaluation dates | 508 | `[VERIFIED — probe, `independent_main_arm.n_eval`]` |
-| independent blocks (60d label) | **8** (28 dates dropped) | `[VERIFIED — same]` |
+| blocks (60d label, crossing **1.00** — NOT independent) | **8** (28 dates dropped) | `[VERIFIED — same]` |
 | observed ensemble gain | **−0.01090 IC** | `[VERIFIED — same, `mean`]` |
 | its block-t | **−1.0029** | `[VERIFIED — same, `t`]` |
-| block-mean standard error | 0.010870 | `[DERIVED — \|mean\|/\|t\|]` |
-| `T_crit` = t(0.975, 7) | 2.3646 | `[VERIFIED — probe, `t_crit_student_leg`]` |
-| **minimum detectable gain** | **+0.02570 IC** | `[DERIVED — T_crit x s.e.]` |
+| block-mean standard error | ~~0.010870~~ | **WITHDRAWN §0** — assumes independent blocks |
+| `t_student` = t(0.975, 7) | ~~2.3646~~ | **INVALID §0** — no legitimate `df` at crossing 1.00 |
+| `P95_null` (permutation, 200 draws) | **1.9131** | `[VERIFIED — results.json `main.P95_null`]` — the valid bar |
+| **minimum detectable member IC** | **≈ 0.10** | `[VERIFIED — α-sweep vs `P95_null`, §0]` |
 | best member (benchmark) IC | 0.07312 | `[VERIFIED — probe, `benchmark_mean_ic`]` |
 
-The registered α-sweep agrees from the other direction: the control was **not
-detected** at member IC 0.1018 (t = 2.211 < 2.3646) and **first detected** at
-member IC 0.1794 (t = 4.601) `[VERIFIED — probe, `alpha_sweep`]`. To fire, the
-screen needs an ensemble gain of **+0.098 IC** — larger than the best member's
-entire IC.
+The registered α-sweep, read against the **valid** bar: not detected at member IC
+0.0633 (`t = 0.969`), **first detected at member IC 0.1018** (`t = 2.211 > 1.9131`)
+`[VERIFIED — probe, `alpha_sweep`]`. Against the invalid Student bar it would have
+taken 0.1794. The earlier claim "the screen needs +0.098 IC of gain" used that
+invalid bar and is withdrawn.
 
-### What each detectable gain would cost
+### What each detectable gain would cost — **WITHDRAWN, see §0**
+
+> Retained so the retraction has something to point at. Every row assumes
+> `1/sqrt(n)` scaling over independent blocks, which crossing fraction 1.00 denies.
+> Do not cite these numbers.
 
 First integer `n` satisfying `g >= t(0.975, n-1) x s.e._8 x sqrt(8/n)`, holding the
 current 63.5 dates/block `[DERIVED — integer scan, 2026-07-30]`:
@@ -76,7 +133,8 @@ power wall is a finding about the question, not an excuse about the answer.
 The point estimate being **negative** matters too. It is not evidence against the
 ensemble — at t = −1.0029 it is indistinguishable from zero — but it does mean
 nobody should cite `t = −1.0029` as anti-ensemble evidence. It is a *no-information*
-result, and the screen's own MDE is why.
+result, and the screen's own detection floor is why — member IC ≈ 0.10 against a
+best member of 0.0731 (§0), not the withdrawn `+0.0257` gain figure.
 
 ## 4. Four options
 
@@ -87,8 +145,10 @@ Take `g = +0.010` as the smallest gain worth deploying → 39 blocks, ~2 476 eva
 dates. The panel carries **2 570 dates total**
 `[VERIFIED — prod artifact `panel_shape.dates`]`, so this consumes essentially the
 entire panel as out-of-sample and leaves no training data.
-**Verdict for discussion: arithmetically dead at h=60.** Worth stating explicitly
-so nobody proposes it again.
+**Verdict, DOWNGRADED per §0:** this rested on the withdrawn projection of 39 blocks.
+The *shape* of the objection survives — a window long enough to help would consume
+the panel — but "arithmetically dead" is no longer established, and A stays live
+pending §4.5.
 
 ### Option B — shrink the label horizon to buy blocks
 The 60-day label is what forces 60-day blocks. At h=20 the same 508 dates give
@@ -114,6 +174,9 @@ statement "an ensemble of these three members is not measurable at a size worth
 deploying", not on a KILL verdict it never earned.
 **This is a real option, not a retreat** — but it is the operator's call, not
 mine, which is precisely why it is listed here rather than acted on.
+**DOWNGRADED per §0:** D was justified "on power grounds" via the withdrawn `+0.0257`
+MDE. Against the *valid* bar the wall is member IC ~0.10 vs the best member's 0.0731 —
+still a wall, but D cannot be closed on the old number.
 
 ## 5. What I recommend, and what I need
 
@@ -123,8 +186,24 @@ costs nothing, and it decides between C and D without any preregistration. If
 flips are plentiful, C is the highest-power route to a *tradeable* answer. If they
 are rare, D is honest and we stop paying for this line.
 
-**Needed from review:** agreement on (a) the smallest gain worth deploying — every
-row of the §2 table hangs on it — and (b) whether to run the flip count.
+**Two constraints review imposed, adopted verbatim:**
+
+**§4.5 — a dependence-valid calibration is a PREREQUISITE to choosing among A–D.**
+Not a follow-up. Until a dependence-valid variance and finite-sample calibration
+exist for whichever estimator is chosen, no option can be scored against another.
+The existing `P95_null` shows the shape of that calibration: permute within date
+through the identical harness, take the P95 of the realised statistic, and never
+take a Student bar the block geometry does not support.
+
+**The flip count is DESCRIPTIVE ONLY and must be label-isolated.** It counts how many
+buy/no-buy decisions the ensemble would have changed. It must not touch outcome
+labels, must not report any performance of the flipped set, and must not be able to
+select a favourable evaluation rule — otherwise a feasibility measurement becomes a
+covert screen run before its own prereg. If it cannot be built under that isolation,
+it does not run.
+
+**Needed from review:** agreement on (a) the smallest gain worth deploying, and
+(b) whether to run the flip count under the isolation above.
 
 ## 6. Explicitly not proposed
 

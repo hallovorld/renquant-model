@@ -29,6 +29,10 @@ PROBE = (Path(__file__).resolve().parent.parent / "doc" / "research" / "data"
 #: design PR is that nobody has yet chosen which of these is worth deploying.
 TARGET_GAINS = (0.0257, 0.0200, 0.0100, 0.0050, 0.0020, 0.0008)
 
+#: The estimator's frozen geometry (prereg lines 123 and 138).
+LABEL_H = 60
+BLOCK_L = 60
+
 
 def block_se(main_arm: dict) -> float:
     """s.e. of the block mean, recovered from the arm's own mean and t.
@@ -60,7 +64,22 @@ def build(probe: dict) -> dict:
         n = blocks_needed(g, se, nb)
         rows.append({"gain": g, "blocks": n, "eval_dates": round(n * ne / nb),
                      "years": round(n * ne / nb / 252, 1), "vs_today": round(n / nb, 1)})
+    # Crossing fraction of the estimator's own geometry. At 1.00 every block's
+    # label window reaches entirely into the next, so NOTHING below that assumes
+    # independent blocks is usable. Emitted with the results rather than left to a
+    # reader, because the first version of this tool produced an MDE and a year
+    # table without ever computing this number.
+    crossing = min(1.0, LABEL_H / BLOCK_L)
     return {
+        "label_h": LABEL_H, "block_L": BLOCK_L,
+        "crossing_fraction": crossing,
+        "independent_blocks_established": crossing < 1.0,
+        "WITHDRAWN_note": (
+            "block_se, minimum_detectable_gain and every row of `rows` assume "
+            "independent blocks and are WITHDRAWN at crossing 1.00 (design §0). "
+            "The valid bar is the permutation P95_null; the valid power statement is "
+            "the empirical alpha-sweep."
+        ) if crossing >= 1.0 else None,
         "n_eval": ne, "n_blocks": nb, "dates_per_block": round(ne / nb, 1),
         "observed_gain": arm["mean"], "observed_t": arm["t"],
         "block_se": se, "t_crit": t_crit,
@@ -79,6 +98,10 @@ def main(argv=None) -> int:
     out = build(json.loads(Path(a.probe).read_text()))
 
     if a.self_check:
+        # The crossing fraction must be REPORTED whatever its value; a tool that
+        # silently omits it is how the withdrawn table shipped in the first place.
+        assert "crossing_fraction" in out
+        assert (out["WITHDRAWN_note"] is None) == out["independent_blocks_established"]
         rows = out["rows"]
         # Sorted by DECREASING gain, so blocks must be strictly increasing. This is
         # the exact invariant the discarded solver violated.
