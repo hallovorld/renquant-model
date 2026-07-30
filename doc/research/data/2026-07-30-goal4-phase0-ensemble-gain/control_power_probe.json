@@ -1,0 +1,120 @@
+{
+  "manifest_root_digest": "382823b2a10c680409370e777eaea3644628e4010f64cbb3ecdec70ee319369a",
+  "input_digests_reverified": {
+    "label_corpus": "7defdacf97f8eb057a9a56a2eb7bc6eb48bc33adb9fd00a2a6c36943be87daa5",
+    "prod_xgb_score_panel": "0cdadd9e34e164fe02a7a693183a60a848f1ed7beda3259f7c8d1b105d55f20c",
+    "certified_clf_score_panel": "1da3fcfab06af1e597ac0eb83dff4741ed3dd027de8b8a6b4d58979f5bc4efe4",
+    "patchtst_score_panel": "6eb209e2491b26b18b7b687c7683f27f8e5cbe56592186bfbac68381e2606d18"
+  },
+  "independent_main_arm": {
+    "n_eval": 508,
+    "n_blocks": 8,
+    "dropped": 28,
+    "mean": -0.01090187158131152,
+    "t": -1.0028890759860138
+  },
+  "benchmark_mean_ic": 0.07312337921152401,
+  "t_crit_student_leg": 2.3646242515927844,
+  "alpha_sweep": [
+    {
+      "alpha": 0.0523538966,
+      "realised_mean_ic": 0.0368092172214109,
+      "ensemble_mean_ic": 0.07611776448901075,
+      "mean_g": 0.002020804578798047,
+      "t": 0.0984127412985026,
+      "detected": false,
+      "construction_within_tol": false
+    },
+    {
+      "alpha": 0.06,
+      "realised_mean_ic": 0.0441299496344696,
+      "ensemble_mean_ic": 0.08108571427952013,
+      "mean_g": 0.00701915120804247,
+      "t": 0.3407456303176546,
+      "detected": false,
+      "construction_within_tol": true
+    },
+    {
+      "alpha": 0.064,
+      "realised_mean_ic": 0.04795558384957826,
+      "ensemble_mean_ic": 0.08369884002235574,
+      "mean_g": 0.009623619155896372,
+      "t": 0.4673178394996751,
+      "detected": false,
+      "construction_within_tol": true
+    },
+    {
+      "alpha": 0.066,
+      "realised_mean_ic": 0.04989685159727274,
+      "ensemble_mean_ic": 0.0850126862803261,
+      "mean_g": 0.01090968618716915,
+      "t": 0.5294053292130563,
+      "detected": false,
+      "construction_within_tol": true
+    },
+    {
+      "alpha": 0.068,
+      "realised_mean_ic": 0.051778166389445275,
+      "ensemble_mean_ic": 0.08631361934453889,
+      "mean_g": 0.012195472203958776,
+      "t": 0.5918825295537766,
+      "detected": false,
+      "construction_within_tol": true
+    },
+    {
+      "alpha": 0.072,
+      "realised_mean_ic": 0.055593128495881376,
+      "ensemble_mean_ic": 0.08894003787803421,
+      "mean_g": 0.014826659770329745,
+      "t": 0.7182702472185847,
+      "detected": false,
+      "construction_within_tol": true
+    },
+    {
+      "alpha": 0.08,
+      "realised_mean_ic": 0.06327144969542509,
+      "ensemble_mean_ic": 0.09412115346847647,
+      "mean_g": 0.0200003466155595,
+      "t": 0.9688560838418617,
+      "detected": false,
+      "construction_within_tol": false
+    },
+    {
+      "alpha": 0.12,
+      "realised_mean_ic": 0.10184632787999015,
+      "ensemble_mean_ic": 0.120060200860043,
+      "mean_g": 0.04589370598408676,
+      "t": 2.2107738528306933,
+      "detected": false,
+      "construction_within_tol": false
+    },
+    {
+      "alpha": 0.2,
+      "realised_mean_ic": 0.17935563568419605,
+      "ensemble_mean_ic": 0.17228781629506304,
+      "mean_g": 0.09799382815942888,
+      "t": 4.601484964700083,
+      "detected": true,
+      "construction_within_tol": false
+    },
+    {
+      "alpha": 0.3,
+      "realised_mean_ic": 0.27700268507217624,
+      "ensemble_mean_ic": 0.23757526383046842,
+      "mean_g": 0.16302053373854264,
+      "t": 7.442525741422002,
+      "detected": true,
+      "construction_within_tol": false
+    }
+  ],
+  "best_calibrated_alpha": {
+    "alpha": 0.066,
+    "realised_mean_ic": 0.04989685159727274,
+    "ensemble_mean_ic": 0.0850126862803261,
+    "mean_g": 0.01090968618716915,
+    "t": 0.5294053292130563,
+    "detected": false,
+    "construction_within_tol": true
+  },
+  "structural_conclusion": "The \u00a75.1 control is STRUCTURALLY under-powered against this benchmark, not merely mis-calibrated. At the alpha whose REALISED IC equals the registered 0.05 (alpha=0.066, realised 0.04990), the control's t is +0.5294, still far below the student-t leg 2.3646. Equal-weight rank-averaging a 0.05-IC member into a benchmark whose own realised IC is 0.07312 cannot produce a detectable gain. A re-freeze that only bias-corrects alpha would VOID again."
+}
