@@ -24,13 +24,13 @@ I spent this same day rejecting exactly this arithmetic in GOAL-7 (`L = h` is no
 fix, it is 100% crossing) and then built a power table on top of it. Recorded, not
 edited away.
 
-**What survives and what does not**, measured rather than argued:
+**What survives and what does not.** Two of these rows were themselves corrected in later passes — read the §0a corrections before citing any of them:
 
 | claim | status |
 |---|---|
 | `t_student = 2.3646` as the operative bar | **INVALID** — no legitimate `df` at crossing 1.00 |
 | `P95_null = 1.9131` | **NOT ESTABLISHED — see §0a.** I called it dependence-valid; review rejected that and is right. |
-| "no gain detected" | **SURVIVES** — observed `\|t\| = 1.0029` sits at the **70th percentile** of that valid null `[VERIFIED — `main.abs_t_quantile_of_null` = 0.70]`. It fails against the valid bar too. |
+| "no gain detected" | ~~**SURVIVES**~~ → **UNRESOLVED, see §0a's THIRD correction.** This row called the permutation null "valid" and read a 70th-percentile position off it; the row below now says that null is not established, so the percentile has no established reference either. The raw observation stands (`\|t\| = 1.0029`, `main.abs_t_quantile_of_null = 0.70` `[VERIFIED — results.json]`); the *conclusion* drawn from it does not. |
 | `MDE = +0.02570` and every block-count / year projection in §2 | **WITHDRAWN** — derived as `T_crit x s.e.` with `s.e.` scaled `1/sqrt(n)` over *independent* blocks. Both inputs are unjustified at crossing 1.00. |
 
 ### §0a SECOND CORRECTION — the permutation null is not established either
@@ -51,21 +51,43 @@ the permutation null **understates** it. Review notes the same failure was alrea
 recorded on GOAL-7, where a per-date permutation made the raw-arm null
 anti-conservative.
 
-**The direction of the error is knowable even though its size is not**
-`[DERIVED — an understated null variance gives a bar that is too LOW]`:
+### THIRD correction — I signed the direction of an error I had not measured
 
-> true bar **>** 1.9131
+The paragraph that stood here claimed the *direction* was knowable even though the
+size was not, tagged `[DERIVED]`:
 
-And that cuts **opposite ways** for my two claims, which is why "all of it is void"
-would be the wrong summary:
+> ~~true bar **>** 1.9131~~ — **WITHDRAWN**
 
-| claim | effect of an anti-conservative null |
+Review round 2: *"without a measured dependence analysis or calibration, its direction
+and resulting decision threshold are not an established numerical or directional
+result."* **Correct, and it is the same move I criticised elsewhere today** — deriving
+a conclusion from an inferential object whose validity is exactly what is in question.
+
+The argument I made was: a within-date permutation destroys the score's across-date
+autocorrelation; positive autocorrelation inflates a block mean's true variance;
+therefore the permutation null is too narrow and the bar too low. Every step of that is
+plausible and **none of it is measured here**. It assumes the permutation null differs
+from a valid null *only* in that variance term — that its centre and shape are otherwise
+right — and that the relevant autocorrelation is positive at the realised geometry.
+Neither was checked. A plausible mechanism stated confidently is still an assumption,
+and `[DERIVED]` was the wrong tag for it.
+
+**Registered consequence — the screen result is UNRESOLVED, not "strengthened":**
+
+| claim | status |
 |---|---|
-| **"no gain detected"** (observed `\|t\| = 1.0029`) | **STRENGTHENED.** It failed to clear even a bar that is too low; a correct, higher bar can only make the non-detection more secure. Survives *a fortiori*. |
-| **detection floor ≈ member IC 0.10** | **WITHDRAWN as a number.** It was read off the same too-low bar, so the true floor is **higher** — the wall is **worse** than I published, not better. |
-| **"the qualitative wall stands"** | survives *directionally*, for the same reason as the row above — but it may **not** be quantified until the null is fixed. |
+| **"no gain detected"** (`\|t\| = 1.0029` vs 1.9131) | **UNRESOLVED.** Not "survives *a fortiori*". Non-detection against a bar of unknown validity is not evidence of absence; the comparison has no established reference. |
+| **detection floor ≈ member IC 0.10** | **WITHDRAWN as a number** (unchanged). |
+| **"the qualitative wall stands"** | **WITHDRAWN as an inference.** It rested entirely on the signed direction above. |
 
-**So: both directional conclusions hold; neither number may be cited.**
+**Nothing about the screen's outcome may be carried forward** — not the number, and not
+the direction. What survives is the *observation* that `|t| = 1.0029` was recorded
+against a bar of `1.9131`, with both quantities' meaning pending a valid null.
+
+I am deliberately **not** rescuing this by measuring the autocorrelation now. Computing
+a dependence diagnostic after seeing which way it needs to point is the same failure
+this document is correcting, one level down; it belongs in the preregistered
+calibration §4.5 already requires.
 
 **What a corrected null owes**, added to §4.5's prerequisite list: a
 **dependence-preserving** resampling scheme — a moving-block or circular-block
@@ -227,11 +249,30 @@ still a wall, but D cannot be closed on the old number.
 
 ## 5. What I recommend, and what I need
 
-**Recommend C, gated on one cheap measurement first**: count the decision flips
-the ensemble would have caused over the 508 dates. That number is a day's work,
-costs nothing, and it decides between C and D without any preregistration. If
-flips are plentiful, C is the highest-power route to a *tradeable* answer. If they
-are rare, D is honest and we stop paying for this line.
+**REVISED after review round 2 — the flip count does not decide C vs D, and I said it
+did.** The original text below claimed the count "decides between C and D without any
+preregistration". It cannot. A flip count establishes only that the boundary estimand
+is **computationally feasible and non-degenerate** — that flips exist in usable
+numbers. Choosing C over D additionally requires two things the count does not supply:
+
+1. a **valid inferential design** for the boundary estimand — its own dependence
+   structure, null and critical value, none of which follow from the cross-sectional
+   screen's (§4.5 already makes this a prerequisite, and it applies to C's estimand
+   specifically, not just to A/B);
+2. a **precommitted deployment-materiality threshold** — the smallest gain worth
+   deploying, fixed *before* the count is read. Without it, "plentiful" and "rare" are
+   decided after seeing the number, which is the selection this document exists to
+   avoid.
+
+So the count is **necessary and not sufficient**: a low count can rule C *out* (it
+would trade one power wall for another), but a high count cannot rule C *in*.
+
+~~**Recommend C, gated on one cheap measurement first**: count the decision flips the
+ensemble would have caused over the 508 dates. That number is a day's work, costs
+nothing, and it decides between C and D without any preregistration. If flips are
+plentiful, C is the highest-power route to a *tradeable* answer. If they are rare, D is
+honest and we stop paying for this line.~~ — superseded; the recommendation is now
+**"C remains open pending (1) and (2); no option is recommended yet"**.
 
 **Two constraints review imposed, adopted verbatim:**
 
@@ -258,7 +299,13 @@ No new prereg. No re-run of the voided screen. No change to any production
 surface. No claim that the ensemble is bad.
 
 
-## §8 FLIP COUNT — run, and it decides C vs D
+## §8 FLIP COUNT — run; it establishes FEASIBILITY only
+
+> **Heading corrected after review round 2.** This section was titled *"run, and it
+> decides C vs D"*. It does not — see §5: the count can rule C **out** but cannot rule
+> it **in**, because that additionally needs a valid inferential design for the boundary
+> estimand and a precommitted deployment-materiality threshold. Read every result below
+> as feasibility, not as a decision.
 
 Review permitted this as a descriptive feasibility measurement under three
 conditions. All three are now enforced in code, not promised in prose
@@ -290,6 +337,16 @@ conditions. All three are now enforced in code, not promised in prose
 **The boundary is crossed constantly.** The ensemble would change **4.3 of the top
 10 picks on a typical date**, on **every** date in the window — not the single digits
 per year that would have made option C a second power wall.
+
+**What that does and does not license.** It rules out the *degenerate* failure this
+count was run to exclude: C is not starved of units. It does **not** make C the
+recommendation. Per §5, choosing C over D still requires a valid inferential design for
+the boundary estimand — flipped decisions on adjacent dates are no more independent
+than the block means that voided the cross-sectional screen, and that dependence is
+unmeasured here — plus a deployment-materiality threshold fixed before any outcome is
+attached to these flips. **2 201 flips is a count of opportunities, not evidence that
+taking them pays.** Reading it as the latter would be the same error as the withdrawn
+§0a direction: a plausible step taken as an established one.
 
 **This settles the §5 gate in favour of C.** It does **not** say the ensemble is
 better — it reports no performance and cannot. It says the decision-boundary
