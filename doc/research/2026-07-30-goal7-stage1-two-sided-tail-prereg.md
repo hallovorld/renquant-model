@@ -304,3 +304,62 @@ The verdict is **withheld pending adversarial review**, appended verbatim with i
 disposition before merge. On this programme that is the only thing that has worked on
 a contested question: a CLOSE was published and retracted, a second was withheld, and
 the commissioned review destroyed it.
+
+---
+
+# AMENDMENT 2 — the chosen holdout is CONTAMINATED by the motivating observation
+
+Registered 2026-07-30, before any run. Amendment 1 pinned the corpus, the split
+arithmetic, the positive control and the residualisation estimator — all correct and all
+retained. This amendment does not reopen any of them. It corrects the one thing pinning
+the split made checkable: **which sample the hypothesis was read off.**
+
+## A2.1 The finding
+
+model#110 §4 states it verbatim: **"Mean label z by `mom_12_1_tr` decile *on the
+holdout*"** `[VERIFIED — doc/research/2026-07-30-momentum-total-return-prereg.md §4]`.
+That study's holdout is **2021-10-08 → 2026-07-29**
+`[VERIFIED — tr_matrix_metadata.json `split`, doc/research/data/2026-07-30-momentum-total-return/]`.
+
+Amendment 1's holdout is **2023-08-07 → 2026-02-04**, which lies **entirely inside** it.
+
+So the partition this screen was going to treat as its one-use holdout is a strict subset
+of the sample the U-shape was observed on. Evaluating there is not an out-of-sample test
+of the hypothesis; it is a re-analysis of the observation that generated it, with a
+holdout that is not one. §2 was written to prevent exactly this and, as published, walked
+into it — the failure was not in §2's reasoning but in never checking *where* the
+motivating profile came from.
+
+## A2.2 Registered consequence
+
+**The evaluation partition is the part of the screen that predates the contamination:**
+
+> **2016-12-29 → 2021-10-07**, used ONCE.
+
+- **2021-10-08 → 2026-07-29 is BURNED for this hypothesis** and may not be used in Stage 1
+  in any arm, including descriptive ones. That covers Amendment 1's entire holdout and the
+  tail of its screen.
+- The 60-trading-day embargo and every eligibility rule from Amendment 1 apply unchanged,
+  now at the new boundary.
+- `n_blocks` is therefore **not** Amendment 1's pinned 10. It is recomputed from the
+  realised admissible dates in this window under the frozen `floor(N_eval / 60)` rule with
+  the remainder dropped, and §7's `n_blocks < 6` clause applies to whatever that yields.
+  **If the uncontaminated window cannot supply 6 blocks, the registered answer is
+  UNRESOLVED (underpowered) and Stage 1 does not run against a contaminated one instead.**
+
+Amendment 1's disclosed embargo-vs-label-horizon leak (60 < 120) is unaffected in kind and
+still applies at the new boundary; its robustness line — re-running with a 120-date embargo
+— is retained.
+
+## A2.3 Why this is a real cost, stated rather than minimised
+
+This trades a 627-date holdout for a shorter, older window, and older data is not
+free: the 2016-2021 regime is not the one the model trades today. **That is the price of
+the hypothesis having been discovered post hoc, and it is the honest price.** The
+alternative — testing on the sample the pattern was read off — produces a number that
+cannot distinguish signal from the reason the study was written.
+
+§7's limit therefore tightens rather than relaxes: a pass on this window is
+**SCREEN-INTERESTING on a pre-2021 regime**, and licenses only writing the Stage-2 design.
+It does not license a claim about the current regime, which would need dates that do not
+exist uncontaminated in this corpus.
