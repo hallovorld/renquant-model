@@ -200,6 +200,105 @@ requires a resolvable `B_v1_lag − B_v2` contrast on **at least one** feature a
 
 ---
 
+## AMENDMENT 2 (2026-07-30, review findings, BEFORE any arm was computed)
+
+Two review defects, closed before any number exists.
+
+### 2a. `B_v1_lag`'s +60d stamp does not isolate value/source ALONE
+
+§3 claimed `B_v1_lag − B_v2` isolates "the value/source contribution alone"
+because both arms are "conservatively stamped". That does not hold: 60d is
+registered in §3 as the 10-K **p95**, so **by construction ~5% of 10-Ks alone**
+file later than the re-stamp — before counting any other lag-prone tail — and
+§7 separately measures **10.2% of quarterly and 11.7% of annual facts** with a
+first-publication lag **> 90d** on the fuller v2 sample. For that residual,
+`B_v1_lag` still carries the value from before it was truly available: smaller
+contamination than `B_v1`, but not zero. `B_v1_lag − B_v2` was therefore an
+**upper bound** on the value/source effect, not a pure isolate, as `renquant-base-data`
+review of the companion fallback-constant PR (**#57**) independently confirmed
+about the same 60d/p95 construction.
+
+**Resolution: stop estimating a conservative constant, and reuse the ground
+truth that already exists.** `B_v2`'s own availability stamp is real `filed`
+per fact, independently verified in §1 at **0 PIT violations**. `B_v1_lag` is
+REDEFINED as: v1's **values**, joined on `(ticker, fiscal_period_end)` to
+**v2's real `filed` date for that same fact** — not an estimated constant.
+Where a v1 fact has no matching v2 `filed` stamp, that `(ticker,
+fiscal_period_end)` row is DROPPED from `B_v1_lag`, never defaulted to +60d;
+the runner must print the dropped-row count so a silent shrink cannot pass
+unnoticed. `LAG_DAYS = 60` is retired from the design; nothing in this study
+depends on it any longer.
+
+This makes the two arms' availability discipline **literally identical, not
+approximately conservative**, so:
+- `B_v1 − B_v1_lag` still isolates the look-ahead contribution alone — values
+  held identical, only the stamp SOURCE changes (v1's own defective tiers vs
+  v2's independently-verified real filed date).
+- `B_v1_lag − B_v2` now isolates the value/source contribution alone with the
+  stamp held EXACTLY fixed, superseding §3's "conservatively stamped... 60d
+  is the measured 10-K p95" language.
+
+This also removes this design's only remaining dependency on base-data's
+filing-lag-fallback policy (base-data **#51/#53/#57**): `B_v1_lag` no longer
+derives its stamp from any estimated lag, so nothing here is gated on that
+policy landing.
+
+### 2b. The Stage B gate statistic was descriptive but decision-driving
+
+§4 called the `B_v1_lag − B_v2` pairwise contrast "descriptive... NOT counted
+as new tests" while §5/Amendment 1 used that SAME contrast, at the SAME
+family-derived threshold, to gate whether Stage B runs. A statistic that
+decides something is confirmatory, not descriptive, regardless of whether it
+is a deterministic function of already-counted arms — the derived quantity has
+its own null distribution and its own chance of a false positive, which the
+family-wise correction must cover. Separately, two estimands (E1 Spearman IC,
+E2 top-decile spread) were both eligible to report this contrast with no
+stated primary and no rule for when they disagree.
+
+**Resolution.**
+
+1. **Primary gate estimand: E1** (full cross-section Spearman IC). No new
+   preference is invented — E1 is simply assigned priority among the two
+   estimands §4 already registered as co-equal, because it uses the full
+   cross-section rather than a top-decile subset.
+2. **The gate contrast is now counted.** `B_v1_lag − B_v2`, per feature
+   (`roe`, `gross_profitability`, `asset_growth`), per estimand (E1 AND E2 —
+   E2 is counted too because it participates in the corroboration rule below,
+   so it is not merely descriptive either) = **6 new tests**. Joint family
+   with the 43 already registered (Amendment 1) = **49** ⇒ Bonferroni α=0.05
+   two-sided, standard closed form `z = Φ⁻¹(1 − 0.05/(2·49))` = 3.2848,
+   rounded UP (the conservative direction) to **`|t| ≥ 3.29`**. This
+   supersedes `3.24` **upward**. (`B_v1 − B_v1_lag` is unaffected: it only
+   checks §3's registered-expectation direction, never gates a decision, and
+   stays descriptive/uncounted.)
+3. **Exact gate rule, replacing §5 and Amendment 1's gate language.** For a
+   given feature, the gate is **OPEN** only if ALL of:
+   - the primary contrast (`B_v1_lag − B_v2`, estimand E1) RESOLVES (block
+     `t`, bootstrap CI, leave-one-block-out agree in sign) at `|t| ≥ 3.29`;
+   - both contributing arms' placebos are clean on E1 for that feature;
+   - E2's point estimate on the same feature does not disagree in SIGN with
+     E1's. E2 need not itself resolve at the bar — it is corroboration, not
+     an independent gate — but an opposite sign is a live disagreement, not
+     noise.
+
+   If the first two hold but E2 disagrees in sign, the feature is marked
+   **PRIMARY-ONLY, NOT CORROBORATED** and does **not** open the gate; the
+   disagreement itself is reported as a finding, not discarded. Stage B runs
+   if **at least one** feature reaches OPEN — the OR-across-features
+   structure is unchanged from §5/Amendment 1; only what counts as OPEN
+   changed.
+
+**Why this direction, not a blend or a p-value adjustment shortcut.** Naming
+E1 primary and requiring E2 sign-corroboration costs more than either (a)
+leaving both estimands eligible to gate (cheaper to claim, but exactly the
+ambiguity flagged) or (b) dropping E2 from the gate path entirely (simpler,
+but throws away a real disagreement signal). Counting the gate contrast in
+the family costs a stricter bar (3.24 → 3.29) rather than a cheaper one.
+
+**Nothing in this amendment is a result.**
+
+---
+
 # STAGE A RESULT (appended after design `c0ecf0d` and Amendment 1 `3a88551`)
 
 Verbatim: `doc/research/data/2026-07-30-v1-v2-ab-stageA.log`. JSON alongside.
