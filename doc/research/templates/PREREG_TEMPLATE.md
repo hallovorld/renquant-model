@@ -34,7 +34,7 @@ adversarial review to fill the section.
 | **T13** | **the estimand named only after seeing which one gives the preferred answer — HARKing.** Cost a retracted CLOSE. | |
 | **T14** | **a control that cannot fail.** A bare sign-count control passed 37.5% of the time on signal-free input; zero-skill AR scores 50–55%. | |
 | **T15** | **a digest cited against a bundle that was later appended to.** Cited `f6b6ef6d…`/44 files; the bundle was `901f0add…`/61. | |
-
+| **T16** | **all placebos clean, and the effect is still a one-column tilt.** Placebos answer "is this noise?"; they CANNOT answer "is this a naive baseline?". A prod-XGB traded-decile spread of +0.2534 sd at block t +3.25 with 5/5 clean controls and 0/30 false flags was reproduced by a single sort on `STD20` (+0.2836 sd, t +3.23) and vanished under orthogonalisation to volatility (-0.0554). Requires §5b. | |
 ## 1. The question
 
 One sentence. What decision changes depending on the answer?
@@ -79,6 +79,49 @@ control if it can FAIL. Report, before the real run:
   to the treatment's autocorrelation, over ≥ 40 replications;
 - if that rate exceeds ~10%, the control is decorative and the rule must be
   strengthened before freezing.
+
+## 5b. NAIVE-BASELINE ARM — mandatory wherever a statistic could be a tilt (T16)
+
+**A clean placebo panel does not license an interpretation.** Placebos test the
+null "this is noise". They are structurally incapable of testing "this is a single
+raw column, reachable without a model", because a one-column tilt is not noise —
+it survives every label shuffle exactly as a real effect does.
+
+This section exists because that distinction cost a confirmatory subject. On
+2026-07-30 the production XGB scorer returned a traded-decile spread of
+**+0.2534 sd at block `t = +3.25`**, three-view resolving, with **5/5 controls
+clean** (max `|t|` 1.11) and, on execution of the false-flag amendment,
+**0/30 false flags** and the real fold mean **43σ** from the null. Every one of
+those checks was passed honestly. And a **single sort on `STD20`** — no model, no
+training, no fit — returned **+0.2836 sd at `t = +3.23`** on the identical corpus,
+label and estimator, earning the same verdict; rank-orthogonalising the model's
+score to volatility collapsed it to **−0.0554**, and pooling within 10 volatility
+deciles gave `+0.0829`, CI `[−0.021, +0.117]` — not resolving. Pooling within
+sector changed nothing, so the tilt was volatility, not sector.
+
+**Register, before running:**
+
+1. **At least one naive single-column baseline arm**, chosen from the model's own
+   most-used inputs — not from a list of plausible-sounding factors. If a feature
+   attribution exists, take the top-|effect| feature; if not, say how the
+   candidate was chosen and why that choice could not have been made to lose.
+2. **A neutralised arm**: the subject's score rank-orthogonalised to each
+   baseline. Report both the raw and the neutralised effect.
+3. **A conditional-pooling arm**: the effect pooled within deciles of each
+   baseline. An effect that survives shuffling but dies inside its own deciles is
+   a tilt.
+4. **The decision rule must name the comparison.** A verdict is licensed only if
+   the subject beats its naive baselines — not merely if it beats noise. State the
+   margin required, in advance.
+
+**Applicability.** Mandatory for any confirmatory subject whose estimand is a
+cross-sectional selection statistic (IC, decile spread, hit rate). Optional, but
+say so explicitly, for a pure timing or event-study estimand where no
+cross-sectional column ordering exists.
+
+**Not satisfiable retroactively.** Adding baselines after seeing the subject's
+number and choosing which to report is T13 wearing a lab coat. Name them in the
+frozen text.
 
 ## 6. Decision rule
 
