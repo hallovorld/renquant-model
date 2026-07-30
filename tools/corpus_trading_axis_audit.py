@@ -1,21 +1,23 @@
 #!/usr/bin/env python3
-"""Re-derive a WF corpus's purge margin and label maturity ON THE TRADING AXIS.
+"""Re-derive a WF corpus's cutoff sanity and label maturity ON THE TRADING AXIS.
 
-renquant-pipeline#228, acceptance criterion 3. Both quantities have been
-ASSERTED on this programme and both assertions were wrong:
+renquant-pipeline#228, acceptance criterion 3. This script checks two things
+on a WF score corpus, given its own date axis:
 
-  * a corpus manifest stamped ``all_purge_ok: true`` while the true margin was
-    <= 0 on 30 of 43 folds (minimum -4), with 19 folds carrying real
-    return-window overlap;
-  * two sha256-pinned corpora were treated as label-verified while 9.6% of
-    their score dates have a 60-TRADING-day forward window ending past the
-    corpus's own last date.
+  * no score date falls at or before its own fold's cutoff;
+  * every score date's ``lookahead``-TRADING-day forward window ends inside
+    the corpus's own span — else the corpus cannot establish that label.
 
-Root cause of both: ``pd.offsets.BDay(n)`` and ``busday_count`` count BUSINESS
-days and do not skip market holidays. Measured on SPY's real trading dates
-2016-01-04 -> 2026-07-29 (2,597 cutoffs), ``BDay(60)`` falls BEFORE the true
-60th trading day on 99.8% of cutoffs, short by mean 2.23 / median 2 / max 6
-TRADING days.
+SCOPE: this script does NOT compute a per-fold purge margin (train/cutoff
+boundary vs. the next fold's start). That is a distinct, unimplemented
+measurement — see renquant-pipeline#228 for its own prior finding on that
+question. Do not read this tool's cutoff check as a substitute for it.
+
+Root cause of the label-maturity defect: ``pd.offsets.BDay(n)`` and
+``busday_count`` count BUSINESS days and do not skip market holidays.
+Measured on SPY's real trading dates 2016-01-04 -> 2026-07-29 (2,597
+cutoffs), ``BDay(60)`` falls BEFORE the true 60th trading day on 99.8% of
+cutoffs, short by mean 2.23 / median 2 / max 6 TRADING days.
 
 A trap worth naming: ``BDay(60)`` spans exactly 12 weeks = 84 calendar days and
 ``ceil(60*7/5)`` is ALSO 84, so switching the unit alone fixes nothing.

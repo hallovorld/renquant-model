@@ -1,8 +1,10 @@
-# Progress: re-derive corpus purge margin and label maturity ON THE TRADING AXIS
+# Progress: corpus cutoff-sanity + label-maturity audit ON THE TRADING AXIS
 
-STATUS:   delivered (one read-only tool, usable as a gate). No production path
-          written, no config or artifact touched. Adds the C5 progress doc that
-          was missing at PR open (codex MED 1).
+STATUS:   delivered (one read-only tool, usable as a gate, plus committed
+          tests). No production path written, no config or artifact touched.
+          Adds the C5 progress doc that was missing at PR open (codex MED 1),
+          then a second round addresses a follow-up CHANGES_REQUESTED review
+          (codex P1/P2, see "SECOND REVIEW ROUND" below).
 
 WHAT:     `tools/corpus_trading_axis_audit.py` — given a WF score corpus and a
           trading-date axis, re-derives (a) whether any row's score_date sits
@@ -10,7 +12,36 @@ WHAT:     `tools/corpus_trading_axis_audit.py` — given a WF score corpus and a
           dates have a `--lookahead`-TRADING-day forward window ending past the
           corpus's own last date. Indexes the axis directly rather than doing
           calendar arithmetic. Exits NON-ZERO on failure, so it is usable as a
-          gate rather than only as a script.
+          gate rather than only as a script. `tests/test_corpus_trading_axis_audit.py`
+          (8 tests) pins the axis-stepping-vs-BDay behaviour on a synthetic
+          holiday, the cutoff check, the label-maturity fraction (including
+          the invariant that the trailing `lookahead` dates are always
+          unverifiable), fail-loud on a corpus missing `date`, and the CLI's
+          exit codes.
+
+SECOND REVIEW ROUND: a follow-up review (submitted against the pre-fix
+          commit, before the first C5/evidence fix landed) raised two more
+          findings, addressed here:
+
+          [P1] the tool's docstring described itself as re-deriving a
+          "purge margin" (`30 of 43 folds`, min `-4`, `19` overlaps) that it
+          does not actually compute — it has no per-fold train/cutoff
+          boundary logic. Reviewer offered two fixes: implement the real
+          fold-level calculation, or narrow the tool/PR and remove the
+          purge-margin claim. Took the narrow path (smallest correct fix):
+          the docstring now states explicitly, in a SCOPE paragraph, that
+          this script does not compute a purge margin and points to
+          renquant-pipeline#228 for that separate, unimplemented question,
+          instead of restating its numbers as something this tool measures.
+          The PR title/body are updated to match — "label maturity" only,
+          not "purge margin".
+
+          [P2] no committed tests for the new CLI. Added
+          `tests/test_corpus_trading_axis_audit.py` (8 tests, all passing;
+          see VALIDATION). Per the narrowed [P1] scope, these test the
+          checks the tool actually performs (axis stepping vs. a holiday,
+          cutoff sanity, label maturity, CLI exit codes) rather than a
+          fold-level margin calculation that isn't implemented.
 
 WHY/DIR:  renquant-pipeline#228 AC-3. `pd.offsets.BDay(n)` and `busday_count`
           count BUSINESS days and do not skip market holidays, so both purge
@@ -74,6 +105,9 @@ VALIDATION:
           run this session against BOTH pinned corpora above; output as quoted,
           exit code 1 on the FAIL path (verified separately from the piped run,
           since a pipe masks the tool's own status).
+
+          `python3 -m pytest tests/test_corpus_trading_axis_audit.py -v`
+          8 passed, 0 failed, this session.
 
 NEXT:     Wire it as an actual gate wherever a corpus is stamped
           label-verified, so the check runs instead of being available. A tool
