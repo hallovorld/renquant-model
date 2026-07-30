@@ -425,10 +425,18 @@ the book trades today.
 
 | tree | result |
 |---|---|
-| `origin/main` @ `6658078` (separate worktree) | **1047 passed, 2 skipped** |
+| `origin/main` @ `6658078` (the branch point, separate worktree) | **1047 passed, 2 skipped** |
+| `origin/main` @ `5ea9450` (re-measured after the tip moved mid-run) | **1047 passed, 2 skipped** |
 | this branch | **1058 passed, 2 skipped** (+11 = `tests/test_goal7_stage1_estimator.py`) |
 
 `[VERIFIED — make test PYTHON=<RenQuant venv python>, both trees, this session]`
+
+`origin/main` advanced from `6658078` to `5ea9450` while this run was in
+progress (a concurrent automated loop is active on this repo). The two commits
+are docs-only — `doc/research/data/2026-07-29-clf-wf-closure-bundle/{README.md,
+bundle_index.json}` — and touch no code, no test and nothing this study reads
+`[VERIFIED — git diff --stat 6658078..5ea9450]`. The baseline was re-measured at
+the new tip anyway rather than assumed unchanged.
 
 ---
 
