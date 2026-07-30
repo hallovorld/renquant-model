@@ -332,3 +332,67 @@ caught by review or by a control rather than by me. The registered practice that
 **any constant derived from an asymptotic argument must be re-derived at the realised
 sample geometry before it is frozen, and its tolerance derived from that same
 computation.**
+
+## A1.5 CORRECTION to this amendment, before it merged
+
+An independent re-verification of model#118 (model#120) refutes A1.2's sufficiency
+claim, and it does so decisively. **A1.2 as written would VOID again.**
+
+**The control is structurally incapable of firing, not merely mis-calibrated.** Sweeping
+`α` to the value whose *realised* IC hits 0.05 exactly still fails
+`[VERIFIED — prior work, model#120 α-sweep]`:
+
+| `α` | realised member IC | control `t` | detected at `T_crit = 2.3646`? |
+|---|---:|---:|---|
+| 0.0523539 (frozen) | +0.03681 | +0.0984 | no |
+| **0.0660000 (perfectly calibrated)** | **+0.04990** | **+0.5294** | **no — short by 4.47×** |
+| 0.2000000 | +0.17936 | +4.6015 | yes |
+
+**Mechanism.** Equal-weight rank-averaging a 0.05-IC member into a benchmark whose own IC
+is **+0.07312** yields **+0.0030** of gain — **4.1% of the benchmark's own IC**
+`[DERIVED — 0.0030 / 0.07312]` — and that is invisible at `n_blocks = 8`. So §5.1
+registered a control **weaker than the incumbent**, and §3's equal weighting dilutes what
+remains. Fixing `α` fixes the wrong term.
+
+### A1.6 The registered consequence is a POWER finding, not a control patch
+
+The control's failure is a measurement of the whole screen, not of the control:
+**the minimum member IC this design can detect is somewhere between 0.05 and 0.18**, an
+order of magnitude above any plausible ensemble member on this panel, where the production
+recipe's `genuine_ic` above the placebo floor is **+0.00079**
+`[VERIFIED — prior work, renquant-backtesting#83]`.
+
+Registered, replacing A1.2's step 3:
+
+1. the synthetic member's target is **derived, not chosen**: solve for the member IC at
+   which the expected gain through the *registered* combination rule clears `T_crit` at
+   the *realised* `n_blocks`, and report that value as the screen's **minimum detectable
+   gain (MDG)**;
+2. **the MDG is reported whatever the outcome**, in the headline, alongside the main arm;
+3. **pre-committed:** if the MDG exceeds the largest gain an ensemble of these members
+   could plausibly produce, the screen reports **UNRESOLVED (underpowered)** and **may not
+   report NO-GAIN**. A null from a screen that cannot see the effect is not evidence of
+   absence, and §6's NO-GAIN outcome is hereby unavailable unless the MDG is met.
+
+**This retroactively constrains how model#118's main arm may be cited.** Its
+`t = −1.0025` was never adjudicated (the VOID sits upstream), and under this clause it
+could not have supported NO-GAIN even if it had been: **the screen cannot detect a
+realistic ensemble gain at 8 blocks.** Anyone citing that number as evidence against
+ensembling is citing an underpowered null.
+
+### A1.7 Also carried from model#120, unresolved
+
+- `MIN_NAMES = 20` exists in the run code and **not** in the frozen text. Inert on this
+  panel (minimum cross-section 98, result identical with and without it) but unregistered;
+  it is registered here explicitly.
+- §5.2's "within-date permutations of the member scores" **does not say whether the
+  benchmark is permuted**. #118 permuted all members jointly (`P95_null` 1.9131), #120
+  permuted only candidates (1.5418). Both bind on the Student-t leg so the verdict is
+  robust, but the ambiguity is real: **the benchmark is NOT permuted** is registered now.
+- §2 was operationalised at **recipe identity**, not single-checkpoint identity, because
+  all three scorers are walk-forward retrained and no single checkpoint can score a
+  multi-year history without lookahead. That is an interpretation of the frozen text and
+  is registered as the intended reading.
+- `certified_clf`'s identity trail is **weaker** than the other two (recipe-script hash and
+  hyperparameters; no per-fold digest, against 43/43 for XGB and PatchTST). Disclosed, not
+  resolved.

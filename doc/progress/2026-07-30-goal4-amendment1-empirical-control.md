@@ -1,6 +1,17 @@
 # The GOAL-4 positive control could not pass; the design was mine   (PR pending)
 
-STATUS:    planned  (registered amendment; NO re-run has been executed)
+STATUS:    planned  (registered amendment + a CORRECTION to it; NO re-run executed)
+
+CORRECTION, before merge: an independent re-verification (model#120) refutes this
+amendment's sufficiency claim. The control is STRUCTURALLY incapable of firing, not merely
+mis-calibrated --- at a perfectly calibrated alpha (realised IC 0.0499) the control t is
++0.5294 against T_crit 2.3646, short by 4.47x. Equal-weight rank-averaging a 0.05-IC
+member into a benchmark whose own IC is +0.07312 yields +0.0030 of gain, 4.1% of the
+benchmark's IC, invisible at 8 blocks. So §5.1 registered a control WEAKER THAN THE
+INCUMBENT and §3's equal weighting dilutes what remains; fixing alpha fixes the wrong
+term, and this amendment as first written would have VOIDed again. §A1.6 replaces it with
+a derived minimum-detectable-gain and pre-commits that a screen which cannot see the
+effect reports UNRESOLVED (underpowered) and may NOT report NO-GAIN.
 WHAT:      Replaces §5.1's closed-form `α` with an empirical calibration on the panel's
            own geometry, and derives the acceptance band from the calibration's standard
            error instead of asserting `±0.01`.
