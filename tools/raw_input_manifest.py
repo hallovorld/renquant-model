@@ -160,19 +160,47 @@ def cmd_verify(args) -> int:
     return 0
 
 
-def verify_or_abort(manifest_path: Path) -> None:
+def verify_or_abort(manifest_path: Path, *, allow_missing: bool = False) -> None:
     """For builder scripts to call before touching the raw OHLCV corpus.
 
-    Prints and returns silently if there is no committed pin yet (bootstrap:
-    the pin doesn't exist until `generate` is run and committed once). If a
-    pin exists, ABORTS on any mismatch rather than silently building on
-    inputs the pin no longer describes.
+    ABORTS when the pin is missing or unreadable, not just when it mismatches.
+
+    An earlier version printed a `[NOTE]` and RETURNED on a missing manifest,
+    on a bootstrap rationale: the pin does not exist until `generate` has been
+    run and committed once. That rationale expired the moment the pin was
+    committed (it is in this repo at ``MOMENTUM_TOTAL_RETURN_PIN``), and it
+    left a function named ``verify_or_abort`` doing neither on its most
+    important failure mode -- a builder producing output with NO provenance at
+    all, which is a strictly worse state than a mismatch and the one the
+    repository rule against continuing without fingerprints exists to forbid.
+
+    A malformed manifest aborts for the same reason: unparseable is unverified.
+
+    ``allow_missing=True`` is the genuine bootstrap escape -- a caller
+    generating the very first pin. It must be passed EXPLICITLY, so skipping
+    the check is a visible decision at the call site rather than the default.
     """
     if not manifest_path.exists():
-        print(f"[NOTE] no committed raw-input manifest at {manifest_path}; "
-              f"skipping raw-layer pin check.")
-        return
-    committed = json.loads(manifest_path.read_text())
+        if allow_missing:
+            print(f"[BOOTSTRAP] no raw-input manifest at {manifest_path}; "
+                  f"proceeding because the caller passed allow_missing=True.")
+            return
+        raise SystemExit(
+            f"ABORT: no committed raw-input manifest at {manifest_path}. A "
+            f"builder must not touch the raw OHLCV corpus without a pin -- "
+            f"output with no provenance is worse than output that fails a "
+            f"pin check, because nothing downstream can tell it apart from "
+            f"verified output. Generate and COMMIT the pin first:\n"
+            f"  python tools/raw_input_manifest.py generate --out {manifest_path}\n"
+            f"If you are genuinely bootstrapping the first pin, call "
+            f"verify_or_abort(..., allow_missing=True) explicitly.")
+    try:
+        committed = json.loads(manifest_path.read_text())
+    except (OSError, ValueError) as exc:
+        raise SystemExit(
+            f"ABORT: raw-input manifest at {manifest_path} could not be read "
+            f"or parsed ({exc}). An unreadable pin is an UNVERIFIED pin; it "
+            f"must not be treated as absent-and-therefore-fine.") from exc
     actual = build_manifest()
     problems = _diff(committed, actual)
     if problems:

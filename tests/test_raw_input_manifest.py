@@ -1,4 +1,4 @@
-"""`tools/raw_input_manifest.py` pins the RAW OHLCV layer, not just the two
+"""`tools/M.py` pins the RAW OHLCV layer, not just the two
 derived parquets `momentum_total_return_run.py` already sha256-pins.
 
 Module-level `LIVE`/`OHLCV`/`CFG` are monkeypatched to a synthetic fixture so
@@ -103,3 +103,46 @@ def test_digest_is_stable_across_repeated_builds(fake_universe):
     b = M.build_manifest()
     assert (a["corpus_index"]["root_digest_sha256"]
             == b["corpus_index"]["root_digest_sha256"])
+
+
+# --- a missing or malformed pin must ABORT, not be waved through -----------
+#
+# verify_or_abort() printed a [NOTE] and RETURNED when the manifest was absent,
+# on a bootstrap rationale that expired once the pin was committed. That left a
+# function named verify_or_abort doing neither on its worst failure mode: a
+# builder producing output with NO provenance, which downstream cannot tell
+# apart from verified output.
+
+
+def test_a_missing_manifest_aborts(tmp_path):
+    missing = tmp_path / "nope.json"
+    with pytest.raises(SystemExit) as ei:
+        M.verify_or_abort(missing)
+    msg = str(ei.value)
+    assert "ABORT" in msg
+    assert "no committed raw-input manifest" in msg
+    assert "generate --out" in msg, "must tell the caller how to fix it"
+
+
+def test_a_malformed_manifest_aborts(tmp_path):
+    bad = tmp_path / "manifest.json"
+    bad.write_text("{not json at all")
+    with pytest.raises(SystemExit) as ei:
+        M.verify_or_abort(bad)
+    assert "could not be read" in str(ei.value)
+
+
+def test_bootstrap_escape_requires_an_explicit_flag(tmp_path, capsys):
+    """The escape still exists for generating the first pin, but it must be
+    asked for at the call site rather than being the default."""
+    missing = tmp_path / "nope.json"
+    M.verify_or_abort(missing, allow_missing=True)   # no raise
+    assert "BOOTSTRAP" in capsys.readouterr().out
+
+
+def test_the_committed_pin_is_present_so_the_escape_is_not_load_bearing():
+    """Guards the rationale: the bootstrap path must not be what production
+    actually takes."""
+    assert M.MOMENTUM_TOTAL_RETURN_PIN.exists(), (
+        "the committed pin is missing, so every builder would now abort — "
+        "regenerate and commit it rather than relaxing the check")
