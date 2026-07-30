@@ -1,0 +1,13 @@
+{
+  "artifact_location_at_verification": "session scratchpad (NOT version-controlled)",
+  "drifted": 0,
+  "drifted_paths": [],
+  "files_in_index": 61,
+  "matched": 61,
+  "method": "sha256 of each file at the recorded relative path, compared to the index's own per-file digest; root rebuilt per digest_construction",
+  "missing": 0,
+  "recomputed_root_sha256": "901f0addd19b7381775f9dd593e046b862863b8bb04bb0de7260eb405423810a",
+  "recorded_root_sha256": "901f0addd19b7381775f9dd593e046b862863b8bb04bb0de7260eb405423810a",
+  "root_matches": true,
+  "verified_at": "2026-07-30T16:20:24+00:00"
+}
