@@ -139,3 +139,52 @@ def test_null_quantile_of_treatment_t():
     draws = [0.5, 1.0, 1.5, 2.0, 2.5]
     q = L.null_quantile_of(2.0, draws)
     assert q == pytest.approx(0.8)  # 4 of 5 draws (<=2.0 in abs) are <= 2.0
+
+
+# ------------------------------- permutation: the model#105 leak class
+# §0.3 self-check #1's second half. The frozen text cites a permutation
+# helper that "silently leaks across dates on a ticker-major frame" as having
+# already aborted a study on this programme (model#105). The wide-matrix
+# layout makes that structurally impossible, but an adversarial review of
+# this study correctly noted the property was untested. These tests prove it.
+def test_permutation_never_moves_a_value_across_dates():
+    # Each date's scores are drawn from a disjoint, date-identifying numeric
+    # band (date i -> [100*i, 100*i+n)), so any cross-date leak is visible as
+    # a value landing in the wrong band.
+    n_dates, n_names = 6, 9
+    Smat = np.vstack([100 * i + np.arange(n_names, dtype=float)
+                      for i in range(n_dates)])
+    out = L.permute_within_date(Smat, seed=3)
+    for i in range(n_dates):
+        band_lo, band_hi = 100 * i, 100 * i + n_names
+        assert np.all((out[i] >= band_lo) & (out[i] < band_hi)), (
+            f"row {i} received a value from another date: {out[i]}")
+
+
+def test_permutation_preserves_each_dates_multiset():
+    rng = np.random.default_rng(11)
+    Smat = rng.normal(size=(7, 12))
+    out = L.permute_within_date(Smat, seed=5)
+    for i in range(Smat.shape[0]):
+        assert sorted(out[i]) == pytest.approx(sorted(Smat[i]))
+
+
+def test_permutation_leaves_nan_entries_nan():
+    # An absent name must not receive a present name's score.
+    Smat = np.array([[1.0, 2.0, np.nan, 4.0],
+                     [np.nan, 6.0, 7.0, 8.0]])
+    out = L.permute_within_date(Smat, seed=7)
+    assert np.isnan(out[0, 2]) and np.isnan(out[1, 0])
+    assert sorted(out[0, [0, 1, 3]]) == pytest.approx([1.0, 2.0, 4.0])
+    assert sorted(out[1, [1, 2, 3]]) == pytest.approx([6.0, 7.0, 8.0])
+
+
+def test_permutation_actually_changes_the_scores_and_varies_by_seed():
+    # A permutation that leaves the data untouched would make the §4.2 null
+    # control a tautology — the §4.3 failure mode.
+    rng = np.random.default_rng(13)
+    Smat = rng.normal(size=(40, 30))
+    a = L.permute_within_date(Smat, seed=0)
+    b = L.permute_within_date(Smat, seed=1)
+    assert not np.array_equal(a, Smat)
+    assert not np.array_equal(a, b)

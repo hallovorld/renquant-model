@@ -22,6 +22,14 @@
    "bytes": 684,
    "sha256": "2ca8ac6c42a0cf61e74529e37cea3fcadecee1231422706cb6ea0aa2b14e2b09"
   },
+  "power_measure.log": {
+   "bytes": 1429,
+   "sha256": "657957c909350ede6f8ff8b5c3b8295d66132db4f39f8749d6d55350bfe10980"
+  },
+  "power_measurement.json": {
+   "bytes": 735,
+   "sha256": "0e66f16ffdff4747e8d682a75f3df2642cb41065f11d2829201540e4b0cc311b"
+  },
   "run.log": {
    "bytes": 2133,
    "sha256": "e6e8b0c4014e25e966d38c8cbb08775caa0037fea18abb1d3bc13077fec4e9a7"
@@ -31,8 +39,8 @@
    "sha256": "8c621f1aa7db53dc381fffd20dbb045dd0a3e2c6832c1328f29e64dfefaef116"
   }
  },
- "n_files": 5,
- "root_digest_sha256": "9b0ab79e6b1b0bea3a7ddbcb42391b2026b8c226ce70ac1dddb3ff151b1d47cb",
+ "n_files": 7,
+ "root_digest_sha256": "acf3d3ace40f43a61e11b21feae255d981c7b5422179fe1e6b5d8f9189371c06",
  "schema": "artifact_corpus_index.v2",
- "total_bytes": 15359
+ "total_bytes": 17523
 }

@@ -186,3 +186,32 @@ def null_quantile_of(value: float, null_abs_t_draws: list[float]) -> float:
         return float("nan")
     arr = np.asarray(null_abs_t_draws, dtype=float)
     return float(np.mean(arr <= abs(value)))
+
+
+# ------------------------------------------------- §3.5/§4.2 permutation
+def permute_within_date(Smat: np.ndarray, seed: int) -> np.ndarray:
+    """Independently permute the FINITE entries of EACH ROW (date) of `Smat`
+    across the ticker axis.
+
+    §0.3 self-check #1 names the hazard this must not have: a permutation
+    helper that "silently leaks across dates on a ticker-major frame" already
+    aborted one study on this programme (model#105). The structural defence
+    here is that the data is held as a WIDE (date x ticker) matrix, so a date
+    IS a row and a permutation confined to one row cannot cross dates by
+    construction — there is no interleaved long-frame reindexing step to get
+    wrong. `tests/test_patchtst_closure_v2_selfchecks.py` PROVES that
+    property (per the adversarial review on this study, which correctly noted
+    the property was structural but untested).
+
+    NaN entries stay NaN (an absent name must not receive another name's
+    score); only the finite entries are permuted among themselves.
+    """
+    out = Smat.copy()
+    rng = np.random.default_rng(seed)
+    for i in range(Smat.shape[0]):
+        row = Smat[i]
+        idx = np.where(np.isfinite(row))[0]
+        if len(idx) < 2:
+            continue
+        out[i, idx] = row[rng.permutation(idx)]
+    return out

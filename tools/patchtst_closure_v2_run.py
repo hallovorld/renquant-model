@@ -4,27 +4,32 @@ doc/research/2026-07-30-patchtst-closure-prereg-v2.md ("model#113").
 
 *** NOT EXECUTED AGAINST REAL DATA. DO NOT RUN THIS AGAINST PT_P AS WIRED. ***
 
-This study VOIDed at §0.1 before any treatment statistic was computed — see
-doc/research/2026-07-30-patchtst-closure-v2-void.md. `PT_P` below points at
-the 43-fold walk-forward RESEARCH corpus
+The study returned **UNRESOLVED (underpowered)** under §7 clause 1 — see
+doc/research/2026-07-30-patchtst-closure-v2-unresolved.md. `PT_P` below points
+at the 43-fold walk-forward RESEARCH corpus
 (/Users/renhao/renquant_bundles/patchtst-wf-corpus-b4e47e2c, via the derived
 wf-eval/scores.parquet used in the prior model#90 corrected-eval line). That
-corpus is DISQUALIFIED as the treatment's score source: none of its 43
-checkpoints' sha256 match the digest the live shadow path actually serves
-(verified — tools/patchtst_closure_v2_identity_check.py,
-doc/research/data/2026-07-30-patchtst-closure-v2/checkpoint_sha256_scan.csv).
+corpus is **DISQUALIFIED** as the treatment's score source by §0.1 step 3:
+none of its 43 checkpoints' sha256 match the digest the live shadow path
+actually serves `[VERIFIED — tools/patchtst_closure_v2_identity_check.py;
+doc/research/data/2026-07-30-patchtst-closure-v2/checkpoint_sha256_scan.csv]`.
 §0.1 requires the digest of the file the study loads to EQUAL what serving
-emits; it does not, so no number this module could produce is a valid
-answer to the estimand.
+emits, so no number this module could produce against PT_P is a valid answer
+to the registered estimand — the #569 mistrace is exactly this error.
+
+The identity-verified score series that §0.1 DOES admit is 2 trading days
+long, which yields N_eval = 0 / n_blocks = 0 and triggers §7.1
+`[VERIFIED — tools/patchtst_closure_v2_power_measure.py]`. That measurement,
+not this module, produced the verdict.
 
 This file is retained ONLY as the frozen §1/§3/§3.5/§4/§6 estimator
 implementation (unit-tested via tests/test_patchtst_closure_v2_selfchecks.py
-against synthetic data), ready for reuse WHEN a historical PatchTST score
-corpus becomes available that is BOTH (a) long enough in span for the §3
-block estimator at L=60 (needs on the order of 120+ admissible trading days)
-and (b) verified via execution-emitted digest to correspond to what the live
-shadow path actually served over that span. As of this run, no such corpus
-exists — see the VOID doc for what would have to change.
+against synthetic data), ready for reuse WHEN a PatchTST score corpus exists
+that is BOTH (a) long enough in span for the §3 block estimator at L=60
+(n_blocks >= 6 needs N_eval >= 360) and (b) verified via execution-emitted
+digest to be what the live shadow path served over that span. As of this run
+no such corpus exists — see the results doc for the three routes that would
+create one.
 
 There is no `main()` / CLI entry point in this file by design: nothing here
 should be runnable-by-accident against the disqualified corpus.
@@ -141,23 +146,13 @@ def compute_d_series(Smat, Lmat, fresh_rows, stale_rows, label_rows):
     return ic_fresh - ic_stale, ic_fresh, ic_stale
 
 
-def permute_within_date(Smat: np.ndarray, seed: int) -> np.ndarray:
-    """Independently permute the valid (non-NaN) entries of EACH ROW (date)
-    of Smat across the ticker axis. Reused for both the "fresh" and "stale"
-    role of a given date's score, because the whole matrix is permuted once
-    per draw — this is what "the subject's scores, through the identical
-    harness" means (§3.5, §4.2), not a fresh permutation per use."""
-    out = Smat.copy()
-    rng = np.random.default_rng(seed)
-    for i in range(Smat.shape[0]):
-        row = Smat[i]
-        valid = np.isfinite(row)
-        idx = np.where(valid)[0]
-        if len(idx) < 2:
-            continue
-        perm = rng.permutation(idx)
-        out[i, idx] = row[perm]
-    return out
+# The within-date permutation lives in the TESTED library
+# (patchtst_closure_v2_lib.permute_within_date) so the model#105
+# cross-date-leak property is covered by a regression test rather than only by
+# the wide-matrix layout. Whole-matrix permutation once per draw is what "the
+# subject's scores, through the identical harness" means (§3.5, §4.2) — not a
+# fresh permutation for each of the fresh/stale roles.
+permute_within_date = L.permute_within_date
 
 
 # --------------------------------------------------------------- main compute
