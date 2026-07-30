@@ -252,3 +252,204 @@ strength of my own reasoning. That is the only thing that has worked on this
 programme's contested questions: a CLOSE published on this very family of models was
 retracted, a second was withheld, and the commissioned review destroyed it
 `[VERIFIED — prior work, 2026-07-29 closure retraction, §"The process lesson"]`.
+
+---
+
+# AMENDMENT 1 — the positive control was unsatisfiable by construction
+
+Registered 2026-07-30, **before any re-run**. The screen executed under this prereg
+(model#118) VOIDed on §5.1, and the frozen text worked exactly as intended: it forbade
+adjusting `α` and forced a VOID rather than a tuned pass. **The defect is in the design I
+wrote, not in the execution.**
+
+## A1.1 The diagnosis, and a correction to my own first account of it
+
+§5.1 fixed `α = 2·sin(π·0.05/6) = 0.0523538966` from the identity
+`ρ_s = (6/π)·arcsin(ρ/2)`. **That identity is asymptotic.** At finite cross-section width
+it does not deliver a realised Spearman IC of 0.05, so the `|mean − 0.05| ≤ 0.01`
+assertion I also registered was unreachable — the control could not pass however correct
+the implementation.
+
+My first account of this said the real-panel shortfall exceeded clean simulation, implying
+a further undiagnosed component. **That was wrong, and it was wrong for a familiar
+reason: I compared against the wrong width.** The panel's universe is 145 tickers, but its
+mean admissible rows per date is **115.4** (`364736 / 3161`)
+`[VERIFIED — tr_matrix_metadata.json n_rows / n_dates]`. Simulating at the *realised*
+width, 2000 draws, seed 20260730 `[VERIFIED — scipy Monte Carlo, this session]`:
+
+| n | mean realised Spearman | s.e. | 3·s.e. band |
+|---:|---:|---:|---|
+| 115 | **0.04232** | 0.00207 | **[0.03610, 0.04855]** |
+| 141 | 0.04028 | 0.00196 | [0.03440, 0.04616] |
+
+model#118 measured **0.03681** on the real panel, which falls **inside** the n=115 band.
+So there is **no evidence of any component beyond finite-sample bias at the panel's actual
+width**, and the fix below is sufficient rather than merely necessary. Retracting the
+"further component" claim explicitly rather than letting it stand.
+
+## A1.2 The replacement, registered
+
+`α` is no longer taken from a closed form. It is **calibrated on the panel's own
+geometry**, before the treatment arm is computed:
+
+1. **Calibrate on the object, not on a model of it.** Draw the synthetic member using the
+   panel's *actual* per-date admissible ticker sets and its actual rank structure — not a
+   synthetic iid cross-section of nominal width. The 145-vs-115 error above is precisely
+   what calibrating against an idealisation costs.
+2. **Bisection**, not search-with-judgement: find `α ∈ (0, 1)` such that the mean realised
+   per-date Spearman IC of the synthetic member against the realised forward return equals
+   **0.05**, using **2000** draws at seed **20260730**, bisection tolerance `1e-4` on `α`,
+   maximum 40 iterations.
+3. **The acceptance band is DERIVED, not asserted:** `±3 ×` the standard error of the
+   calibration's mean, reported alongside `α`. At 2000 draws that is roughly `±0.006`
+   `[DERIVED — 3 × 0.00207 from the table above]` — tighter than the `±0.01` I originally
+   asserted, and it is a measured property of the calibration rather than a number I chose.
+4. **If no `α` in `(0, 1)` reaches 0.05 within the derived band, the screen VOIDs.** `α`
+   is still **never** hand-adjusted after seeing a result; the prohibition in §5.1 stands
+   unchanged and now applies to the calibrated value.
+5. The calibrated `α`, the achieved mean IC, its standard error, the draw count, the
+   iteration count and the realised per-date width distribution all appear in the report.
+
+## A1.3 What this amendment does NOT change
+
+Everything else in the frozen text: the §2 identity abort gate, the §2.5 sealed source
+manifest, the equal-weight unfitted combination, the §4 paired estimand and block
+estimator, `T_crit = max(P95_null, t_{0.975, n_blocks−1})`, the null control and its 10%
+validity ceiling, the non-tautology check, the descriptive-only redundancy table, and the
+four §6 outcomes with their licences.
+
+**A re-run executes the whole frozen sequence from §2, not just the control.** The screen
+VOIDed at §5.1 before the treatment arm was computed, so no arm of this study has a
+result, and picking up mid-sequence would mean running a treatment whose identity and
+manifest gates were established in a different session.
+
+## A1.4 The generalisation worth carrying
+
+Two designs of mine failed the same way within hours: a **1.96** critical value frozen for
+a `t` over single-digit blocks, and an **asymptotic** `ρ_s`–`ρ` identity frozen as an exact
+finite-sample target. Both are large-sample quantities applied at small `n`, and both were
+caught by review or by a control rather than by me. The registered practice that follows:
+**any constant derived from an asymptotic argument must be re-derived at the realised
+sample geometry before it is frozen, and its tolerance derived from that same
+computation.**
+
+## A1.5 CORRECTION to this amendment, before it merged
+
+An independent re-verification of model#118 (model#120) refutes A1.2's sufficiency
+claim, and it does so decisively. **A1.2 as written would VOID again.**
+
+**The control is structurally incapable of firing, not merely mis-calibrated.** Sweeping
+`α` to the value whose *realised* IC hits 0.05 exactly still fails
+`[VERIFIED — prior work, model#120 α-sweep]`:
+
+| `α` | realised member IC | control `t` | detected at `T_crit = 2.3646`? |
+|---|---:|---:|---|
+| 0.0523539 (frozen) | +0.03681 | +0.0984 | no |
+| **0.0660000 (perfectly calibrated)** | **+0.04990** | **+0.5294** | **no — short by 4.47×** |
+| 0.2000000 | +0.17936 | +4.6015 | yes |
+
+**Mechanism.** Equal-weight rank-averaging a 0.05-IC member into a benchmark whose own IC
+is **+0.07312** yields **+0.0030** of gain — **4.1% of the benchmark's own IC**
+`[DERIVED — 0.0030 / 0.07312]` — and that is invisible at `n_blocks = 8`. So §5.1
+registered a control **weaker than the incumbent**, and §3's equal weighting dilutes what
+remains. Fixing `α` fixes the wrong term.
+
+### A1.6 The registered consequence is a POWER finding, not a control patch
+
+The control's failure is a measurement of the whole screen, not of the control:
+**the minimum member IC this design can detect is somewhere between 0.05 and 0.18**, an
+order of magnitude above any plausible ensemble member on this panel, where the production
+recipe's `genuine_ic` above the placebo floor is **+0.00079**
+`[VERIFIED — prior work, renquant-backtesting#83]`.
+
+Registered, replacing A1.2's step 3:
+
+1. the synthetic member's target is **derived, not chosen**: solve for the member IC at
+   which the expected gain through the *registered* combination rule clears `T_crit` at
+   the *realised* `n_blocks`, and report that value as the screen's **minimum detectable
+   gain (MDG)**;
+2. **the MDG is reported whatever the outcome**, in the headline, alongside the main arm;
+3. **pre-committed:** if the MDG exceeds the largest gain an ensemble of these members
+   could plausibly produce, the screen reports **UNRESOLVED (underpowered)** and **may not
+   report NO-GAIN**. A null from a screen that cannot see the effect is not evidence of
+   absence, and §6's NO-GAIN outcome is hereby unavailable unless the MDG is met.
+
+**This retroactively constrains how model#118's main arm may be cited.** Its
+`t = −1.0025` was never adjudicated (the VOID sits upstream), and under this clause it
+could not have supported NO-GAIN even if it had been: **the screen cannot detect a
+realistic ensemble gain at 8 blocks.** Anyone citing that number as evidence against
+ensembling is citing an underpowered null.
+
+### A1.7 Also carried from model#120, unresolved
+
+- `MIN_NAMES = 20` exists in the run code and **not** in the frozen text. Inert on this
+  panel (minimum cross-section 98, result identical with and without it) but unregistered;
+  it is registered here explicitly.
+- §5.2's "within-date permutations of the member scores" **does not say whether the
+  benchmark is permuted**. #118 permuted all members jointly (`P95_null` 1.9131), #120
+  permuted only candidates (1.5418). Both bind on the Student-t leg so the verdict is
+  robust, but the ambiguity is real: **the benchmark is NOT permuted** is registered now.
+- §2 was operationalised at **recipe identity**, not single-checkpoint identity, because
+  all three scorers are walk-forward retrained and no single checkpoint can score a
+  multi-year history without lookahead. That is an interpretation of the frozen text and
+  is registered as the intended reading.
+- `certified_clf`'s identity trail is **weaker** than the other two (recipe-script hash and
+  hyperparameters; no per-fold digest, against 43/43 for XGB and PatchTST). Disclosed, not
+  resolved.
+
+## A1.8 The plausibility bound, PINNED — it was an adjustable threshold
+
+Codex on #119: A1.6's *"the largest gain these members could plausibly produce"* has **no
+source, no quantity and no rule**, so *"the UNRESOLVED versus NO-GAIN disposition remains
+adjustable after observing the screen."* Correct — that is the exact defect the amendment
+was written to remove, reintroduced one clause later. Pinned now, before any re-run.
+
+### The rule
+
+> **`P` = the mean per-date IC gain obtained by combining the benchmark with a second
+> member that is (a) exactly as strong as the incumbent and (b) at the LOWEST pairwise
+> redundancy observed among the three real members.**
+
+Both inputs are already-measured quantities from the executed screen, cited rather than
+chosen: benchmark IC **+0.07312** and the lowest observed pairwise score correlation
+**0.404** (PatchTST↔XGB; the others are 0.517 and 0.768)
+`[VERIFIED — prior work, model#118 §5.4 and its benchmark arm]`.
+
+`P` is an **upper bound by construction**: no real member on this panel is simultaneously
+as strong as the incumbent *and* less redundant than the least-redundant observed pair.
+Being generous is deliberate — if even this bound sits below the screen's sensitivity, the
+screen cannot see anything real, and that conclusion is then robust to the choice.
+
+### The computed values
+
+Monte Carlo on the panel's own geometry (`n = 115` names/date, 400 draws, seed 20260730),
+with `α` calibrated empirically at that width per A1.2 rather than from the asymptotic
+identity `[VERIFIED — scipy Monte Carlo, this session]`:
+
+| quantity | value |
+|---|---|
+| `α` calibrated at n=115 for IC 0.07312 | 0.08799 |
+| **`P` (plausibility bound)** | **+0.01897** (s.e. 0.00267) |
+| block-mean s.e. of the gain statistic | 0.03036 `[DERIVED — 0.0030 / 0.0988 from #118]` |
+| **`MDG` = `T_crit` × s.e.** | **+0.07180** `[DERIVED — 2.3646 × 0.03036]` |
+| **`MDG / P`** | **3.78×** |
+
+The s.e. is derived from #118's own control arm — a gain of **+0.0030** produced
+`|t| = 0.0988` over 8 blocks — and it is a property of the noise, not of the gain, so the
+extrapolation to `T_crit` is linear in the mean. Stated as an assumption rather than
+hidden: this holds while adding signal does not materially change the dispersion.
+
+### The deterministic comparison
+
+> **If `MDG > P`, the screen reports UNRESOLVED (underpowered) and NO-GAIN is
+> UNAVAILABLE. If `MDG ≤ P`, NO-GAIN becomes available.**
+
+On the geometry as it stands, `MDG = 0.07180 > P = 0.01897`, so **the registered outcome
+is UNRESOLVED (underpowered) and NO-GAIN is closed** — decided **before** the re-run, from
+quantities that exist independently of it. Both numbers are recomputed at the realised
+`n_blocks` and reported in the headline whatever happens; only the realised geometry can
+move them, and the rule that consumes them cannot.
+
+**This means a re-run cannot conclude against ensembling on this panel.** It can VOID, or
+return UNRESOLVED. That is the honest state of the evidence and it is now fixed in advance
+rather than available for selection afterwards.
