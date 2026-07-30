@@ -112,9 +112,11 @@ statistic against any bar (§8).
 | 0.1794 | 4.601 | ✓ | ✓ |
 
 ~~So the screen's minimum detectable member IC is ≈ 0.10 against the valid bar~~ —
-**withdrawn per §0a**: that reading used a bar now shown to be un-established and
-probably too low, so the true floor is **higher** and the wall is **worse**. The
-table above is retained as the shape of the argument, not as numbers to cite.
+**withdrawn per §0a**: that reading used a bar now shown to be un-established. Its
+direction is *also* not established (THIRD correction) — I previously wrote "probably
+too low, so the true floor is higher and the wall is worse", which signs an error I had
+not measured. The table above is retained as the shape of the argument, not as numbers
+to cite, and **no direction may be read off it either**.
 
 **Consequences for §4:** option **A** is no longer shown "arithmetically dead", and
 option **D** is no longer justified "on power grounds". Both rested on the withdrawn
@@ -128,8 +130,10 @@ through this section.
 ## 1. Bottom line
 
 The Phase-0 screen did not fail because of a calibration bug. It has a
-**structural power wall** — but stated in the only currently defensible terms
-(§0): against the **dependence-valid** permutation bar `P95_null = 1.9131`, the
+**structural power wall** — but see §0a: the sentence below calls `P95_null` the
+"dependence-valid" bar and that is exactly what review rejected. Retained unedited so
+the correction chain is auditable; the claim it makes is **UNRESOLVED**, not defensible.
+Original text: against the **dependence-valid** permutation bar `P95_null = 1.9131`, the
 smallest **member IC** the screen could have detected is ≈ **0.10**, versus the best
 member's own IC of **0.0731**. The observed ensemble gain is **−0.0109 IC**
 (`t = −1.0029`), sitting at the **70th percentile** of that valid null. Re-running
