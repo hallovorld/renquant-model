@@ -125,14 +125,18 @@ changes the answer). A control that is itself significant does not lose the
 comparison, it **VOIDS** it.
 
 Measured false-flag rate of that bar on 30 genuinely clean nulls
-`[VERIFIED — calibration §D, clf corpus sha256 1da3fcfa…5bc4efe4, seeds
-5000-5029]`. `control_calibration.assess_control` — which §D depends on —
-merged to `main` in `renquant-model#96`, so §D now reproduces from the
-canonical import path on plain `main` with no PYTHONPATH override and no
-stacked branch. Re-verified against post-merge `main` this session: fold
-means 1/30 = 3%, block means 2/30 = 7%. (Earlier revisions of this PR were
-stacked on #96 and carried a "not yet verified relative to `main`"
-qualifier; that dependency is now discharged and the qualifier removed.)
+`[VERIFIED — re-run post-#96-merge on 85be1a3; calibration §D, clf corpus
+sha256 1da3fcfa…5bc4efe4, seeds 5000-5029]`:
+fold means 1/30 = 3%, block means 2/30 = 7%.
+
+`control_calibration.assess_control` — which §D depends on — **merged to
+`main` as `0c82f6a`** (`renquant-model#96`). This branch is rebased onto that
+`main` commit, and §D was re-run on that rebased tree (`85be1a3`): the import
+resolves through the canonical `renquant_model_common.control_calibration`
+path with **no PYTHONPATH override and no stacked branch**, and the pinned
+sha256 check passed on all three inputs. The dependency is discharged: the
+earlier "not yet verified relative to `main`" / "unmergeable until #96 lands"
+qualifiers no longer apply and have been removed.
 
 
 ### §5 AMENDMENT 1 (2026-07-29, before any confirmatory run)
