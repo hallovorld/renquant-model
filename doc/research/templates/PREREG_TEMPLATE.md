@@ -31,6 +31,7 @@ adversarial review to fill the section.
 | T10 | confusing "the score is stale" with "the signal is long-horizon" | |
 | T11 | cross-lag statistics on a drifting sample (`Y.shift(-lag)` nulls the NEWEST rows) | |
 | T12 | paired arms drawn from different score windows (era term measured at 19–28%) | |
+| T18 | **contiguous blocks under an overlapping label** — blocking is treated as discharging T2, but the crossing fraction is `min(1, h/L)` and equals **1.00 whenever `L ≤ h`**; a 60-day block under a 120-day label voided a whole study on 2026-07-30 (§4a) | |
 | **T13** | **the estimand named only after seeing which one gives the preferred answer — HARKing.** Cost a retracted CLOSE. | |
 | **T14** | **a control that cannot fail.** A bare sign-count control passed 37.5% of the time on signal-free input; zero-skill AR scores 50–55%. | |
 | **T15** | **a digest cited against a bundle that was later appended to.** Cited `f6b6ef6d…`/44 files; the bundle was `901f0add…`/61. | |
@@ -69,6 +70,48 @@ re-verify each input digest and REFUSE to proceed on a mismatch.
 - dependence handling: block length ≥ the label overlap, never the lag (T11);
   and prefer `dependence_aware_mean`, which requires block t, bootstrap CI and
   leave-one-block-out to agree in sign.
+
+## 4a. BLOCK/LABEL OVERLAP — state the crossing fraction (T18)
+
+Blocking is the standard answer to T2 (overlapping labels). **It only works if the block is
+long relative to the label horizon, and "long" is arithmetic, not a feeling.**
+
+A date at position `p` in a block ending at `L` has its label window reach `p + h`, so it
+crosses the block end whenever `p + h > L`. Therefore:
+
+> **crossing fraction = `min(1, h / L)`**  ·  **subsequent blocks touched = `ceil(h / L)`**
+
+| `L` | `h` | crossing fraction | blocks touched |
+|---:|---:|---:|---:|
+| 60 | 120 | **1.00** | **2** |
+| 60 | 60 | **1.00** | 1 |
+| 120 | 120 | **1.00** | 1 |
+| 120 | 60 | 0.50 | 1 |
+| 240 | 60 | 0.25 | 1 |
+
+**`L = h` is not a fix.** It still crosses on **every** date; it only reduces the span from
+two adjacent blocks to one. Stating `L ≥ h` as the requirement — which I did, in the first
+correction of the study that failed on this — frames a reduction as a solution.
+
+**Register one of these, explicitly:**
+
+1. a **gap of at least `h` between retained blocks**, so no label window reaches the next
+   retained block — the only construction that removes the dependence rather than
+   shrinking it; or
+2. **`L ≫ h`**, with the residual crossing fraction `h/L` **stated as a number** in the
+   registration and carried into the report.
+
+Either way, **state `L`, `h`, the crossing fraction and the blocks touched in the frozen
+text**, so a reader can check the relation without re-deriving it.
+
+**What earned this.** On 2026-07-30 a screen registered 60-trading-day blocks under a
+120-trading-day label, reported `n_blocks = 18` and used `t_{0.975,17}`, and was **VOIDED**:
+adjacent block means shared 60 days of every label window, so 18 was never the number of
+independent units. The run's own reported lag-1 autocorrelation of **0.94** was the symptom,
+logged as a caveat instead of read as evidence the inferential unit was wrong. A sweep of
+the 29 frozen and result documents then found that study was the only one with `L < h` —
+but **five** sit at `L = h`, and **none states its crossing fraction**. That is why this is
+a template row and not five separate challenges.
 
 ## 5. Control calibration (T14) — confirmatory-only, see Applicability gate
 

@@ -1,6 +1,10 @@
 # T18: blocking discharges T2 only if you do the arithmetic   (PR pending)
 
 STATUS:    delivered
+
+NOTE ON ORDERING: T18 is inserted after T12, not after T17, because the T17 row is still
+in an unmerged PR (#125). If #125 lands first the rows will simply sit in numeric order;
+neither depends on the other.
 WHAT:      Adds trap **T18** and section **§4a**: under an overlapping label, register the
            **crossing fraction** `min(1, h/L)` and the blocks touched `ceil(h/L)`, and
            pick either a gap of `h` between blocks or `L ≫ h` with the residual stated.
