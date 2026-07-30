@@ -92,15 +92,24 @@ EVIDENCE: artifact: `doc/research/2026-07-30-goal4-phase0-ensemble-gain-results.
                     under `tools/`. No production panel, artifact, config,
                     model, or live-surface written. No pin advanced.
 
-NEXT:     GOAL-4's ensemble question remains unanswered. Before re-running
-          this exact combination rule, the §5.1 positive control needs a
-          registration that accounts for the finite-n bias in the
-          rankit/arcsin construction (e.g. target ρ_s empirically
-          calibrated at the ACTUAL n via simulation before freezing α, or
-          widen the tolerance band with the reasoning stated up front) --
-          that is a fresh freeze, not a re-run of this one (§7.4-equivalent
+NEXT:     GOAL-4's ensemble question remains unanswered. An independent
+          re-implementation (tools/goal4_phase0_control_power_probe.py,
+          added in this PR) reproduced every headline number and then
+          CORRECTED this document's own diagnosis: the finite-n bias in α
+          is real but is NOT the binding defect. At alpha=0.066 the control
+          is calibrated perfectly to its registered 0.05 (realised 0.04990)
+          and is STILL undetected, t=+0.5294 vs T_crit=2.3646. The control
+          only fires once the inserted member's IC (~0.18) far exceeds the
+          benchmark's own realised +0.07312. §5.1 registered a control
+          WEAKER than the incumbent it is added to and §3's equal weighting
+          then dilutes it, so the screen VOIDed by construction -- no data
+          could have made it fire. A fresh freeze must therefore specify the
+          control's target RELATIVE to the benchmark's realised IC (and/or
+          adopt a combination rule in which a weaker member can express a
+          gain); merely bias-correcting alpha would VOID again. That is a
+          fresh freeze, not a re-run of this one (§7.4-equivalent
           discipline: a VOID verdict is not revised by changing the
-          procedure after seeing the result). Separately, if a future
+          procedure after seeing the result). A future
           registration should ALSO carry the §7 review's process lesson:
           every load-bearing number must be produced by committed code, not
           narrated -- three of this PR's four review counts trace to

@@ -137,12 +137,78 @@ reported. `[VERIFIED — results.json.main]`
   effects) — see README.md for the full diagnostic table. This is a
   property of the frozen construction, not an implementation defect, and α
   was NOT adjusted to compensate, per the frozen text.
+  **AMENDED after an independent cross-check (see next section): the
+  finite-n bias is real but is NOT the binding defect. Bias-correcting α
+  alone would VOID again.**
 - certified_clf's identity evidence is weaker than the other two members'
   (recipe-script hash + hyperparameter match, not a per-fold digest) — see
   README.md. Disclosed, not treated as an exclusion trigger.
 - The main arm's own point estimate (`t=-1.0025`, `|t|` far under `T_crit`)
   is reported per §4's mandate but is NOT adjudicated into NO-GAIN or
   UNRESOLVED, because the screen VOIDs upstream of that decision per §6.
+
+## Independent cross-check, and a correction to the diagnosis above
+
+The headline statistics were recomputed from the sealed manifest's inputs
+through a **second, separately-written implementation** — different IC
+routine, different block code, different synthetic-member code — to test
+whether any of them were implementation artifacts. Tool:
+`tools/goal4_phase0_control_power_probe.py`, output
+`doc/research/data/2026-07-30-goal4-phase0-ensemble-gain/control_power_probe.json`.
+
+| quantity | committed run | independent re-implementation |
+|---|---|---|
+| `N_eval` | 508 | 508 |
+| `n_blocks` | 8 | 8 |
+| dropped remainder | 28 | 28 |
+| main-arm `t` | −1.0025 | −1.0029 |
+| §5.1 realised control IC | 0.03681 | 0.03681 |
+| §5.1 control `t` | +0.0988 | +0.0984 |
+| redundancy clf↔XGB / PT↔XGB / PT↔clf | 0.768 / 0.404 / 0.517 | 0.7681 / 0.4038 / 0.5165 |
+
+`[VERIFIED — python3 tools/goal4_phase0_control_power_probe.py, this task]`
+All four input digests were also re-hashed independently and match the
+sealed manifest root `382823b2a10c6804…`
+`[VERIFIED — shasum -a 256 on all four inputs, this task]`. The residual
+±0.0004 on the two `t` values is float/tie-handling noise between the two
+IC implementations and is immaterial at a bar of 2.3646.
+
+**The correction.** The "What could not be satisfied" entry above attributes
+§5.1's failure to the finite-sample bias in α. That bias is real, but it is
+not what makes the control fail its detection leg. Sweeping α to the value
+whose **realised** IC equals the registered 0.05 exactly:
+
+| α | realised control IC | control `t` | detected at `T_crit`=2.3646? |
+|---|---|---|---|
+| 0.0523539 (frozen) | +0.03681 | +0.0984 | no |
+| 0.0660000 | **+0.04990** | **+0.5294** | **no** |
+| 0.0800000 | +0.06327 | +0.9689 | no |
+| 0.1200000 | +0.10185 | +2.2108 | no |
+| 0.2000000 | +0.17936 | +4.6015 | yes |
+
+`[VERIFIED — control_power_probe.json.alpha_sweep]`
+
+At α=0.066 the control is calibrated *perfectly* to its registered 0.05 and
+is **still undetected**, by a factor of four. The control only becomes
+detectable once the inserted member's IC (~0.18) far exceeds the incumbent
+benchmark's own realised IC of **+0.07312**
+`[VERIFIED — control_power_probe.json.benchmark_mean_ic]`.
+
+The mechanism is the interaction of §5.1 with §3, and it is visible in the
+arithmetic: equal-weight rank-averaging a **0.05**-IC member into a
+**0.073**-IC benchmark moves ensemble IC from 0.07312 to 0.07612 — a gain of
++0.0030 `[DERIVED — control_power_probe.json.alpha_sweep, ensemble_mean_ic
+minus benchmark_mean_ic at α=0.066]`, which 8 blocks cannot separate from
+zero. **§5.1 registered a control weaker than the incumbent it is added to,
+and §3's equal weighting then dilutes it.** So the screen VOIDs by
+construction: no data could have made this control fire.
+
+**What this changes for a successor prereg.** A re-freeze that only
+bias-corrects α is insufficient and would VOID again. The control's target
+has to be specified *relative to the benchmark's realised IC* rather than as
+an absolute 0.05, and/or the combination rule has to be one in which a
+weaker member can express a gain. This is a finding about the registered
+DESIGN, not about ensembles, and it licenses nothing.
 
 ## Test suite
 
