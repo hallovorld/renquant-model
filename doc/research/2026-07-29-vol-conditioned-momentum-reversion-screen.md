@@ -155,3 +155,84 @@ cannot be relaxed after seeing a `t` of 2.4.
 
 **Nothing in this revision is a result.** The run follows in the next commit on
 this branch.
+
+---
+
+# RESULTS (appended 2026-07-29, after the design commit `ff91d67`)
+
+Verbatim runner output: `doc/research/data/2026-07-29-screen1.log`.
+Machine-readable: `doc/research/data/2026-07-29-screen1.json`.
+
+`[VERIFIED — this session]` corpus PIN OK (`7defdacf…`), 725,547 rows,
+**2,597 dates, 292 tickers**. §0 label moments measured: `mean = −0.0000`,
+`sd = 0.9982` — so every number below is in **standard deviations**, and the
+label really is per-date z-scored as §2 said it should be.
+
+## The registered verdict: OUTCOME 2. The hypothesis is NOT supported.
+
+| arm | E1 IC | t | control max\|t\| | E2 spread | t | control max\|t\| | E2 status |
+|---|---:|---:|---:|---:|---:|---:|---|
+| R1 `mom60` | −0.0197 | −1.33 | 1.90 | **−0.0519** | **−2.59** | **0.38** | clean, resolves |
+| R2 `rev5` | +0.0256 | +2.37 | 1.79 | +0.1243 | +3.82 | **2.87** | **VOID** |
+| R3 `rev20` | +0.0250 | +1.81 | 1.85 | **+0.1268** | **+2.82** | **1.54** | clean, resolves |
+| **N1 vol-conditional** | −0.0227 | −1.90 | **2.55** | **−0.0346** | **−1.97** | **2.25** | **VOID** |
+| N2 unconditional blend | +0.0002 | −0.16 | 1.84 | −0.0297 | −1.65 | **2.42** | **VOID** |
+
+**N1 — the hypothesis — is negative *and* VOID on both estimands.** It does not
+beat N2 (−0.0346 vs −0.0297, i.e. it is *worse*), and it does not beat the best
+replication (+0.1268). §7 outcome 2 applies: **no factor change is proposed.**
+
+The mechanism from orchestrator#615 was a good reason to *ask*. It is not
+support for the answer, and it does not get to be reported as a partial win.
+
+## Applying the bar I registered — which makes this result weaker, not stronger
+
+Screen 2 (`2026-07-29-momentum-family-screen.md`, frozen at `192f1b1`, committed
+**before** this output was read) raises the joint 18-test Bonferroni bar to
+**`|t| ≥ 2.99`**, superseding this screen's 2.81.
+
+Under that bar: **zero of these 10 tests are screen-interesting.** R3's
+`|t| = 2.82` clears the 2.81 this document originally registered and **fails the
+joint 2.99**. Both readings are stated because hiding the first would be
+concealment and using only the first would be goalpost-moving. The registered
+answer is the stricter one.
+
+## Three things the run established that are NOT the hypothesis
+
+**(1) The sign pattern runs against a momentum reading of this universe.** The
+two arms with genuinely clean controls on the traded cut point opposite ways:
+`mom60` **−0.0519** (control 0.38 — as clean as a control gets) and `rev20`
+**+0.1268** (control 1.54). Buying the top decile of 60-day momentum has a
+*negative* 60-day forward spread here. Sub-threshold, so this is a **direction,
+not a result** — but it is the direction, and it is not the one a momentum model
+would want.
+
+**(2) IC and the traded cut diverge, in the direction #101 registered.** On the
+same rows, same dates, same estimator: R1 `t = −1.33 → −2.59`; R3
+`t = +1.81 → +2.82`; R2 `t = +2.37 → +3.82`. Every arm's `|t|` is larger on the
+top-decile spread than on full cross-section IC. That is exactly
+renquant-model#101 §1's measurement-design claim, now observed on an
+independent corpus. **It is a SCREEN observation and cannot confirm #101** — but
+it is the first evidence for that claim from outside the corpus #101 consumed.
+
+**(3) The control rule's cost was paid, and it bit harder than budgeted.**
+Measured corpus false-flag rate: **1/30 = 3%** per arm (null `|t|`: median 0.73,
+p90 1.49, max 2.29) ⇒ ALL-clean over 5 controls voids **16%** of valid work.
+Observed: **4 of 10 tests VOIDed (40%)**, against ~16% expected. So either some
+of these controls carry real structure, or the per-arm rate differs by arm
+geometry — which §6 registered as a limitation of measuring the rate on one arm.
+Not resolved here; recorded as an open question rather than assumed away.
+
+## What is NOT claimed
+
+- **No P&L.** `sd = 0.9982`; these are standard deviations of a per-date z-scored
+  label. R3's `+0.1268` is **0.127 sd of forward-return dispersion, not 12.7%.**
+- **No cost model.** R2 (`rev5`) turns over roughly daily and was **VOID**
+  anyway; R3 (`rev20`) turns over roughly monthly and its `+0.1268` has no
+  turnover, cost, or capacity haircut applied. A gross-of-cost spread is not an
+  opportunity.
+- **No confirmation of anything.** This corpus is now **consumed** by this screen
+  and by screen 2. Any positive from either needs a confirmatory prereg on a
+  corpus neither has touched.
+- **No serving-support claim.** The `STD60` terciles are on the full panel
+  cross-section, not the vol-capped support the live path scores (orch#615 §4).
