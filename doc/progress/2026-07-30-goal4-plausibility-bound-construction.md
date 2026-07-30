@@ -6,7 +6,8 @@ WHAT:      Commits `tools/goal4_plausibility_bound.py` — a fully specified, se
            plus 8 tests, and registers it as A1.9. A1.8's rule and its `P = +0.01897`
            ceiling both stand, but +0.01897's own construction is NOT made reproducible
            by this PR; A1.9 instead proves the GOAL-4 disposition is invariant
-           whichever bound is used.
+           whichever bound is used, and A1.9.1 registers a GATE: the re-run may not be
+           ADJUDICATED against +0.01897 while its construction is unrecorded.
 WHY/DIR:   A1.8 pinned `P` against codex's finding that the bound was adjustable, but
            stated the RULE without the CONSTRUCTION and committed no code. An
            independent re-derivation returned +0.01355 against A1.8's +0.01897 (s.e.
@@ -59,20 +60,40 @@ Ensemble = per-date equal-weight average of member **ranks**, per §3, so `P` is
 
 **Not changed:** the ceiling stays A1.8's `+0.01897`, and its construction stays
 unreproducible — this PR does not make that number recomputable, only the alternative
-`+0.01355` is. `P` is a *ceiling* on plausible gain, so the larger value is the more
-generous to the hypothesis — it makes "this screen is underpowered" harder to claim.
-Adopting my smaller re-derivation as the threshold would weaken the argument in this
-document's own favour, which is the one direction a frozen registration must never
-drift. `+0.01355` is recorded as an independently reproducible lower estimate and is
-what CI asserts.
+`+0.01355` is. `+0.01355` is recorded as an independently reproducible lower estimate
+and is what CI asserts.
 
-## Why this is safe to land: the disposition is invariant
+**Correcting my own reasoning for keeping the larger value.** I first wrote that
+adopting the smaller re-derivation "would weaken the argument in this document's own
+favour". That has the direction backwards. The rule is `MDG > P → UNRESOLVED`, so a
+*smaller* `P` makes UNRESOLVED — the verdict this document already predicts — **easier
+to reach**. Swapping in my own smaller number would be self-serving, and that, not
+"generosity", is the real reason not to do it. A1.8's framing is sound for its own
+purpose (a large `P` makes "underpowered" harder to claim, so the claim is robust when
+it survives); what was wrong was my label for it and the inference I drew.
+
+## Why this is safe to land: the disposition is invariant — and invariance is not enough
 
 `MDG = +0.07180` exceeds both candidate bounds — 3.78× at +0.01897, 5.30× at +0.01355 —
 so A1.8's registered outcome (UNRESOLVED, NO-GAIN closed) holds either way. **The tool
 asserts that invariance and exits 1 if it breaks.** If a future geometry makes the two
 constructions disagree about the outcome, that surfaces as a failure before any re-run
 is adjudicated, rather than being discovered afterwards by whoever prefers one number.
+
+But codex's BLOCKER on this PR is right that **invariance across two bounds is weaker
+than reproducibility of the operative one**, and the first version of these documents
+claimed the latter in its title, headings and summary while delivering the former. That
+is the overclaim, and it is the more serious half of the finding — an artifact that
+says "closed" is worse than the gap it describes, because it stops anyone looking.
+
+So A1.9.1 gives the gap teeth: **the re-run may not be ADJUDICATED against `+0.01897`
+while its construction is unrecorded.** Producing it is fine; deciding with it is not.
+Until the equations are committed the operative comparison uses the reproducible
+`+0.01355`. This costs nothing today, which is precisely why it is registered now
+rather than argued when one of the numbers happens to suit someone. Note the fallback
+runs in the self-serving direction flagged above — accepted deliberately, because an
+unauditable threshold is the worse defect: a bias that is stated and bounded can be
+checked, a number nobody can recompute cannot.
 
 ## Honest limits
 

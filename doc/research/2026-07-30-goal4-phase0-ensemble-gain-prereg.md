@@ -499,13 +499,22 @@ equal-weight average of member **ranks** — §3's own combination rule — so `
 
 ### Why the registered ceiling stays A1.8's larger number
 
-`P` is a **ceiling** on plausible gain, so the larger value is the more generous to the
-hypothesis: it makes `MDG > P` harder to satisfy and therefore makes "this screen is
-underpowered" harder to claim. A1.8 chose generosity deliberately and that reasoning is
-correct — a power bound that errs must err toward the hypothesis it is about to declare
-untestable. Adopting the smaller re-derivation as the threshold would weaken the
-argument in this document's own favour, which is exactly the direction a frozen
-registration must not drift.
+**Correcting my own first statement of this, which had the direction backwards.** I
+wrote that adopting the smaller re-derivation "would weaken the argument in this
+document's own favour". It would do the opposite, and the opposite is the actual reason
+not to adopt it.
+
+`P` is a **ceiling** on plausible gain, and the rule is `MDG > P → UNRESOLVED`. So a
+**smaller** `P` makes `MDG > P` *easier*, which makes UNRESOLVED — the conclusion this
+document already argues for — *easier to reach*. Swapping in my own smaller number
+would therefore be **self-serving**: it lowers the bar for the verdict the author is
+already predicting. That is the direction a frozen registration must never drift, and
+it is why the larger, unrecorded `+0.01897` stays registered even though it is the less
+convenient number to defend.
+
+A1.8's own framing is sound for its purpose: keeping `P` large makes "this screen is
+underpowered" *harder* to claim, so when it holds anyway the claim is robust. What was
+wrong was only my label for it, and the inference I drew from that label.
 
 So: **`P = +0.01897` remains registered, and its construction remains unrecorded and
 NOT reproduced by this amendment.** `+0.01355` is recorded as an independently
@@ -530,3 +539,27 @@ attributes it to empirical α-calibration at the panel width per A1.2, and the s
 the disagreement is what that correction predicts — a genuinely stronger synthetic
 member gives a larger gain — but the equations are not recorded. If they are written
 down, they supersede this section's estimate and the tool should be updated to match.
+
+### A1.9.1 The open gap is registered as a GATE, not a footnote
+
+Invariance across two bounds is weaker than reproducibility of the operative one, and
+this amendment must not be read as having delivered the latter. So the gap is given
+teeth rather than left as a note someone can skim:
+
+> **The Phase-0 re-run may not be ADJUDICATED against `P = +0.01897` while that value's
+> construction is unrecorded.** Producing the number is permitted; *deciding* with it is
+> not. Until the equations are committed, the operative comparison is made against the
+> reproducible `+0.01355`, and the verdict is reported as resting on it.
+
+This costs nothing today — both bounds yield UNRESOLVED with NO-GAIN closed — which is
+exactly why it can be registered now rather than argued about later, when one of the
+two numbers will suit somebody. It binds only in the case that matters: a future
+geometry where the bounds disagree, or a `MDG` that lands between them. In that case
+the decision falls to the bound that can be recomputed, and the burden sits on whoever
+wants to use `+0.01897` to record how it was built.
+
+**Note the direction:** the fallback is the *smaller* bound, which makes UNRESOLVED
+easier — the self-serving direction flagged above. That is accepted deliberately here,
+because an unauditable threshold is the worse defect: a number nobody can recompute
+cannot be checked by anyone, whereas a conservative-toward-UNRESOLVED bias is visible,
+bounded, and stated.

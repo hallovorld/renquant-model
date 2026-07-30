@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Compute GOAL-4 Phase-0's plausibility bound `P` under a FULLY SPECIFIED construction.
+"""A SECOND, reproducible construction for GOAL-4 Phase-0's plausibility bound `P`.
+
+This does NOT recompute A1.8's registered `P = +0.01897`. That number's construction
+was never recorded and is not reconstructed here. This file computes a different,
+fully specified bound (`+0.01355`) and proves the GOAL-4 disposition is the same under
+either — an invariance result, not a reproduction of the operative threshold.
 
 Why this file exists
 --------------------
@@ -127,9 +132,11 @@ def main() -> int:
     print()
 
     # The decision rule, evaluated at BOTH candidate bounds. The registered ceiling
-    # stays A1.8's larger value: P is a *ceiling* on plausible gain, so the larger one
-    # is the more generous to the hypothesis, and a power verdict that errs must err
-    # toward the hypothesis it is about to declare untestable.
+    # stays A1.8's larger value -- NOT because it is better attested (it is not; its
+    # construction is unrecorded) but because the smaller one is self-serving: a
+    # smaller P makes `MDG > P` easier, and UNRESOLVED is the verdict this document
+    # already predicts. Per A1.9.1 the re-run may not be ADJUDICATED against +0.01897
+    # while its construction is unrecorded; the fallback is the reproducible bound.
     for label, bound in (("this construction", p), ("A1.8 published", A18_PUBLISHED_P)):
         verdict = "UNRESOLVED (underpowered), NO-GAIN unavailable" if MDG > bound \
             else "NO-GAIN available"
@@ -138,6 +145,9 @@ def main() -> int:
     invariant = (MDG > p) == (MDG > A18_PUBLISHED_P)
     print()
     print(f"disposition invariant across both bounds: {invariant}")
+    print("NOTE: invariance is NOT reproducibility of the operative threshold.")
+    print("      A1.8's +0.01897 remains unrecorded; per A1.9.1 the re-run may not be")
+    print(f"      adjudicated against it, and falls back to this bound ({p:+.5f}).")
     if not invariant:
         print("  ^ the two constructions DISAGREE on the outcome; the prereg's threshold")
         print("    must be resolved before any re-run is adjudicated.")
