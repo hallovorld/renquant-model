@@ -1,0 +1,118 @@
+SELF-CHECK — the within-date shuffle (Defect 1 of the aborted run)
+  (a) fixed impl: pools respected + within-group permutation + seed-sensitive on BOTH interleaved frames  -> PASS
+  (b) known-broken lexsort impl REJECTED on seeds [0, 1, 2, 3, 4, 5] (4-row) and [0, 1, 2, 3, 4, 5] (77-row)  -> the check discriminates
+  (c) PR#105 reproducer: dates [d1,d2,d1,d2] labels [10,20,11,21]
+      broken -> [np.float64(11.0), np.float64(10.0), np.float64(21.0), np.float64(20.0)]   (row 1 is d2 and must not hold 10/11)
+      fixed  -> [np.float64(10.0), np.float64(20.0), np.float64(11.0), np.float64(21.0)]
+
+§3 INPUTS
+  momentum_factor_matrix_tr.parquet  sha256=85c27fc1d5a56a4c…  PIN OK  (76,310,040 B)
+  total_return_close.parquet  sha256=8c23496ee351757e…  PIN OK  (4,007,937 B)
+  matrix rows=364,736 tickers=145 2014-01-02->2026-07-29
+
+§4 LABEL (built here from the pinned TR series)
+  fwd_20 _tr  non-null=0.990 mean=-0.00000 sd=0.9963
+  fwd_60 _tr  non-null=0.975 mean=-0.00000 sd=0.9963
+  fwd_120_tr  non-null=0.951 mean=+0.00000 sd=0.9963
+  fwd_250_tr  non-null=0.900 mean=-0.00000 sd=0.9963
+  fwd_20 _px  non-null=0.990 mean=-0.00000 sd=0.9963
+  fwd_60 _px  non-null=0.975 mean=-0.00000 sd=0.9963
+  fwd_120_px  non-null=0.951 mean=-0.00000 sd=0.9963
+  fwd_250_px  non-null=0.900 mean=-0.00000 sd=0.9963
+  -> per-date z-scored. UNITS ARE SD OF THE CROSS-SECTION, NOT RETURN.
+  -> label legs both on the same series as the factor (TR vs TR, px vs px)
+
+  screen rows=183,532 dates=1896 | holdout rows=172,624 dates=1205 | embargo discarded=8,580
+  §2 block-count floor: holdout gives 10 blocks of 120 (floor 8) -> OK
+
+==============================================================================
+PRIMARY CONFIRMATORY TEST — A1_mom_12_1_tr @ h=120, estimand E2, holdout 2021-10-08..2026-07-29
+  (horizon DECLARED FROM THEORY in the frozen text; no selection)
+==============================================================================
+  E2 spread   = +0.4310 SD
+  block t     = +3.767  on 10 blocks of 120
+  bootstrap CI= [+0.2705, +0.6256]
+  three views agree (resolves) = True
+  placebos max|t| = 1.25 (bar 2.0) clean=True  all=[0.19, 0.02, 0.87, 1.25, 0.36]
+  E1 IC t     = +0.589  (secondary, registered)
+
+==============================================================================
+CONTROL CALIBRATION — 40 CLEAN within-date shuffles of the primary arm/horizon
+==============================================================================
+  n=40  |t| mean=0.88 p50=0.74 p95=1.65 max=2.01
+  FALSE-FLAG RATE at the |t|>=2.0 bar: 2.5% (1/40)
+  ... over the first 30 shuffles: 3.3%
+  a bar is decorative if this exceeds ~10%
+
+==============================================================================
+§5b NAIVE-BASELINE ARM — is this momentum, or the dividend-yield column it was built from?
+==============================================================================
+  B1 div_yield_252 (long high): E2=+0.0855 t=+0.566 clean=False
+  PAIRED contrast subject - baseline, same dates/blocks: delta=+0.3455 t=+1.682 CI=[+0.0887,+0.7090] n=1085
+  NEUT (subject rank-orthogonalised to the baseline): E2=+0.3296 t=+4.264 clean=True
+  COND (pooled WITHIN baseline quintiles, 5 buckets): E2=+0.3123 t=+3.834 CI=[+0.1935,+0.4504]
+  Holm-Bonferroni across the 3 registered §5b arms:
+    neutralised                      p=2.005e-05 thr=0.01667 reject_null=True
+    conditional_quintile             p=0.0001261 thr=0.025 reject_null=True
+    paired_subject_minus_baseline    p=0.09266 thr=0.05 reject_null=False
+
+==============================================================================
+D1 DATA DIAGNOSTIC (not a momentum claim) — was the prior run's
+   monotone-with-horizon pattern a DIVIDEND TILT? Paired TR vs price.
+==============================================================================
+      h    E2 on TR  E2 on price     delta   delta t  blocks
+     20     +0.2058      +0.2134   -0.0075     -1.74      60
+     60     +0.3022      +0.3110   -0.0088     -1.35      20
+    120     +0.4310      +0.4417   -0.0107     -0.97      10
+    250     +0.4885      +0.4988   -0.0103     -0.79       4
+  -> a LARGE positive delta means the price-only series was
+     UNDERSTATING momentum; a delta ~0 means the dividend adjustment
+     does not change the momentum conclusion either way.
+
+==============================================================================
+DESCRIPTIVE PANEL — SCREEN dates only, TR series. §6 FORBIDS ANY
+CLAIM FROM THIS TABLE. It selects nothing; the horizon was declared.
+==============================================================================
+  arm                       h        E2       t    ctl  blocks
+  A1_mom_12_1_tr           20   +0.1157   +1.96   1.49      58
+  A1_mom_12_1_tr           60   +0.1663   +1.49   1.86      20
+  A1_mom_12_1_tr          120   +0.2308   +1.98   1.55      10
+  A1_mom_12_1_tr          250   +0.2534   +1.25   2.90       5
+  A2_mom_6_1_tr            20   +0.1559   +2.87   0.83      64
+  A2_mom_6_1_tr            60   +0.2289   +2.53   0.36      22
+  A2_mom_6_1_tr           120   +0.3150   +2.48   0.90      11
+  A2_mom_6_1_tr           250   +0.4061   +6.98   0.88       6
+  A3_hi52_prox_tr          20   -0.0370   -1.14   1.80      58
+  A3_hi52_prox_tr          60   -0.0291   -0.79   1.49      20
+  A3_hi52_prox_tr         120   -0.0256   -0.66   2.32      10
+  A3_hi52_prox_tr         250   -0.0697   -1.11   0.80       5
+  A4_ma200_ratio_tr        20   +0.1003   +1.77   0.34      60
+  A4_ma200_ratio_tr        60   +0.1778   +2.04   2.29      20
+  A4_ma200_ratio_tr       120   +0.2338   +1.58   1.49      10
+  A4_ma200_ratio_tr       250   +0.3177   +3.09   2.11       5
+  A5_vol_scaled_tr         20   +0.0750   +1.46   0.66      58
+  A5_vol_scaled_tr         60   +0.0879   +0.81   0.88      20
+  A5_vol_scaled_tr        120   +0.1492   +1.09   1.52      10
+  A5_vol_scaled_tr        250   +0.1192   +0.58   0.84       5
+  A6_vol_gated_tr          20   +0.1193   +2.03   1.20      58
+  A6_vol_gated_tr          60   +0.1601   +1.50   1.63      20
+  A6_vol_gated_tr         120   +0.2307   +2.09   1.48      10
+  A6_vol_gated_tr         250   +0.2692   +1.29   1.87       5
+  A7_sector_neutral_tr     20   +0.0657   +1.56   1.00      58
+  A7_sector_neutral_tr     60   +0.1152   +1.42   1.31      20
+  A7_sector_neutral_tr    120   +0.1771   +1.98   0.74      10
+  A7_sector_neutral_tr    250   +0.1257   +0.88   3.58       5
+
+==============================================================================
+§6 VERDICT
+==============================================================================
+  gate placebos_clean           = True
+  gate false_flag_rate_ok       = True
+  gate three_views_agree        = True
+  gate beats_baseline_holm      = False
+
+  UNRESOLVED / TILT-NOT-EXCLUDED — |t|=3.77 clears the bar but the arm does NOT beat its naive dividend-yield baseline under the paired Holm-corrected contrast (§5b.4). Nothing licensed.
+
+  MULTIPLICITY, as registered: these are the SECOND use of 2021-10-08..2026-07-29. The prior (ABORTED/INVALID-CONTROL) run spent them on A2 mom_6_1 @ h=20. This is not a virgin holdout and is not presented as one.
+
+wrote /private/tmp/claude-502/-Users-renhao-git-github-renquant-orchestrator/428feb92-8ee7-4b4f-afed-1e4fa82ef367/scratchpad/mom-total-return/results.json
