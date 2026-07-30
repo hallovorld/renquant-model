@@ -34,6 +34,7 @@ adversarial review to fill the section.
 | **T13** | **the estimand named only after seeing which one gives the preferred answer — HARKing.** Cost a retracted CLOSE. | |
 | **T14** | **a control that cannot fail.** A bare sign-count control passed 37.5% of the time on signal-free input; zero-skill AR scores 50–55%. | |
 | **T15** | **a digest cited against a bundle that was later appended to.** Cited `f6b6ef6d…`/44 files; the bundle was `901f0add…`/61. | |
+| **T16** | **all placebos clean, and the effect is still a one-column tilt.** Placebos answer "is this noise?"; they CANNOT answer "is this a single raw column, reachable without a model" — a one-column tilt is not noise and survives shuffling exactly like a real effect. Requires §5b. | |
 
 ## 1. The question
 
@@ -79,6 +80,55 @@ control if it can FAIL. Report, before the real run:
   to the treatment's autocorrelation, over ≥ 40 replications;
 - if that rate exceeds ~10%, the control is decorative and the rule must be
   strengthened before freezing.
+
+## 5b. NAIVE-BASELINE ARM — mandatory wherever a statistic could be a tilt (T16)
+
+**A clean placebo panel does not license an interpretation.** Placebos test the
+null "this is noise". They are structurally incapable of testing "this is a single
+raw column, reachable without a model", because a one-column tilt is not noise —
+it survives every label shuffle exactly as a real effect does. A cross-sectional
+selection statistic (IC, decile spread, hit rate) can be reproduced by a single
+dominant input column with no model, no training and no fit; a clean control
+panel does not rule this out, because the control panel was never asked that
+question.
+
+**Register, before running:**
+
+1. **At least one naive single-column baseline arm**, chosen from the model's own
+   most-used inputs — not from a list of plausible-sounding factors. If a feature
+   attribution exists, take the top-|effect| feature; if not, say how the
+   candidate was chosen and why that choice could not have been made to lose.
+   Freeze and fingerprint the baseline exactly as §3 requires for inputs, BEFORE
+   execution: the attribution method; the frozen artifact/checkpoint path +
+   sha256 it was read from; the feature's transform (raw / rank / z-score) and
+   missing-value rule; the direction (long high or long low); and the
+   one-column portfolio construction (e.g. rank-sorted long-short deciles). An
+   unfrozen baseline specification is a knob, not a baseline (T13's cousin).
+2. **A neutralised arm**: the subject's score rank-orthogonalised to each
+   baseline. Report both the raw and the neutralised effect.
+3. **A conditional-pooling arm**: the effect pooled within deciles of each
+   baseline. An effect that survives shuffling but dies inside its own deciles is
+   a tilt.
+4. **A testable gate on beating the baseline, not two separately significant
+   numbers.** Register: the paired contrast between the subject and each
+   baseline, computed on the SAME folds/blocks as the primary estimator (§4);
+   the estimator and confidence/inference rule for that DIFFERENCE (e.g.
+   block-paired t on the per-block delta, using §4's block length); how the
+   predeclared margin (§6) applies to the paired difference, not to each arm's
+   marginal significance; and, when more than one baseline / neutralised /
+   conditional arm is registered, the family-wise error handling (e.g.
+   Holm-Bonferroni across the registered arms). A verdict is licensed only if
+   the subject beats its baselines under that corrected, paired comparison —
+   never by each side independently clearing significance.
+
+**Applicability.** Mandatory for any confirmatory subject whose estimand is a
+cross-sectional selection statistic (IC, decile spread, hit rate). Optional, but
+say so explicitly, for a pure timing or event-study estimand where no
+cross-sectional column ordering exists.
+
+**Not satisfiable retroactively.** Adding baselines after seeing the subject's
+number and choosing which to report is T13 wearing a lab coat. Name them in the
+frozen text.
 
 ## 6. Decision rule
 
