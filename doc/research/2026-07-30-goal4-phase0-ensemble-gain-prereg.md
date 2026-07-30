@@ -453,3 +453,113 @@ move them, and the rule that consumes them cannot.
 **This means a re-run cannot conclude against ensembling on this panel.** It can VOID, or
 return UNRESOLVED. That is the honest state of the evidence and it is now fixed in advance
 rather than available for selection afterwards.
+
+---
+
+## A1.9 — a second, reproducible construction for `P` (A1.8's own stays unrecorded)
+
+Registered 2026-07-30, before any re-run. **No verdict moves here.** A1.8 remains the
+registered rule and `P = +0.01897` remains the registered ceiling. This section does
+NOT close the gap that that number is not recomputable — its construction was never
+recorded and is not reconstructed below. What it registers is a second, fully specified
+construction with its own reproducible number, and a proof that the disposition is
+invariant regardless of which bound is used.
+
+### The defect
+
+A1.8 pinned `P` against codex's finding that the plausibility bound was adjustable.
+It states the **rule** — a second member exactly as strong as the incumbent
+(IC `+0.07312`), at the lowest observed pairwise redundancy (`0.404`) — but not the
+**construction** that satisfies both constraints simultaneously, and no code was
+committed with it. An independent re-derivation on #119 returned **`+0.01355`**
+against A1.8's `+0.01897` (standard errors agreeing at 0.00274 vs 0.00267)
+`[VERIFIED — renquant-model#119 review thread, this programme]`.
+
+A threshold in a frozen prereg that cannot be recomputed by someone holding only the
+document is pinned in name only. That is the same shape the amendment chain has spent
+three rounds closing — a quantity fixed, its construction left open. This round does
+not close it for A1.8's own `+0.01897`: that construction stays unrecorded (see "Still
+open" below). What is committed instead is a second, independently reproducible
+construction, plus a proof that the outcome does not depend on which bound is used.
+
+### The construction, registered
+
+`tools/goal4_plausibility_bound.py`, committed with this amendment. Gaussian copula on
+`(r, b, m)`; Spearman targets mapped to Pearson by the exact identity
+`ρ = 2·sin(π·ρ_s/6)`; the implied matrix **verified positive definite and aborting if
+not**, because a triple of Spearman targets need not be jointly realisable and quietly
+repairing it would change which quantity `P` measures. The ensemble is the per-date
+equal-weight average of member **ranks** — §3's own combination rule — so `P` is a
+**gain**, in the decision rule's units, not an IC. `n = 115`, 400 draws, seed
+`20260730`, no calibration loop, nothing tuned against the output.
+
+> It yields **`P = +0.01355` (s.e. 0.00274)**
+> `[VERIFIED — python tools/goal4_plausibility_bound.py, this session]`, and
+> `tests/test_goal4_plausibility_bound.py` asserts that value, so drift fails CI.
+
+### Why the registered ceiling stays A1.8's larger number
+
+**Correcting my own first statement of this, which had the direction backwards.** I
+wrote that adopting the smaller re-derivation "would weaken the argument in this
+document's own favour". It would do the opposite, and the opposite is the actual reason
+not to adopt it.
+
+`P` is a **ceiling** on plausible gain, and the rule is `MDG > P → UNRESOLVED`. So a
+**smaller** `P` makes `MDG > P` *easier*, which makes UNRESOLVED — the conclusion this
+document already argues for — *easier to reach*. Swapping in my own smaller number
+would therefore be **self-serving**: it lowers the bar for the verdict the author is
+already predicting. That is the direction a frozen registration must never drift, and
+it is why the larger, unrecorded `+0.01897` stays registered even though it is the less
+convenient number to defend.
+
+A1.8's own framing is sound for its purpose: keeping `P` large makes "this screen is
+underpowered" *harder* to claim, so when it holds anyway the claim is robust. What was
+wrong was only my label for it, and the inference I drew from that label.
+
+So: **`P = +0.01897` remains registered, and its construction remains unrecorded and
+NOT reproduced by this amendment.** `+0.01355` is recorded as an independently
+reproducible lower estimate and as the value CI checks.
+
+### The disposition is invariant, and that is the reason this is safe to land
+
+| bound | `MDG / P` | outcome |
+|---|---:|---|
+| A1.8 published, `+0.01897` | **3.78×** | UNRESOLVED (underpowered), NO-GAIN unavailable |
+| A1.9 construction, `+0.01355` | **5.30×** | UNRESOLVED (underpowered), NO-GAIN unavailable |
+
+`[VERIFIED — tools/goal4_plausibility_bound.py output, this session]`. `MDG = +0.07180`
+exceeds both, so A1.8's registered outcome — **UNRESOLVED, NO-GAIN closed** — holds at
+either bound. The tool asserts this invariance and **exits 1 if it ever breaks**: if a
+future geometry makes the two constructions disagree about the outcome, the threshold
+must be resolved before any re-run is adjudicated, rather than the disagreement being
+discovered afterwards by whoever prefers one number.
+
+**Still open, and not resolved here:** which construction produced `+0.01897`. A1.8
+attributes it to empirical α-calibration at the panel width per A1.2, and the sign of
+the disagreement is what that correction predicts — a genuinely stronger synthetic
+member gives a larger gain — but the equations are not recorded. If they are written
+down, they supersede this section's estimate and the tool should be updated to match.
+
+### A1.9.1 The open gap is registered as a GATE, not a footnote
+
+Invariance across two bounds is weaker than reproducibility of the operative one, and
+this amendment must not be read as having delivered the latter. So the gap is given
+teeth rather than left as a note someone can skim:
+
+> **The Phase-0 re-run may not be ADJUDICATED against `P = +0.01897` while that value's
+> construction is unrecorded.** Producing the number is permitted; *deciding* with it is
+> not. Until the equations are committed, the operative comparison is made against the
+> reproducible `+0.01355`, and the verdict is reported as resting on it.
+
+This costs nothing today — both bounds yield UNRESOLVED with NO-GAIN closed — which is
+exactly why it can be registered now rather than argued about later, when one of the
+two numbers will suit somebody. It binds only in the case that matters: a future
+geometry where the bounds disagree, or a `MDG` that lands between them. In that case
+the decision falls to the bound that can be recomputed, and the burden sits on whoever
+wants to use `+0.01897` to record how it was built.
+
+**Note the direction:** the fallback is the *smaller* bound, which makes UNRESOLVED
+easier — the self-serving direction flagged above. That is accepted deliberately here,
+because an unauditable threshold is the worse defect: a number nobody can recompute
+cannot be checked by anyone, whereas a conservative-toward-UNRESOLVED bias is visible,
+bounded, and stated.
