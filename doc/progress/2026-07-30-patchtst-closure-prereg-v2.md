@@ -81,9 +81,23 @@ clause here:
 
 A KILL requires all §6 gates; a RETAIN does not. This study can only *remove* a
 scorer, so the destructive verdict carries the heavier burden. That is not licence
-to soften the other direction: `|t| < 1.96` is UNRESOLVED and stays UNRESOLVED, and
+to soften the other direction: `|t| < T_crit` is UNRESOLVED and stays UNRESOLVED, and
 §5 states that a third UNRESOLVED on this question is a finding about the corpus's
 POWER, to be reported as such rather than narrated toward a conclusion.
+
+**There is exactly one decision threshold and it is `T_crit` (§3.5).** No other
+number in either document may adjudicate an outcome. The `2.5` in §7 is **not** a
+threshold: it is a *conservatism trigger*. If the positive control passes with
+`|t| < 2.5` the treatment's verdict is unchanged, but a KILL additionally requires
+leave-one-block-out to hold at `|t| >= T_crit` in every refit rather than merely
+preserving sign. Its preregistered rationale: on the comparable harness the positive
+control's own margin was 0.23 of a t `[VERIFIED — prior work, model#90]`, and a
+control that barely demonstrates the harness can see a real effect is weak evidence
+that the harness's *negative* reading is trustworthy — so the destructive verdict
+picks up an extra requirement rather than the bar moving. 2.5 is a round number just
+above the `t_{0.975, 7} = 2.3646` floor `[DERIVED — scipy.stats.t.ppf(0.975, 7)]`,
+chosen before any control was run; it is not derived from data and is not permitted
+to substitute for `T_crit` in any outcome.
 
 §7 pre-commits the power consequences before the run: `n_blocks < 6` forces
 UNRESOLVED (underpowered) regardless of the point estimate, and a positive control
