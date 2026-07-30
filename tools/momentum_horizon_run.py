@@ -122,8 +122,19 @@ def per_date_stats(f: pd.DataFrame, score: str, y: str):
 
 
 def shuffle_within_date(f: pd.DataFrame, seed: int, ycol: str) -> np.ndarray:
+    """Permute `ycol` within each `_dcode` group, independent of row order.
+
+    Must hold for an INTERLEAVED frame, not just one pre-sorted by date: each
+    output row keeps its own date's label pool. A lexsort-and-reindex form
+    only shuffles correctly when rows already arrive grouped by date, because
+    it reassigns the (dcode, random)-sorted values back into original row
+    order positionally rather than per-group.
+    """
     rng = np.random.default_rng(seed)
-    return f[ycol].values[np.lexsort((rng.random(len(f)), f["_dcode"].values))]
+    y = f[ycol].to_numpy(copy=True)
+    for idx in f.groupby("_dcode").indices.values():
+        y[idx] = y[rng.permutation(idx)]
+    return y
 
 
 def agg(s: pd.Series, block: int, n_boot: int) -> dict:
