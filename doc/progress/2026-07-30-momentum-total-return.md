@@ -1,263 +1,157 @@
-# 2026-07-30 — dividend-adjusted total-return series, and a re-registered momentum study
+# Dividend-adjusted total-return series + a re-registered momentum study   (PR #110)
 
-## What this is
+STATUS:   delivered as `UNRESOLVED / TILT-NOT-EXCLUDED` — nothing licensed, no
+          model, no shadow deployment, no capital action. Part 1 (the data
+          fix) is VALIDATED. Part 2 (the momentum study built on it) cleared
+          every bar the frozen design *contains* but failed the paired
+          baseline gate, so the frozen rule maps it to UNRESOLVED.
 
-**Two commits, deliberately in this order.**
+          Three commits before review: `048975f` (prereg FREEZE, zero result
+          files), `d256d8f` (results appended, 3-line diff to the frozen
+          §§0–9), `4166e4c` (§7 adversarial review response — 1 CRITICAL + 4
+          MAJOR corrections, verdict unchanged). Two codex CHANGES_REQUESTED
+          reviews followed; this round (below) fixes both.
 
-1. **`048975f` — THE FREEZE, containing no result.** The prereg
-   `doc/research/2026-07-30-momentum-total-return-prereg.md`, the runner
-   `tools/momentum_total_return_run.py`, the data builders and the shuffle
-   tests, committed **before** the primary arm was computed. It carries zero
-   files under `doc/research/data/`.
-2. **the results commit**, which appends the `RESULTS` sections to that prereg
-   and to this doc and adds the run artifacts. It changes exactly 3 lines of the
-   frozen §§0–9 (a header note saying results were appended) and is otherwise
-   pure addition.
+          THIS ROUND (codex review round 2, 2 findings, both fixed here):
+          [BLOCKER] this progress doc was a narrative report instead of the
+          required C5 STATUS:/WHAT:/WHY-DIR:/EVIDENCE:/NEXT: shape — fixed by
+          this rewrite. [MED] provenance tags used `[VERIFIED-now]` /
+          `[VERIFIED-prior]` / bare `[ASSUMED]` instead of LONG #10's
+          `[VERIFIED — <command/file>]` / `[VERIFIED — prior work, <ref>]` /
+          `[ASSUMED — <why>]` shapes — fixed across this doc and the prereg.
 
-The git order is the evidence that nothing was selected after seeing a number.
-Sections below up to `# RESULTS` are the freeze; everything after it is the run.
+          Also fixed this round, from codex review round 1's still-open
+          BLOCKER (the adversarial-review BLOCKER in that same round was
+          already closed by `4166e4c` before round 1 finished posting — see
+          RAW-INPUT MANIFEST below): `tr_matrix_metadata.json` recorded only
+          an ephemeral `/private/tmp/...` scratch path as its derived-file's
+          "source", with no committed record of the 145 raw OHLCV inputs
+          that fed it — so a future rebuild against an edited umbrella corpus
+          had no way to tell a real data change from a builder bug.
 
-## Why
+WHAT:     `tools/build_total_return_series.py` builds `TR[t] = close[t] /
+          prod_{s>t}(1+dividend[s]/close[s])`, a dividend-adjusted
+          total-return close series, per the empirically-established
+          `dividend` column semantics (sentinel `0.0`, not `1.0`/NaN; ex-date,
+          not pay-date; same split-back-adjusted axis as `close`).
+          `tools/build_tr_factor_matrix.py` rebuilds the momentum/vol/beta/mdd
+          factor library on that series (`_tr` suffix) paired against the
+          original price-only build (`_px` suffix) in one frame.
+          `tools/momentum_total_return_run.py` runs one pre-registered test:
+          primary arm `mom_12_1_tr`, `h=120`, `dependence_aware_mean` block
+          `t` with `block_length=h`, on holdout 2021-10-08→2026-07-29
+          (Bonferroni `m=2`, programme-wide test #26).
 
-`2026-07-30-momentum-horizon-prereg.md` is `ABORTED — INVALID CONTROL`. Its own
-erratum listed what a corrected registration would have to fix. Three items:
+          RAW-INPUT MANIFEST (this round): `tools/raw_input_manifest.py` —
+          new — content-addresses all 145 raw `data/ohlcv/<T>/1d.parquet`
+          files plus the watchlist config's own sha256 into one manifest,
+          reusing `tools/corpus_index.py`'s existing canonical digest
+          construction (content-addressed index, generate/verify CLI) rather
+          than a second hashing implementation. Both builder scripts now call
+          `raw_input_manifest.verify_or_abort()` before touching any raw
+          file, and ABORT on a mismatch instead of silently building on
+          inputs the committed pin no longer describes. Committed pin:
+          `doc/research/data/2026-07-30-momentum-total-return/raw_input_manifest.json`.
+          `tests/test_raw_input_manifest.py` (7 tests, synthetic fixture, no
+          real umbrella data touched) pins: every raw file + the config is
+          hashed and included; SPY is not double-counted when it is already
+          in the watchlist (matches production: SPY IS one of the 145 names,
+          not a 146th); generate/verify round-trips; a tampered raw file or a
+          changed config fails verification; a missing raw file aborts loudly
+          instead of silently skipping it; the digest is stable across
+          repeated builds.
 
-1. the placebo was not a within-date permutation (leaked across dates on the
-   interleaved frame it was actually called on);
-2. selecting the arm on block `t` was structurally biased, because
-   `block_length = h` makes the block count fall ~12× as the horizon rises, so
-   the rule picked the horizon where the effect was *smallest*;
-3. the price series was **not dividend-adjusted**, and the aborted run named that
-   as "the single most likely alternative explanation" for its own headline
-   pattern — a monotone rise of the spread with the holding horizon, which is
-   also exactly what an omitted, horizon-accumulating dividend produces.
+WHY/DIR:  `doc/research/2026-07-30-momentum-horizon-prereg.md` is `ABORTED —
+          INVALID CONTROL`. Its erratum listed three defects a corrected
+          registration would have to fix: (1) the placebo leaked labels
+          across dates on an interleaved frame; (2) selecting the arm on
+          block `t` was structurally biased because `block_length=h` makes
+          the block count fall ~12× as the horizon rises; (3) the price
+          series was not dividend-adjusted, which the aborted run itself
+          named as the likely explanation for its own headline pattern (a
+          monotone rise of the spread with holding horizon — exactly what an
+          omitted, horizon-accumulating dividend produces). All three are
+          fixed here, in git order, before the primary was computed.
 
-Item 3 is a **data defect**, and it made even the screen table uninterpretable.
-So it is fixed first.
+          The raw-input manifest (this round) closes a fourth, review-raised
+          gap: reproducibility of the STUDY, not the theory — a pin on a
+          derived file proves the file didn't change, not that the inputs
+          that built it are the ones a future rebuild would read.
 
-## Part 1 — the data fix (measured, and it gates the study)
+EVIDENCE:
+  artifact:       `doc/research/2026-07-30-momentum-total-return-prereg.md`
+                  (frozen §§0–9 + appended RESULTS + §7 adversarial review +
+                  §8 raw-input manifest, this round) and
+                  `doc/research/data/2026-07-30-momentum-total-return/`
+                  (`results.json`, `robustness.json`,
+                  `total_return_validation.json`, `run.log`,
+                  `tr_matrix_metadata.json`, `raw_input_manifest.json` —
+                  this round).
+  prod or exp:    EXPERIMENT. No model built, no shadow deployment, no
+                  capital action, no production path written.
+  existing data:  Yes, all RE-MEASURED this session, not recalled:
+                    ex-div-day gap, raw → TR-adjusted: −66.6 bp (t=−20.6) →
+                      −4.8 bp (t=−1.55), 92.7% removed; with ticker+date
+                      fixed effects: −63.7 bp (t=−25.1) → −3.2 bp (t=−1.33)
+                    return identity over 4,344 events: max error 4.44e−16
+                    `_px` twin vs pinned price-only library: max|diff|
+                      0.000e+00 on all 14 factors, 364,736 rows
+                    primary, AS REGISTERED: E2 = +0.4310 SD, block t=+3.767
+                      on 10 blocks (programme bar 3.1019)
+                    primary, CORRECTED (§7 review Correction 3, block-count
+                      erratum): t=+3.258 on 9 blocks — the labelled
+                      statistic series is 1,085 dates not 1,205, so
+                      `_blocks()`'s 10th "block" holds 5 dates, not 120
+                    name-dimension robustness (§7 review CRITICAL): drop 5
+                      largest name contributors (SMCI/APP/LITE/PLTR/VRT,
+                      3.4% of names) → t=+1.871 (FAILS bar); median spread
+                      instead of mean → t=+1.964 (FAILS bar)
+                    §5b paired baseline gate: t=+1.682, Holm p=0.093 — FAILS
+                      → maps to the frozen UNRESOLVED verdict
+                    D1 (dividend-confound-refutation) diagnostic: paired
+                      TR-minus-price delta −0.0075/−0.0088/−0.0107/−0.0103 at
+                      h=20/60/120/250, all |t|≤1.74 — ≈2% of the effect and
+                      negative, refuting the dividend confound as the
+                      explanation of the ABORTED run's headline pattern
+                    raw-input manifest (this round): corpus_fingerprint_sha256
+                      `48728e24bf2a043aec5529ece14199412372010ff6396bb83fd25ef26f53ad62`,
+                      config_sha256
+                      `f52d096e0a491008a051fb1fc9c0114a9bb98f22788f3b36b4b531274cb31710`
+                    re-running both builders against that pin THIS SESSION
+                      reproduced `total_return_close.parquet` sha256
+                      `8c23496ee351757ec1f953597f9705168542f67cc16f209385091bb60d741ac9`
+                      and `momentum_factor_matrix_tr.parquet` sha256
+                      `85c27fc1d5a56a4c585c03db22dc8be0123badfc83ef23e46cdd358c704eb35a`
+                      — bit-identical to the two pins already recorded in the
+                      prereg §3 when it was frozen, confirming the raw
+                      OHLCV corpus has not moved since
+                  `[VERIFIED — re-ran tools/build_total_return_series.py and
+                  tools/build_tr_factor_matrix.py this session, diffed
+                  sha256 against prereg §3 and tr_matrix_metadata.json]`.
+  best-known?:    Yes for this dividend-adjustment methodology on this
+                  watchlist — the first total-return series built for this
+                  corpus. NOT claimed: that momentum orders the
+                  cross-section (full-sample IC t=+0.589 ≈ 0, U-shaped
+                  decile profile, reported post-hoc as a caveat, not
+                  pre-registered).
+  scope:          `renquant-model` tools + docs only. No pin advanced in any
+                  other repo, no umbrella write, no live surface touched.
 
-`TR[t] = close[t] / prod_{s>t} (1 + dividend[s]/close[s])`, anchored so the last
-bar keeps its true price. Exact for returns:
-`TR[k]/TR[k-1] = (P[k]+D[k])/P[k-1]`.
+VALIDATION:
+          `python3 -m pytest tests/test_momentum_total_return_shuffle.py
+          tests/test_raw_input_manifest.py tests/test_corpus_index.py -v`
+          — 31 passed, 0 failed, this session.
 
-`dividend` semantics were established **empirically** first, because a sibling
-task was bitten by assuming `split_ratio`'s no-event sentinel was `1.0` when it
-is `0.0`. Findings `[VERIFIED-now]`: the sentinel is exactly **`0.0`** (98.264%
-of rows), not NaN; the column exists on only **111 of 145** watchlist names (240
-of 2,790 files); NaN is a contiguous trailing block on exactly 3 names
-(ATI/BA/INTC, 253 rows each) following ≥300 rows of explicit zeros; values are
-per-share cash on the **same split-back-adjusted axis as `close`** (verified on
-every splitter — AAPL 4:1, GE, NVDA 10:1 — where a raw-cash mismatch would have
-shown as a factor-of-N yield jump and does not); the flagged date **is the
-ex-date**; and **SPY carries 42 events**, which matters because the label is
-excess-vs-SPY and adjusting only the names would inject SPY's ≈1.85%/yr yield
-into every excess return. Both legs are adjusted.
+          `python3 tools/build_total_return_series.py` and
+          `python3 tools/build_tr_factor_matrix.py` re-run this session
+          end-to-end against the committed raw-input pin: both printed
+          `RAW INPUT PIN OK`, both wrote derived-file sha256 values
+          identical to the ones pinned in the prereg §3 (quoted above), and
+          `build_total_return_series.py` reproduced `built 145 series (111
+          payers / 34 non-payers)` — unchanged from the original run.
 
-Validation `[all VERIFIED-now]`:
-
-| check | result |
-|---|---|
-| **ex-div-day gap, raw → adjusted** | **−66.6 bp (t=−20.6) → −4.8 bp (t=−1.55)** — 92.7% removed |
-| same, with ticker+date fixed effects | **−63.7 bp (t=−25.1) → −3.2 bp (t=−1.33)** |
-| negative control, 34 non-payers | `max\|new−old\| = 0.0`, **bitwise** identical — but it is a TAUTOLOGY (§7 Correction 3): tests plumbing, not the arithmetic |
-| converse: payers must move | 111/111 moved |
-| return identity, 4,344 events | `max` error `4.44e−16` |
-| `_px` twin vs the pinned price library `544701ba…` | `0.000e+00` on **all 14** factors, 364,736 rows |
-| non-payer factors | 12 own-series factors identical to `0.000e+00`; `beta_*_spy` moves, correctly, via the SPY leg |
-| TR−price CAGR vs realised yield | `corr = 0.975`, 0 names with TR < price |
-
-**Could not be established, recorded in the prereg §3.4:** no independent
-vendor-adjusted series exists to corroborate this on the watchlist — `adj close`
-is present in 49 files that also have `dividend` but is **100% NaN in 41 of
-them**, including all 6 watchlist names; a cross-check was possible only on 3
-out-of-universe names (GOOGL/TER/SWKS: corr 0.9993–0.99999, mean |daily return
-diff| 0.05–1.11 bp). And a per-event yield-slope test is **inconclusive by
-construction** — the raw→TR shift of exactly +1.000 is an algebraic identity, and
-the residual slope is confounded by the yield's own denominator (OXY, Mar-2020:
-32.5% trailing yield on a price that fell \$48→\$9.69). Reported as such rather
-than dressed up as a pass.
-
-## Part 2 — the two defects, fixed structurally
-
-**Defect 1 (placebo leaked across dates).** Three fixes, all registered:
-rows sorted by date before any shuffle; a direct per-group permutation; and
-`selfcheck_shuffle()`, which runs on two deliberately **interleaved** frames
-before any data is read and **aborts unless the old broken lexsort
-implementation FAILS the same check**. If the broken reference stops failing the
-guard aborts with `FAILED TO REJECT`, because a check that cannot fail is not a
-check. `tests/test_momentum_total_return_shuffle.py` — 11 tests, including three
-that point the guard at a broken shuffle and assert `SystemExit`, and one that
-documents *why the defect survived review*: on a date-sorted fixture the broken
-code is perfectly fine, so any natural fixture passes it.
-
-**Defect 2 (biased empirical selection).** Removed, not re-tuned. The horizon is
-**declared from theory before running** — 12−1 formation, `h = 120` trading days
-(≈6 months; **the JT citation here is WRONG — see §7 Correction 4**: `J=12/K=6` is
-not JT-1993's headline cell, 12−1 is Fama-French/Carhart/Asness, and JT's band is
-3–12 months) — with a data-independent block-count floor of
-≥8 blocks that excludes the long end of the band *by the estimator's
-requirement*, stated in advance. One arm, one horizon, one estimand, one test.
-
-**Holdout honesty.** The primary window 2021-10-08 → 2026-07-29 is **not virgin**
-— the aborted run spent it on `A2 mom_6_1 @ h=20`. Registered as a **second test
-on the same dates**: the single-test tier is Bonferroni `m=2` ⇒ `|t| ≥ 2.2414`,
-not 1.96; programme-wide this is test #26 ⇒ `|t| ≥ 3.1019`.
-
-**Also registered:** per-arm placebos; a 40-replication false-flag calibration
-that **VOIDs** the run if the control bar false-flags above 10%; a §5b naive
-`div_yield_252` baseline with neutralised and conditional-pooling arms and a
-**paired Holm-corrected contrast the subject must win**; and D1, a pre-declared
-paired TR-vs-price diagnostic that answers whether the aborted run's monotone
-pattern was a dividend tilt.
-
-Operator constraints honoured: **9 distinct factors ≤ 10**; ceiling is
-**SHADOW ONLY** at every outcome.
-
-## Discipline
-
-Umbrella read-only — no writes, no `git`, no symlinks into it. All artifacts in
-the session scratchpad. `--smoke` was run on this exact environment before the
-freeze (self-check PASS, both pins OK, label built, screen + baseline + Holm
-paths exercised) without computing the primary or reading holdout dates.
-
----
-
-# RESULTS (appended after the freeze `048975f`)
-
-## Bottom line
-
-**Part 1 VALIDATED. Part 2 returned nothing.**
-
-1. **The dividend adjustment validated.** Ex-div-day gap **−66.6 bp (t=−20.6) →
-   −4.8 bp (t=−1.55)**, 92.7% removed; with ticker+date fixed effects −63.7 →
-   **−3.2 bp (t=−1.33)**. Negative control exactly 0.0, bitwise, on all 34
-   non-payers — but see §7 review Correction 3: that control is a **tautology**
-   and is not independent evidence of correctness.
-2. **§6 verdict: `UNRESOLVED / TILT-NOT-EXCLUDED`. NOTHING IS LICENSED.** No
-   model, no shadow deployment, no capital action.
-3. **CORRECTED by the §7 review (Corrections 1–2) — read those first.** The
-   primary cleared every bar the frozen design *contains*, but they are all
-   date-dimension; it FAILS a name-dimension or robust-location check (drop 5 of
-   145 names → `t` +1.871; **median** spread instead of mean → +1.964), and the
-   defensible block count is 9, not 10, giving **`t` = +3.258** rather than
-   +3.767. As originally reported: E2 = **+0.4310 SD**, block
-   `t = +3.767` on 10 blocks (programme bar 3.1019), CI `[+0.2705, +0.6256]`,
-   three views agree, placebos max \|t\| 1.25 vs bar 2.0, 40-shuffle false-flag
-   rate **2.5%**, leave-one-block-out `t ∈ [+3.26, +5.34]` with zero sign flips
-   — and then **failed the §5b paired baseline gate** (`t = +1.682`, Holm
-   p = 0.093). The frozen rule maps that to UNRESOLVED and I did not override it.
-4. **The dividend confound is REFUTED as the explanation of the aborted run's
-   monotone-with-horizon pattern.** Paired TR-minus-price delta is
-   −0.0075/−0.0088/−0.0107/−0.0103 at h=20/60/120/250, all \|t\| ≤ 1.74 — ≈2% of
-   the effect and *negative*. The `_px` twin reproduces the aborted run's
-   published screen table to **0.0000**, which is what licenses reading that
-   delta as the dividend effect and nothing else.
-
-## Two things I got wrong, recorded
-
-* **My §5b gate was mis-designed and it is why the study is UNRESOLVED.** The
-  baseline arm B1 `div_yield_252` had **dirty placebos of its own** (max
-  \|t\| = 2.56 vs bar 2.0), and I gated the verdict on a paired contrast against
-  it without ever calibrating the noise floor of the difference. The contrast
-  failed on power (delta +0.3455, CI `[+0.0887, +0.7090]` excluding zero,
-  `resolves = True`, but `t = 1.68`), not on effect size. Meanwhile the two arms
-  that actually test the tilt hypothesis — orthogonalising to the yield column
-  and pooling *within* yield quintiles — both survive at `t = +4.26` and
-  `+3.83`. So the failing gate is **not** evidence that momentum is a yield tilt;
-  it is my own uncalibrated control.
-* **My W4 factor-level negative control was wrong on first write** and asserted
-  that a non-payer's `beta_*_spy` must be unchanged. It must not: beta's
-  benchmark leg is SPY, which is itself a payer. Split into own-series factors
-  (exactly 0.0) and benchmark-dependent factors (correctly non-zero).
-
-## A post-hoc caveat that undercuts even the passing statistic
-
-Mean label z by `mom_12_1_tr` decile is **U-shaped, not monotone**: d0 = +0.135,
-d1–d8 ≈ −0.03…−0.09, d9 = +0.375; profile/decile rank correlation only **+0.27**;
-full-cross-section IC `t = +0.589` ≈ 0. So the *lowest* momentum decile also
-outperforms and the middle is flat. **Even where E2 passes, "momentum orders the
-cross-section" is not supported** — what the corpus shows is a tail effect. Not
-pre-registered; reported because it can only make the reading more conservative,
-and the verdict is already "nothing licensed".
-
-## Verification of the git order
-
-Freeze commit `048975f` carries **zero** files under `doc/research/data/`. The
-results commit changes exactly **3 lines** of §§0–9 (the header note saying
-results were appended) and is otherwise pure addition — checkable with
-`git diff 048975f -- doc/research/2026-07-30-momentum-total-return-prereg.md`.
-
-## No look-ahead — proven, not asserted
-
-`R[t] = prod_{s>t} g[s]` uses FUTURE dividends, so this needed settling. Every
-factor is a *ratio* of TR values, and the anchor cancels: e.g.
-`mom_12_1(t) = (P[t−20]/P[t−250]) · prod_{t−250<s≤t−20} g[s]`, i.e. only
-dividends **inside the formation window**. Verified numerically by rebuilding a
-forward-cumulative index that at each `t` uses only dividends up to `t`:
-`max|backward − forward|` = 3.6e−15 (`mom_12_1`), 5.6e−16 (`hi52_prox`), 8.9e−16
-(`ma200_ratio`), 2.6e−15 (`vol_250`), and the two series differ by a pure
-per-ticker constant (max relative spread 1.8e−15). The only anchor-sensitive
-quantity is the TR **level**, which prereg §3.2 forbids using — that prohibition
-is load-bearing, not stylistic.
-
----
-
-# §7 ADVERSARIAL REVIEW — returned before merge, and it broke things
-
-**1 CRITICAL, 4 MAJOR, 8 MINOR, 2 NIT, 5 claims survived.** It independently
-re-ran the runner and got a bit-identical `results.json`. Not a confirming review.
-Every number below was reproduced by me before recording it `[VERIFIED-now]`.
-Full findings and my point-by-point responses: prereg §7 (Corrections 1–5).
-
-**The verdict does not change — it was already the most conservative branch — but
-two of my claims above are corrected:**
-
-1. **CRITICAL — my headline was an overclaim.** "Cleared every bar it owns,
-   decisively" holds only for the bars the frozen design *contains*, and those are
-   all **date-dimension**. There is no name-dimension or robust-location check,
-   and the effect fails one: drop the 5 largest name contributors (`SMCI, APP,
-   LITE, PLTR, VRT`, 3.4% of names) → `t` +3.767 → **+1.871**; winsorize the label
-   z at ±1 → **+1.990**; use the **median** spread instead of the mean →
-   **+1.964** (and +1.562 on full blocks). The last two select on nothing. So the
-   passing statistic is carried by tail realisations in a few names — the same
-   conclusion as the U-shaped decile profile and the near-zero IC, from a third
-   direction.
-2. **MAJOR — the negative control is a TAUTOLOGY.** All 34 non-payers have
-   `dividend == 0.0` on every row, so `g ≡ 1.0` and `TR = P` **necessarily**,
-   bitwise, whether the arithmetic is right or wrong. It tests plumbing, not
-   correctness. The adjustment's validation rests on the gap collapse, the
-   machine-precision identity, the `0.000e+00` price-library reproduction and the
-   anchor-invariance proof — **not** on the negative control, and the table above
-   overstated it.
-3. **MAJOR / ERRATUM to frozen §2** — `1205/120 = 10` is wrong: the labelled
-   statistic series is **1,085** dates, so it is `9`, and the shipped 10th "block"
-   holds **5 dates** weighted equally with 120-date blocks. **The defensible
-   number is `t = +3.258` on 9 blocks; the headline +3.767 is 15.6% inflated.**
-   Floor still met (9 ≥ 8).
-4. **MAJOR — my h=120 defence answered the wrong question.** I argued it was "not
-   effect-maximising" on E2; the gate keys on `|t|`. On the holdout h=120 is ex
-   post the **argmax of `|t|`** across the whole declared band (2.473 / 2.686 /
-   **3.767** / 3.052) and the **only** one clearing the programme bar. Git order
-   rules out post-holdout HARKing; the coincidence is recorded, not explained
-   away. Also ERRATUM: `J=12/K=6` is not JT-1993's headline cell (that is
-   `J=6/K=6`), 12−1 is Fama-French/Carhart/Asness, and JT's band is 3–12 months
-   whose midpoint (≈157 days) my own block floor would have excluded.
-5. **MAJOR — the §5b gate was near-incapable of passing** and "Holm-corrected" did
-   nothing on it: the baseline's block variance (0.206) exceeds the subject's
-   (0.145) and the two correlate −0.401, so differencing inflates block sd +83.9%;
-   and the failing arm always has the largest p, so its Holm threshold is always
-   0.05, i.e. uncorrected.
-
-**Survived:** the TR construction end-to-end (formula, `P[s]` convention, anchor,
-no look-ahead, split axis, identity at 2 ULP) — and the reviewer strengthened my
-own proof, showing anchor-invariance is an algebraic identity rather than a
-1.8e-15 numerical coincidence; the git order and determinism; the gap collapse;
-the false-flag calibration; date-dimension LOBO; and D1's conclusion.
-
-**The one residual gap worth flagging for the successor:** both shuffle fixtures
-use a `RangeIndex` while the real call site's frame index is non-contiguous. The
-reviewer verified `groupby().indices` is positional in pandas 2.3.3 so there is
-**no bug** — but had it been label-based, the guard would have passed while the
-shuffle broke. That is precisely the "fixture nicer than the call site" shape that
-killed the previous run.
+NEXT:     None — nothing is licensed by this study, so nothing downstream is
+          unblocked. The prereg's §7/§8 successor list (name-dimension
+          robustness gate, fixed block partition, non-contiguous shuffle
+          fixture, and 6 more) are candidate items for a FUTURE
+          re-registration; this PR does not authorize or schedule one.

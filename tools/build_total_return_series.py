@@ -57,11 +57,15 @@ V7  economic sanity: TR CAGR - price CAGR must equal the realised average
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import raw_input_manifest  # noqa: E402
 
 LIVE = Path("/Users/renhao/git/github/RenQuant")
 OHLCV = LIVE / "data" / "ohlcv"
@@ -70,6 +74,12 @@ CFG = (LIVE / ".subrepo_runtime" / "repos" / "renquant-strategy-104"
 OUT = Path("/private/tmp/claude-502/-Users-renhao-git-github-renquant-orchestrator"
            "/428feb92-8ee7-4b4f-afed-1e4fa82ef367/scratchpad/mom-total-return")
 BENCH = "SPY"
+
+# Raw-layer reproducibility: aborts if the 145-ticker watchlist corpus this
+# script is about to read no longer matches the pinned manifest (see
+# raw_input_manifest.py's module docstring for why a pin on the DERIVED
+# parquet this script writes is not enough).
+raw_input_manifest.verify_or_abort(raw_input_manifest.MOMENTUM_TOTAL_RETURN_PIN)
 
 WATCHLIST = list(json.loads(CFG.read_text())["watchlist"])
 UNIVERSE = WATCHLIST + [BENCH]

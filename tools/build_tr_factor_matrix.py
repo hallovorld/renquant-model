@@ -28,11 +28,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from numpy.lib.stride_tricks import sliding_window_view
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import raw_input_manifest  # noqa: E402
 
 LIVE = Path("/Users/renhao/git/github/RenQuant")
 CFG = (LIVE / ".subrepo_runtime" / "repos" / "renquant-strategy-104"
@@ -42,6 +46,11 @@ OUT = Path("/private/tmp/claude-502/-Users-renhao-git-github-renquant-orchestrat
 ANN = np.sqrt(252.0)
 EMBARGO_DAYS, SCREEN_FRAC = 60, 0.60
 BENCH = "SPY"
+
+# Same raw-layer pin build_total_return_series.py checks. This script reads
+# the same watchlist config for the universe/sector map, so it verifies the
+# same manifest before constructing the factor matrix.
+raw_input_manifest.verify_or_abort(raw_input_manifest.MOMENTUM_TOTAL_RETURN_PIN)
 
 BASE = ["mom_20", "mom_60", "mom_120", "mom_250", "mom_12_1", "mom_6_1",
         "mom_12_2", "hi52_prox", "ma200_ratio", "vol_60", "vol_250",

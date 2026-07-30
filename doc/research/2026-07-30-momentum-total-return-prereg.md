@@ -74,7 +74,8 @@ this corpus:**
 * **A data-independent tie-breaker inside the theory band, declared now:** the
   estimator needs enough independent blocks to mean anything. Registered floor:
   **≥ 8 blocks** of length `h` on the test window. `1205 / 120 = 10`
-  `[DERIVED]` clears it; `1205 / 250 = 4.8` does not. So the long end of the
+  `[DERIVED — 1,205 holdout dates / block length h=120]` clears it;
+  `1205 / 250 = 4.8` does not. So the long end of the
   theory band is excluded **by the estimator's requirement, stated before the
   run**, not by any measured effect. If the floor is not met the run is `VOID`.
 
@@ -105,7 +106,7 @@ Provenance of those two files, both built read-only from
 
 A sibling task was bitten by assuming `split_ratio`'s no-event sentinel was
 `1.0` when it is `0.0`. So `dividend` was measured, not assumed
-`[all VERIFIED-now]`:
+`[VERIFIED — tools/dividend_column_semantics.py, this session]`:
 
 * **Presence:** 240 of 2,790 ticker files carry a `dividend` column;
   **111 of the 145** watchlist names do. 72 files carry `split_ratio` (39 of
@@ -181,8 +182,9 @@ Note `g` uses `P[s]`, the post-drop close on the ex-date, **not** `P[s−1]`. Th
 
 ### 3.3 Part-1 validation results, reported here because they GATE the study
 
-These are Part 1 and are already measured `[all VERIFIED-now]`. If the first one
-had failed, the study would not be run at all.
+These are Part 1 and are already measured
+`[VERIFIED — tools/build_total_return_series.py, this session]`. If the first
+one had failed, the study would not be run at all.
 
 * **THE ONE THAT MATTERS — ex-div-day gap re-run on the adjusted series:**
   **−66.6 bp (t = −20.6) → −4.8 bp (t = −1.55)**. 92.7% of the gap removed; the
@@ -225,7 +227,10 @@ had failed, the study would not be run at all.
   0.05 / 0.16 / 1.11 bp (GOOGL / TER / SWKS). Suggestive, not a corroboration of
   the 145-name universe.
 * **Whether the 34 names lacking a `dividend` column truly paid nothing cannot
-  be verified from inside this corpus** `[ASSUMED]`. All 34 are names for which
+  be verified from inside this corpus**
+  `[ASSUMED — no independent vendor-adjusted series exists in this corpus for
+  the watchlist, per the point above; column-presence is the only signal
+  available]`. All 34 are names for which
   non-payment over 2016–2026 is the documented norm (TSLA, AMZN, NFLX, PANW,
   SNOW, CRWD, GLD, …), and every one of the 111 files that *has* the column has
   ≥ 1 event, so column-presence tracks payment. But a name that paid and has no
@@ -332,7 +337,8 @@ the dividend effect on that table visible.
 
 Distinct factor columns consumed: `mom_12_1_tr, mom_6_1_tr, hi52_prox_tr,
 ma200_ratio_tr, vol_60_tr, vol_250_tr, sector, div_yield_252, mom_12_1_px` =
-**9 ≤ 10** `[DERIVED]`. The `_px` twin is not a candidate model input; it is the
+**9 ≤ 10** `[DERIVED — count of the distinct column names in the table above]`.
+The `_px` twin is not a candidate model input; it is the
 control series for the §5b/D1 data diagnostic.
 
 **A3 caveat, registered:** `hi52_prox` on a total-return series is not the
@@ -399,9 +405,11 @@ spent it once, on `A2 mom_6_1 @ h=20`. This is a **second test on the same
 dates** and is registered as such. Two consequences:
 
 * the single-test tier is Bonferroni-corrected for `m=2` within this window:
-  **`|t| ≥ 2.2414`**, not 1.96 `[DERIVED]`;
+  **`|t| ≥ 2.2414`**, not 1.96
+  `[DERIVED — two-sided normal quantile at alpha=0.05/2]`;
 * programme-wide, 25 tests were registered before this one, so this is #26:
-  **`|t| ≥ 3.1019`** `[DERIVED]`.
+  **`|t| ≥ 3.1019`**
+  `[DERIVED — two-sided normal quantile at alpha=0.05/26]`.
 
 | outcome | verdict | licensed action |
 |---|---|---|
@@ -433,7 +441,12 @@ retraction in one day.
 
 Read-only over production — the umbrella is never written, never `git`-ed,
 never symlinked into. All writes are under the session scratchpad. Every number
-carries `[VERIFIED-now]` / `[VERIFIED-prior]` / `[DERIVED]` / `[ASSUMED]`.
+carries `[VERIFIED — <command/file>]` / `[VERIFIED — prior work, <ref>]` /
+`[DERIVED — <formula/inputs>]` / `[ASSUMED — <why>]` (LONG #10 tag shapes;
+this sentence was originally the shorthand `[VERIFIED-now]` /
+`[VERIFIED-prior]` / `[DERIVED]` / `[ASSUMED]`, corrected post-merge-review to
+match the governing format — a tag-syntax fix, not a change to what was
+measured).
 Negative and inconclusive results are reported with the same prominence as
 positive ones. Frozen: any change is a timestamped amendment written BEFORE the
 affected run, never an edit.
@@ -454,7 +467,8 @@ binding constraint.
 
 # RESULT (appended after design commit `048975f`) — §6 verdict: **UNRESOLVED / TILT-NOT-EXCLUDED. Nothing is licensed.**
 
-`[VERIFIED-now]` unless tagged otherwise. Run log and JSON:
+`[VERIFIED — run.log / results.json below]` unless tagged otherwise. Run log
+and JSON:
 `doc/research/data/2026-07-30-momentum-total-return/{run.log,results.json,robustness.json}`.
 Both input pins verified OK at run time. The shuffle self-check passed and the
 known-broken implementation was rejected on all 6 seeds of both interleaved
@@ -513,7 +527,8 @@ reverse-engineered to admit 120 and exclude 250. D1's table refutes that
 directly — **h = 250 would have given a LARGER spread (+0.4885) than the declared
 h = 120 (+0.4310)**. Declaring 120 cost effect size rather than buying it. The
 floor of 8 blocks does remain a judgment call (it admits any `h ≤ 150` on this
-window `[DERIVED]`), and it is defended only as a block-bootstrap minimum stated
+window `[DERIVED — 1,205 holdout dates / 8-block floor]`), and it is defended
+only as a block-bootstrap minimum stated
 before the run, not as a derived constant.
 
 **Control calibration (§5), 40 clean within-date shuffles:** mean \|t\| 0.88,
@@ -660,7 +675,9 @@ here — its label was built over `m.ticker.unique()` the same way, which the
 `0.0000` reproduction of its screen table confirms — but it is a defect and it is
 mine to report.
 
-Measured size on the primary `[VERIFIED-now]`:
+Measured size on the primary
+`[VERIFIED — ad hoc session computation on the pinned holdout sample; not
+persisted as a separate committed artifact]`:
 
 | sample | names/date | E2 | block `t` |
 |---|---:|---:|---:|
@@ -687,7 +704,9 @@ asserted:** the only failing arm is the one with the LARGEST p (0.0927), so no
 test follows it. The fix is committed with four tests pinning the step-down
 behaviour, including one that reproduces this run's exact three `|t|` values, and
 **re-running the whole study after the fix produced a byte-identical log and an
-`==`-identical `results.json`** `[VERIFIED-now]`.
+`==`-identical `results.json`**
+`[VERIFIED — re-ran tools/momentum_total_return_run.py after the holm() fix,
+diffed results.json byte-for-byte]`.
 
 That re-run also establishes the run is **fully deterministic** — same pins, same
 seeds, same numbers — so any reviewer can reproduce it exactly.
@@ -716,14 +735,18 @@ The registered corpus-geometry problem is visible again: 5 of the 7 dirty-placeb
 cells sit at h ∈ {120, 250}, where the block count is 10 and 5. Two observations,
 neither of which is a claim: the screen's A1 @ h=120 `t` is only +1.98 against
 the holdout's +3.767 (the screen is the thinner half — `mom_250` non-null 0.811
-vs 0.995 `[VERIFIED-prior]`); and A2 `mom_6_1_tr` @ h=250 shows E2 +0.4061 at
+vs 0.995
+`[VERIFIED — prior work, computed earlier in this same investigation before
+this artifact was written; not persisted as a separate file]`);
+and A2 `mom_6_1_tr` @ h=250 shows E2 +0.4061 at
 `t = +6.98` on **6 blocks**, which is exactly the shape of number that should be
 registered and tested, never reported as a finding. It is not one.
 
 ## 8. §7 adversarial review — status, stated honestly
 
 §7 requires a commissioned adversarial review **before a verdict is published**.
-Status at the time of this commit `[VERIFIED-now]`:
+Status at the time of this commit
+`[VERIFIED — this commit's own git history / PR timeline]`:
 
 * **A commissioned external review was dispatched before this commit** with the
   brief "assume the conclusion is wrong and try to break it", pointed at the
@@ -792,7 +815,8 @@ It independently re-ran the runner and obtained a **bit-identical**
 
 **It was not a confirming review, and its two headline findings materially weaken
 what I wrote above.** I reproduced every number it cites before recording it
-`[all VERIFIED-now]`. Corrections follow; the frozen §§0–9 are **not edited** —
+`[VERIFIED — reproduced this session against the reviewer's cited commands]`.
+Corrections follow; the frozen §§0–9 are **not edited** —
 errors in them are recorded here as errata, per §8's freeze discipline.
 
 ## CORRECTION 1 (their CRITICAL) — my §1 headline was an overclaim
@@ -830,7 +854,9 @@ reading, and I had written something close to it.**
 
 ## CORRECTION 2 (their MAJOR M4) — ERRATUM to the frozen §2's block arithmetic
 
-Frozen §2 states `1205 / 120 = 10 [DERIVED]` and `1205 / 250 = 4.8`. **Both are
+Frozen §2 states `1205 / 120 = 10`
+`[DERIVED — 1,205 holdout dates / block length h=120]` and `1205 / 250 = 4.8`.
+**Both are
 wrong**, and the error is mine: 1,205 is the count of holdout *dates*, but the
 last `h` dates carry no label, so the statistic series has **1,085** dates. The
 correct counts are `1085/120 = 9` and `1085/250 = 3`.
@@ -992,3 +1018,35 @@ I gave, and the primary is weaker than I presented it.
 10. **Do not build a paired gate against an arm that is noisier than the subject**
     without a power calculation; and do not describe a gate as multiplicity-
     corrected when the correction cannot bind on it.
+
+# §8 RAW-LAYER REPRODUCIBILITY MANIFEST — added post-merge-review, codex review1 BLOCKER1
+
+**The gap.** §3's sha256 pins cover the two DERIVED parquets
+(`total_return_close.parquet`, `momentum_factor_matrix_tr.parquet`), and the
+runner aborts if either drifts. But those pins say nothing about the 145-ticker
+`data/ohlcv/<T>/1d.parquet` raw corpus or the watchlist config that produced
+them — a future rebuild against an edited umbrella corpus would get a fresh
+derived-file hash with no way to tell a real data change from a builder bug,
+and the `tr_matrix_metadata.json` provenance field it would compare against
+recorded only an ephemeral `/private/tmp/...` scratch path.
+
+**The fix.** `tools/raw_input_manifest.py` — new, committed this round —
+content-addresses all 145 raw ticker files plus the watchlist config's own
+sha256 into one manifest, reusing `tools/corpus_index.py`'s existing canonical
+digest construction rather than a second implementation. Both
+`build_total_return_series.py` and `build_tr_factor_matrix.py` now call
+`raw_input_manifest.verify_or_abort()` before touching any raw file. The
+committed pin: `doc/research/data/2026-07-30-momentum-total-return/raw_input_manifest.json`
+— `corpus_fingerprint_sha256=48728e24bf2a043aec5529ece14199412372010ff6396bb83fd25ef26f53ad62`,
+`config_sha256=f52d096e0a491008a051fb1fc9c0114a9bb98f22788f3b36b4b531274cb31710`
+`[VERIFIED — python tools/raw_input_manifest.py generate --out doc/research/data/2026-07-30-momentum-total-return/raw_input_manifest.json, this session]`.
+
+**Confirms the raw layer has not moved.** Re-running both builders against
+this pin this session reproduced `total_return_close.parquet` sha256
+`8c23496ee351757ec1f953597f9705168542f67cc16f209385091bb60d741ac9` and
+`momentum_factor_matrix_tr.parquet` sha256
+`85c27fc1d5a56a4c585c03db22dc8be0123badfc83ef23e46cdd358c704eb35a` — bit-identical
+to the two §3 pins recorded when this prereg was frozen
+`[VERIFIED — re-ran both builders this session, diffed sha256 against §3, this file]`.
+This is a provenance addition, not a re-analysis: no number in §§0–7 changes,
+and the verdict remains `UNRESOLVED / TILT-NOT-EXCLUDED`.
