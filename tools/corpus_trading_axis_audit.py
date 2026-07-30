@@ -14,10 +14,16 @@ measurement — see renquant-pipeline#228 for its own prior finding on that
 question. Do not read this tool's cutoff check as a substitute for it.
 
 Root cause of the label-maturity defect: ``pd.offsets.BDay(n)`` and
-``busday_count`` count BUSINESS days and do not skip market holidays.
-Measured on SPY's real trading dates 2016-01-04 -> 2026-07-29 (2,597
-cutoffs), ``BDay(60)`` falls BEFORE the true 60th trading day on 99.8% of
-cutoffs, short by mean 2.23 / median 2 / max 6 TRADING days.
+``busday_count`` count BUSINESS days and do not skip market holidays, so a
+window computed with either one lands before the true nth TRADING day
+whenever a market holiday falls inside it — which happens often enough on
+SPY's real trading-date history to matter. (This tool does not quote a
+standalone SPY-axis-wide mean/median/max for that shortfall — the
+mean/median/max are unit-dependent, ``short by n days`` differs under a
+TRADING-day vs. calendar-day count, and no committed evidence log backs
+either. See ``doc/research/evidence/2026-07-30-corpus-trading-axis-audit.md``
+for the two numbers this tool DOES measure and back with a replay log: the
+per-corpus unverifiable fraction and the per-corpus BDay-vs-axis shortfall.)
 
 A trap worth naming: ``BDay(60)`` spans exactly 12 weeks = 84 calendar days and
 ``ceil(60*7/5)`` is ALSO 84, so switching the unit alone fixes nothing.

@@ -9,7 +9,9 @@ STATUS:   delivered (one read-only tool, usable as a gate, plus committed
           (`doc/research/evidence/2026-07-30-corpus-trading-axis-audit.md`)
           and replaces the display-truncated SPY axis hash with the full
           64-char value, then a fourth round closes a silent-coercion bug on
-          off-axis dates (codex MED, see "FOURTH REVIEW ROUND" below).
+          off-axis dates (codex MED, see "FOURTH REVIEW ROUND" below), then a
+          fifth round drops an unreproducible standalone quantitative claim
+          from the docstring (codex MED, see "FIFTH REVIEW ROUND" below).
 
 WHAT:     `tools/corpus_trading_axis_audit.py` — given a WF score corpus and a
           trading-date axis, re-derives (a) whether any row's score_date sits
@@ -68,6 +70,34 @@ FOURTH REVIEW ROUND: a follow-up review against the third-round head found
           fixture tests: `nth_trading_day_after` rejecting the exact
           off-axis-Saturday repro, and `audit()` rejecting a corpus built
           from it end-to-end. Test count: 8 -> 10.
+
+FIFTH REVIEW ROUND: a follow-up review against the fourth-round head found
+          that the module docstring (`tools/corpus_trading_axis_audit.py:16-20`)
+          quoted a standalone SPY-axis-wide root-cause illustration —
+          `2,597 cutoffs`, `99.8%` short, `mean 2.23 / median 2 / max 6
+          TRADING days` — that has no committed evidence block. Reviewer
+          re-ran the underlying calculation on the current axis and confirmed
+          `2,597` and `99.8%` reproduce, but the shortfall statistic is
+          unit-dependent and does not match the docstring's `2.23` under
+          either definition tried (TRADING-day count: mean 2.16; calendar-day
+          count: mean 3.17). Reviewer offered two fixes: add a committed
+          evidence note and restate the numbers under one explicit
+          definition, or drop the quantified sentence and keep the
+          qualitative root-cause explanation only.
+
+          Took the qualitative path (smallest correct fix, and consistent
+          with the SECOND ROUND precedent of narrowing rather than adding new
+          measurement infrastructure): the docstring's root-cause paragraph
+          now explains the BDay/busday_count holiday defect in prose only,
+          states explicitly that no standalone SPY-axis-wide mean/median/max
+          is claimed because that figure is unit-dependent and unbacked by a
+          replay log, and points at
+          `doc/research/evidence/2026-07-30-corpus-trading-axis-audit.md` for
+          the two numbers this tool DOES measure and back with a replay log
+          (the per-corpus unverifiable fraction and per-corpus BDay-vs-axis
+          shortfall, both already in the EVIDENCE section below — unchanged
+          by this round). No functional code was touched, so the existing
+          10/10 test pass is unaffected; re-ran it anyway (see VALIDATION).
 
 WHY/DIR:  renquant-pipeline#228 AC-3. `pd.offsets.BDay(n)` and `busday_count`
           count BUSINESS days and do not skip market holidays, so both purge
@@ -141,6 +171,14 @@ VALIDATION:
           (`nth_trading_day_after(axis, [Timestamp("2024-01-06")], 1)` on a
           business-day axis) and confirmed it now raises `ValueError` instead
           of silently returning `2024-01-09`.
+
+          FIFTH ROUND: docstring-only change, no functional code touched.
+          `python3 -c "import ast; ast.parse(open('tools/corpus_trading_axis_audit.py').read())"`
+          clean, then re-ran
+          `python3 -m pytest tests/test_corpus_trading_axis_audit.py -v` —
+          10 passed, 0 failed, unchanged from the fourth round. Grepped the
+          repo for the dropped figures (`2,597`, `99.8%`, `mean 2.23`) —
+          none remain outside this progress doc's own round-history prose.
 
 NEXT:     Wire it as an actual gate wherever a corpus is stamped
           label-verified, so the check runs instead of being available. A tool
