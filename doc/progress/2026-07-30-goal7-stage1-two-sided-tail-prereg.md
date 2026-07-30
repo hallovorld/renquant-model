@@ -13,8 +13,46 @@ WHY/DIR:   GOAL-7 is a standalone momentum model for shadow, at most ten factors
            middle does not, so a linear ranker cancels the two ends against each other.
 EVIDENCE:  n/a — this PR makes NO model or data claim. Every number is tagged as prior
            work with a reference; nothing was measured for it.
-NEXT:      Split by date with a 60-trading-day embargo, run the §6 self-checks, then
-           the screen. Verdict withheld pending adversarial review.
+NEXT:      Run the §6 self-checks against the §2A-pinned split, then the screen.
+           Verdict withheld pending adversarial review.
+
+## Review round 1 — the registration was not executable, and now is
+
+Codex's BLOCKER was correct and is the reason this document is worth more than it was:
+§2 claimed the design was "fixed before either partition is touched", but four choices
+were still open at run time — corpus/eligibility, the exact split, the positive-control
+artifact, and the §4 residualisation estimator. Each could have moved the verdict
+*after* the U-shape was known, which is exactly the hole §2 exists to close. A prereg
+that names its HARKing risk and then leaves the knobs unturned is worse than one that
+does neither, because it reads as protected.
+
+Pinned in the new §2A and the amended §4/§5.1, all against the corpus rather than
+asserted:
+
+* **Inputs** — the sibling study's two immutable parquets, digests re-verified by
+  `shasum` this session rather than transcribed from the sibling document. (The
+  distinction matters: I have previously tagged a number `[VERIFIED]` when what I had
+  verified was my *transcription* of it.) The durable pin is the committed
+  `raw_input_manifest.json`, since the derived parquets sit in a scratchpad.
+* **Split** — chronological 70%, computed: screen 1,600 dates / embargo 60 / holdout
+  **627 dates = 10 blocks**, remainder 27 dropped, 2023-08-07 → 2026-02-04. So
+  `t_{0.975,9} = 2.2622` and the `n_blocks < 6` VOID floor clears with margin.
+* **§4 named a column that does not exist.** `STD60` is the prod-XGB study's name, not
+  this corpus's — the pinned matrix carries `vol_60_tr`. A control written against a
+  missing column is how a control silently becomes a no-op, which is the
+  guard-validates-the-wrong-object shape this programme keeps hitting. Now pinned to
+  `vol_60_tr` with the estimator fully specified (per-date OLS **with intercept**,
+  deciles on residual ranks, ties by ascending ticker).
+* **Positive control is no longer the prod XGB.** Codex asked which artifact/version;
+  the honest answer is that none is pinnable — the served checkpoint matches none of
+  the 43 rescored folds. A control whose own identity is unresolved cannot certify a
+  harness. Replaced with the closed-form synthetic member merged in model#114 §5.1
+  (`α = 0.0523538966`, date-derived seed, `|mean IC − 0.05| ≤ 0.01` asserted, never
+  re-calibrated).
+
+Disclosed rather than papered over: the 60-date embargo is **shorter than the
+120-trading-day label horizon**, so late-screen labels overlap early-holdout dates. A
+TWO-SIDED-SUPPORTED verdict now carries a mandatory 120-date-embargo robustness re-run.
 
 ## The one clause that decides whether the result will mean anything
 
@@ -23,7 +61,7 @@ is large exactly where the cross-section is dispersed, and this programme has al
 been burned by that. The prod XGB's traded estimand (+0.2534 SD) was reproduced by a
 single sort on STD20 (+0.2836) and collapsed to −0.0554 when orthogonalised to STD60
 `[VERIFIED — prior work, memory panel-signal-identity-capacity]`. So if the residual
-after orthogonalising `u` to `|z(STD60)|` fails the bar, the verdict is
+after orthogonalising `u` to `|z(vol_60_tr)|` fails the bar, the verdict is
 **VOLATILITY-TILT** and the hypothesis is not supported no matter what the raw arm says.
 That is the outcome I expect to have to report if the raw arm looks good.
 
