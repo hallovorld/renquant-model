@@ -396,3 +396,60 @@ ensembling is citing an underpowered null.
 - `certified_clf`'s identity trail is **weaker** than the other two (recipe-script hash and
   hyperparameters; no per-fold digest, against 43/43 for XGB and PatchTST). Disclosed, not
   resolved.
+
+## A1.8 The plausibility bound, PINNED — it was an adjustable threshold
+
+Codex on #119: A1.6's *"the largest gain these members could plausibly produce"* has **no
+source, no quantity and no rule**, so *"the UNRESOLVED versus NO-GAIN disposition remains
+adjustable after observing the screen."* Correct — that is the exact defect the amendment
+was written to remove, reintroduced one clause later. Pinned now, before any re-run.
+
+### The rule
+
+> **`P` = the mean per-date IC gain obtained by combining the benchmark with a second
+> member that is (a) exactly as strong as the incumbent and (b) at the LOWEST pairwise
+> redundancy observed among the three real members.**
+
+Both inputs are already-measured quantities from the executed screen, cited rather than
+chosen: benchmark IC **+0.07312** and the lowest observed pairwise score correlation
+**0.404** (PatchTST↔XGB; the others are 0.517 and 0.768)
+`[VERIFIED — prior work, model#118 §5.4 and its benchmark arm]`.
+
+`P` is an **upper bound by construction**: no real member on this panel is simultaneously
+as strong as the incumbent *and* less redundant than the least-redundant observed pair.
+Being generous is deliberate — if even this bound sits below the screen's sensitivity, the
+screen cannot see anything real, and that conclusion is then robust to the choice.
+
+### The computed values
+
+Monte Carlo on the panel's own geometry (`n = 115` names/date, 400 draws, seed 20260730),
+with `α` calibrated empirically at that width per A1.2 rather than from the asymptotic
+identity `[VERIFIED — scipy Monte Carlo, this session]`:
+
+| quantity | value |
+|---|---|
+| `α` calibrated at n=115 for IC 0.07312 | 0.08799 |
+| **`P` (plausibility bound)** | **+0.01897** (s.e. 0.00267) |
+| block-mean s.e. of the gain statistic | 0.03036 `[DERIVED — 0.0030 / 0.0988 from #118]` |
+| **`MDG` = `T_crit` × s.e.** | **+0.07180** `[DERIVED — 2.3646 × 0.03036]` |
+| **`MDG / P`** | **3.78×** |
+
+The s.e. is derived from #118's own control arm — a gain of **+0.0030** produced
+`|t| = 0.0988` over 8 blocks — and it is a property of the noise, not of the gain, so the
+extrapolation to `T_crit` is linear in the mean. Stated as an assumption rather than
+hidden: this holds while adding signal does not materially change the dispersion.
+
+### The deterministic comparison
+
+> **If `MDG > P`, the screen reports UNRESOLVED (underpowered) and NO-GAIN is
+> UNAVAILABLE. If `MDG ≤ P`, NO-GAIN becomes available.**
+
+On the geometry as it stands, `MDG = 0.07180 > P = 0.01897`, so **the registered outcome
+is UNRESOLVED (underpowered) and NO-GAIN is closed** — decided **before** the re-run, from
+quantities that exist independently of it. Both numbers are recomputed at the realised
+`n_blocks` and reported in the headline whatever happens; only the realised geometry can
+move them, and the rule that consumes them cannot.
+
+**This means a re-run cannot conclude against ensembling on this panel.** It can VOID, or
+return UNRESOLVED. That is the honest state of the evidence and it is now fixed in advance
+rather than available for selection afterwards.

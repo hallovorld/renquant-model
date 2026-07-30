@@ -19,6 +19,16 @@ WHY/DIR:   model#118 executed the frozen prereg and VOIDed on §5.1. The frozen 
            worked as intended — it forbade adjusting `α` and forced a VOID rather than a
            tuned pass. The defect is in the design, which I wrote.
 EVIDENCE:  §1. No re-run has been executed against this amendment.
+
+A1.8 (2026-07-30, before any re-run): codex found that A1.6's plausibility bound --- "the
+largest gain these members could plausibly produce" --- had no source, quantity or rule,
+leaving the UNRESOLVED-vs-NO-GAIN disposition adjustable after seeing the screen. Now
+pinned: P = the gain from a second member as strong as the incumbent (IC +0.07312) at the
+LOWEST observed pairwise redundancy (0.404), both cited from #118, computed by Monte Carlo
+on the panel's own geometry = +0.01897 (s.e. 0.00267). MDG = T_crit x block-mean s.e. =
+2.3646 x 0.03036 = +0.07180. MDG/P = 3.78x, so the registered outcome is UNRESOLVED
+(underpowered) and NO-GAIN is CLOSED --- decided before the re-run. A re-run cannot
+conclude against ensembling on this panel; it can only VOID or return UNRESOLVED.
 NEXT:      Re-run the whole frozen sequence from §2, not just the control — no arm of the
            study has a result.
 
