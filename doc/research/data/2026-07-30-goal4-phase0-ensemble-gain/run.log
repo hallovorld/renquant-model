@@ -1,0 +1,38 @@
+[manifest] VERIFIED root_digest=382823b2a10c680409370e777eaea3644628e4010f64cbb3ecdec70ee319369a
+[data] admissible dates after MIN_NAMES=20 filter: 508 (2024-02-02 .. 2026-02-11), rows=71796, tickers=142
+[self-check] date-sortedness assertion fires on a deliberately-unsorted `dates` index (proves it is live, not decorative): True
+[main] N_eval=508 n_blocks=8 dropped=28 mean(g)=-0.01090 t=-1.0025
+[self-check] no undersized block in the retained partition: PASS (every kept block has exactly 60 dates by construction)
+[perm] running 200 within-date permutations ...
+[crit] P95_null=1.9131 t_0.975,7=2.3646 T_crit=2.3646 (bound by student_t)
+[main] |t|=1.0025 as a quantile of the null: 0.7000
+[§5.2] null false-pass rate over 200 valid permutations: 0.0400 (ceiling 0.10)
+[§5.3] non-tautology: mean frac of dates changed by permutation = 1.0000, min over 200 seeds = 1.0000 (threshold >=0.95)
+[§5.1] synthetic member realised mean per-date Spearman IC = 0.03681 (target 0.05 +/- 0.01): construction BROKEN -> VOID
+[§5.1] control N_eval=508 n_blocks=8 dropped=28 mean(g)=0.00203 t=0.0988
+[§5.1] control T_crit=2.3646 (P95_null=2.2941, t_0.975=2.3646) observed|t|=0.0988 detected=False
+[§5.4] redundancy (descriptive only): {
+  "PatchTST_vs_certified_clf": {
+    "mean": 0.51651963390731,
+    "p5": 0.2889673107833132,
+    "p95": 0.706915260346486,
+    "n": 508
+  },
+  "PatchTST_vs_prod_XGB": {
+    "mean": 0.4038155250431291,
+    "p5": 0.21888195711989542,
+    "p95": 0.6144571041784108,
+    "n": 508
+  },
+  "certified_clf_vs_prod_XGB": {
+    "mean": 0.7681475971577849,
+    "p5": 0.6516839169221549,
+    "p95": 0.8653002676077294,
+    "n": 508
+  }
+}
+
+===== VERDICT (WITHHELD pending adversarial review, §7): VOID =====
+VOID reasons: positive control construction broken (|mean-0.05|>0.01); positive control NOT detected at |t|>=T_crit
+
+[done] results written to /private/tmp/claude-502/-Users-renhao-git-github-renquant-orchestrator/428feb92-8ee7-4b4f-afed-1e4fa82ef367/scratchpad/g4run-90978/doc/research/data/2026-07-30-goal4-phase0-ensemble-gain

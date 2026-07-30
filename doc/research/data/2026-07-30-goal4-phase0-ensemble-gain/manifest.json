@@ -1,0 +1,111 @@
+{
+  "artifacts": {
+    "certified_clf_score_panel": {
+      "max_date": "2026-03-31",
+      "min_date": "2023-10-03",
+      "path": "corrected-eval-20260729/clf-wf/clf_wf_scores.parquet",
+      "root": "ROOT_BUNDLES",
+      "row_count": 178191,
+      "sha256": "1da3fcfab06af1e597ac0eb83dff4741ed3dd027de8b8a6b4d58979f5bc4efe4",
+      "ticker_count": 292
+    },
+    "fold_identity_checks": {
+      "PatchTST": {
+        "check": "all 43 fold checkpoints: file sha256 == metadata.json's emitted artifact_sha256 (43/43 match) AND metadata.json config_fingerprint == served identity's config_fingerprint (43/43 match) [VERIFIED \u2014 this task, hashed every fold file directly]",
+        "manifest_sha256": "195978eb1592752a28033d3e3b7d4fb08ea72414b711a48bf57a0cd542bbc772",
+        "n_folds": 43,
+        "n_matched": 43,
+        "n_mismatched": 0
+      },
+      "certified_clf": {
+        "check": "NO per-fold config_fingerprint digest was persisted by the WF corpus driver (checked wf_clf_corpus.py source: it never computes one). Weaker evidence trail than XGB/PatchTST: the recipe SOURCE SCRIPT sha256 (04cba8a424290acc8c7866df621bc3c8b8bc98a84777e5cec92bb2701e964e05) matches BYTE-FOR-BYTE between what produced the WF corpus and the current renquant-model main (scripts/train_topdecile_clf_shadow.py) [VERIFIED \u2014 shasum -a 256, this task], and hyperparameters/label/lookahead/n_features match the served artifact's recorded params exactly, but this is NOT a per-fold digest match. Disclosed limitation, not grounds for exclusion under \u00a72 (identity IS established from emitted metadata -- the recipe source hash -- just at coarser granularity than the other two members).",
+        "n_folds": 43,
+        "n_matched": null,
+        "n_mismatched": null
+      },
+      "prod_XGB": {
+        "check": "all 43 fold artifacts' embedded config_fingerprint == served identity's config_fingerprint (43/43 match) [VERIFIED \u2014 this task, loaded every fold artifact directly]",
+        "manifest_sha256": "d8b170188fe09036fe9e6bd82d9299218affe499f56c37bb49a64c80111f2e75",
+        "n_folds": 43,
+        "n_matched": 43,
+        "n_mismatched": 0
+      }
+    },
+    "label_corpus": {
+      "horizon_trading_days": 60,
+      "label_col": "fwd_60d_excess",
+      "max_date": "2026-05-01",
+      "min_date": "2016-01-04",
+      "path": "data/alpha158_291_fundamental_dataset.parquet",
+      "root": "ROOT_LIVE",
+      "row_count": 725547,
+      "selection_note": "Chosen over each panel's OWN bundled fwd_60d_excess column because a cross-check (this study, see README.md) found the prod-XGB panel's bundled label diverges from this corpus on ~60% of overlapping (date,ticker) rows (mean abs diff 0.0019, max 1.87), consistent with the XGB panel being built 2026-07-03 against a since-superseded label vintage. This corpus (mtime 2026-07-29) matches the certified-clf panel's bundled label EXACTLY on the full overlap and matches the narrower legacy watchlist panel transformer_v4_wl200_clean.parquet to <1bp on 353406/353548 overlapping rows -- the current, mutually-consistent vintage.",
+      "sha256": "7defdacf97f8eb057a9a56a2eb7bc6eb48bc33adb9fd00a2a6c36943be87daa5",
+      "ticker_count": 292
+    },
+    "patchtst_score_panel": {
+      "max_date": "2026-03-31",
+      "min_date": "2023-10-03",
+      "path": "corrected-eval-20260729/wf-eval/scores.parquet",
+      "root": "ROOT_BUNDLES",
+      "row_count": 88750,
+      "sha256": "6eb209e2491b26b18b7b687c7683f27f8e5cbe56592186bfbac68381e2606d18",
+      "ticker_count": 142
+    },
+    "prod_xgb_score_panel": {
+      "max_date": "2026-02-11",
+      "min_date": "2024-02-02",
+      "path": "data/exp/oos_pick_table_recipe_v2.parquet",
+      "root": "ROOT_LIVE",
+      "row_count": 147066,
+      "sha256": "0cdadd9e34e164fe02a7a693183a60a848f1ed7beda3259f7c8d1b105d55f20c",
+      "ticker_count": 292
+    },
+    "served_artifacts": {
+      "PatchTST": {
+        "config_fingerprint": "sha256:f8fb2259b2bf1537",
+        "feature_contract_n_features": 172,
+        "path": "artifacts/patchtst_shadow/pt07_strict_trainfit_embargo60_20260522/seed_44/hf_patchtst_all_seed44_model.pt",
+        "root": "ROOT_LIVE",
+        "serving_wiring": "backtesting/renquant_104/strategy_config.json -> ranking.panel_scoring.artifact_path == ../../artifacts/patchtst_shadow/pt07_strict_trainfit_embargo60_20260522/seed_44/hf_patchtst_all_seed44_model.pt [VERIFIED \u2014 grep on strategy_config.json, this task]",
+        "sha256": "07046963994dbb8da29bfc66f99d21399e39d6d2dbd842c180299bce67c07571",
+        "trained_date": "2026-05-22"
+      },
+      "certified_clf": {
+        "config_fingerprint": "sha256:1d8f167fed18cd8cb1e0760251fdd5398724e630462d92b41561d2e19973e41b",
+        "feature_contract_n_features": 172,
+        "path": "backtesting/renquant_104/artifacts/shadow/panel-clf.top-decile.fwd60.json",
+        "root": "ROOT_LIVE",
+        "serving_wiring": "confirmed via doc/progress/2026-07-28-umbrella-blend-scorer-kind.md (independent citation of the identical content/fp/trained_date pin) -- NOT found wired into the live strategy_config.json's ranking.panel_scoring path as of this task (shadow blend leg is a separate, not-currently-committed config surface) [VERIFIED \u2014 grep over strategy_config.json found no match, this task] [VERIFIED \u2014 doc/progress/2026-07-28-umbrella-blend-scorer-kind.md]",
+        "sha256": "1e644354e0981f470d13161a771a0c668ab918124531f9955c037688d607ddf8",
+        "trained_date": "2026-07-28"
+      },
+      "prod_XGB": {
+        "candidate_recipe_fingerprint": "sha256:cfdd6cb8e950da0f",
+        "config_fingerprint": "sha256:f8fb2259b2bf1537",
+        "feature_contract_n_features": 172,
+        "path": "backtesting/renquant_104/artifacts/prod/panel-ltr.alpha158_fund.json",
+        "root": "ROOT_LIVE",
+        "serving_wiring": "backtesting/renquant_104/strategy_config.json -> gbdt/panel_ltr.artifact_path == artifacts/prod/panel-ltr.alpha158_fund.json [VERIFIED \u2014 grep on strategy_config.json, this task]",
+        "sha256": "04d7a381cd6df84721dd938ce74a297cbf3eda9d5bc3385515bc155014dd5b08",
+        "trained_date": "2026-06-21"
+      }
+    }
+  },
+  "exclusions": [],
+  "generated_by": "tools/goal4_phase0_manifest.py",
+  "identity_construction_note": "\u00a72 abort gate operationalised at RECIPE identity (config_fingerprint or, for certified_clf, recipe-source-sha256 + hyperparameter match), not literal single-checkpoint-file identity, because all three production scorers here are walk-forward retrained on a rolling schedule and a single checkpoint cannot validly score a multi-year history without lookahead. This construction matches the precedent this prereg's own \u00a71 cites approvingly (model#90). Disclosed prominently for adversarial review, not asserted quietly.",
+  "included_members": [
+    "prod_XGB",
+    "certified_clf",
+    "PatchTST"
+  ],
+  "n_digests": 7,
+  "prereg": "doc/research/2026-07-30-goal4-phase0-ensemble-gain-prereg.md (renquant-model#114)",
+  "root_digest": "382823b2a10c680409370e777eaea3644628e4010f64cbb3ecdec70ee319369a",
+  "roots": {
+    "ROOT_BUNDLES": "/Users/renhao/renquant_bundles",
+    "ROOT_LIVE": "/Users/renhao/git/github/RenQuant"
+  },
+  "schema": "goal4_phase0_ensemble_gain_manifest.v1"
+}

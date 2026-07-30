@@ -1,0 +1,93 @@
+{
+  "certified_clf_recipe_hash": {
+    "commits_touching_script_since_pin": "(none)",
+    "match": true,
+    "measured_sha256_current_main": "04cba8a424290acc8c7866df621bc3c8b8bc98a84777e5cec92bb2701e964e05",
+    "recorded_sha256_in_wf_corpus_manifest": "04cba8a424290acc8c7866df621bc3c8b8bc98a84777e5cec92bb2701e964e05",
+    "wf_corpus_pinned_commit": "e07f6f838e9c2e359474d8ee71d4ca6034714068"
+  },
+  "fold_identity": {
+    "PatchTST": {
+      "n_config_fingerprint_matches_served": 43,
+      "n_file_sha_matches_emitted_artifact_sha256": 43,
+      "n_folds": 43
+    },
+    "prod_XGB": {
+      "n_config_fingerprint_matches_served": 43,
+      "n_folds": 43
+    }
+  },
+  "label_divergence": {
+    "corrected_characterisation": "The headline '58.5% of rows diverge' is TRUE at a >1e-9 tolerance but MISLEADING: the overwhelming majority of those are float-representation noise. Only the material_rows_gt_1pct bucket reflects genuine label revision, and it concentrates at the END of the prod-XGB panel's coverage window -- consistent with late-arriving return revisions, not a wholesale vintage mismatch. The label-source swap remains correct under \u00a74's 'same r_{t->t+h}' requirement (all three arms MUST share one label source regardless), but the original justification overstated the severity.",
+    "frac_diff_gt_1e-9": 0.5848870575115934,
+    "material_rows_gt_1pct": {
+      "date_max": "2026-02-11",
+      "date_min": "2026-01-30",
+      "frac_of_overlap": 0.008853167965403289,
+      "n": 1302,
+      "panel_coverage_date_max": "2026-02-11"
+    },
+    "max_abs_diff": 1.8671482524006784,
+    "mean_abs_diff": 0.0018745595023645205,
+    "n_diff_gt_1e-9": 86017,
+    "n_overlapping_rows": 147066,
+    "tolerance_buckets": {
+      "float_noise_1e-9_to_1e-6": {
+        "frac": 0.5756327091237947,
+        "n": 84656
+      },
+      "material_gt_1pct": {
+        "frac": 0.008853167965403289,
+        "n": 1302
+      },
+      "moderate_1e-3_to_1pct": {
+        "frac": 0.0003399834088096501,
+        "n": 50
+      },
+      "small_1e-6_to_1e-3": {
+        "frac": 6.119701358573702e-05,
+        "n": 9
+      }
+    }
+  },
+  "purpose": "Measures every load-bearing narrative claim in the GOAL-4 Phase-0 writeup, in response to the \u00a77 adversarial review finding that several were hardcoded strings rather than computed values.",
+  "selfcheck_immunity": {
+    "interpretation": "PASS: iterating the dates in reverse order, with the sortedness assertion bypassed, produces identical per-date g(t). This is the EMPIRICAL demonstration that the harness is structurally immune to the cross-date-leak class (rows are looked up by exact date key, and the permutation seed is a pure function of the date value), which the delivered self-check asserted but did not itself prove.",
+    "n_dates_tested": 120,
+    "output_bit_identical_under_reversed_iteration": true
+  },
+  "served_artifact_digests": {
+    "PatchTST_served": {
+      "config_fingerprint": "sha256:f8fb2259b2bf1537",
+      "file_sha256_measured": "07046963994dbb8da29bfc66f99d21399e39d6d2dbd842c180299bce67c07571",
+      "metadata_emits_artifact_sha256": false,
+      "metadata_top_level_keys": [
+        "artifact_path",
+        "config_fingerprint",
+        "config_fingerprint_fields",
+        "config_fingerprint_stamped_from",
+        "effective_selection_cutoff_date",
+        "effective_train_cutoff_date",
+        "feature_count",
+        "kind",
+        "lookahead_days",
+        "recovery_note",
+        "schema_version",
+        "split_counts",
+        "split_date_ranges",
+        "split_days",
+        "trained_date",
+        "training_contract"
+      ],
+      "note": "The SERVED checkpoint's metadata does NOT emit an artifact_sha256 field. Identity for the served artifact therefore rests on the config_fingerprint plus the strategy_config.json wiring, NOT on a self-emitted digest cross-check. (Per-FOLD metadata files DO emit artifact_sha256 and those are cross-checked -- see claim_fold_identity below.)"
+    },
+    "certified_clf_served": {
+      "config_fingerprint": "sha256:1d8f167fed18cd8cb1e0760251fdd5398724e630462d92b41561d2e19973e41b",
+      "file_sha256_measured": "1e644354e0981f470d13161a771a0c668ab918124531f9955c037688d607ddf8"
+    },
+    "prod_XGB_served": {
+      "config_fingerprint": "sha256:f8fb2259b2bf1537",
+      "file_sha256_measured": "04d7a381cd6df84721dd938ce74a297cbf3eda9d5bc3385515bc155014dd5b08"
+    }
+  }
+}

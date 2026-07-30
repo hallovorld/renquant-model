@@ -1,0 +1,83 @@
+{
+  "data": {
+    "first_date": "2024-02-02",
+    "last_date": "2026-02-11",
+    "min_names_per_date": 20,
+    "n_admissible_dates": 508,
+    "n_tickers": 142
+  },
+  "implementation_constants_not_in_frozen_text": {
+    "MIN_NAMES": 20,
+    "PERM_SEED_BASE": 900101,
+    "permutation_construction": "one shared random within-date permutation applied jointly to ALL member score columns per (seed, date), preserving cross-member redundancy while breaking score<->label pairing; mathematically equivalent to permuting the label vector once per (seed, date) for the resulting rank-correlation statistics"
+  },
+  "main": {
+    "N_eval": 508,
+    "P95_null": 1.9131070060649797,
+    "T_crit": 2.3646242515927844,
+    "T_crit_bound_by": "student_t",
+    "abs_t_quantile_of_null": 0.7,
+    "dropped_remainder_days": 28,
+    "mean_g": -0.010902801207157826,
+    "n_blocks": 8,
+    "n_perm_total": 200,
+    "n_perm_valid": 200,
+    "se": 0.01087540284475344,
+    "t": -1.0025192963235936,
+    "t_crit_student": 2.3646242515927844
+  },
+  "manifest_root_digest": "382823b2a10c680409370e777eaea3644628e4010f64cbb3ecdec70ee319369a",
+  "prereg": "doc/research/2026-07-30-goal4-phase0-ensemble-gain-prereg.md (renquant-model#114)",
+  "section_5_1_positive_control": {
+    "N_eval": 508,
+    "P95_null": 2.2941161557545633,
+    "T_crit": 2.3646242515927844,
+    "construction_ok": false,
+    "detected": false,
+    "dropped_remainder_days": 28,
+    "mean_g": 0.002025782936797796,
+    "n_blocks": 8,
+    "realised_mean_ic": 0.03680921722141085,
+    "t": 0.09878441738079292,
+    "t_crit_student": 2.3646242515927844
+  },
+  "section_5_2_null_control": {
+    "ceiling": 0.1,
+    "false_pass_rate": 0.04,
+    "n_perm_valid": 200
+  },
+  "section_5_3_non_tautology": {
+    "mean_frac_dates_changed": 1.0,
+    "min_frac_dates_changed": 1.0,
+    "threshold": 0.95
+  },
+  "section_5_4_redundancy_descriptive_only": {
+    "PatchTST_vs_certified_clf": {
+      "mean": 0.51651963390731,
+      "n": 508,
+      "p5": 0.2889673107833132,
+      "p95": 0.706915260346486
+    },
+    "PatchTST_vs_prod_XGB": {
+      "mean": 0.4038155250431291,
+      "n": 508,
+      "p5": 0.21888195711989542,
+      "p95": 0.6144571041784108
+    },
+    "certified_clf_vs_prod_XGB": {
+      "mean": 0.7681475971577849,
+      "n": 508,
+      "p5": 0.6516839169221549,
+      "p95": 0.8653002676077294
+    }
+  },
+  "self_checks": {
+    "date_sortedness_assertion_fires_on_unsorted_input": true,
+    "no_undersized_block": true
+  },
+  "verdict_WITHHELD_pending_adversarial_review": "VOID",
+  "void_reasons": [
+    "positive control construction broken (|mean-0.05|>0.01)",
+    "positive control NOT detected at |t|>=T_crit"
+  ]
+}
