@@ -173,3 +173,96 @@ rather than a dividend-yield tilt.
 ---
 
 **Nothing in this revision is a result.**
+
+---
+
+# RESULT (appended after design commit `5a46041`)
+
+Verbatim: `doc/research/data/2026-07-30-m2.log`. JSON: `…/2026-07-30-m2.json`.
+`[VERIFIED — this session]` matrix PIN OK; label built here, all four horizons
+`sd = 0.9963`, `mean ≈ 0` — units are SD of the cross-section, **not return**.
+Screen 183,532 rows / 1,896 dates; holdout 172,592 rows / 1,205 dates; embargo
+8,580 rows discarded.
+
+## §8 VERDICT: UNRESOLVED. Nothing is licensed.
+
+Selection by the frozen §6 rule: **A2 `mom_6_1` @ h=20** (screen E2 `t = +3.16`,
+placebos clean). Holdout, used once:
+
+| | |
+|---|---:|
+| E2 spread | **+0.1314** |
+| block `t` | **+1.51** |
+| CI | `[+0.0265, +0.2462]` |
+| three views agree | yes |
+| placebos max \|t\| | **1.97** (bar 2.0 — clean by 0.03) |
+| E1 IC `t` | −0.10 |
+
+`|t| = 1.51 < 1.96` ⇒ **UNRESOLVED**, which §8 registered in advance as a
+statement about **power**, never about momentum. No shadow model is built. The
+result is reported exactly as the frozen rule dictates.
+
+## The real finding: MY SELECTION RULE WAS STRUCTURALLY BIASED, and I have to own it
+
+The screen table shows the traded spread rising **monotonically with holding
+horizon** in 4 of 7 arms `[VERIFIED — this session]`:
+
+| arm | h=20 | h=60 | h=120 | h=250 |
+|---|---:|---:|---:|---:|
+| A1 `mom_12_1` | +0.1369 | +0.2027 | +0.2738 | **+0.3165** |
+| A2 `mom_6_1` | +0.1736 | +0.2568 | +0.3524 | **+0.4574** |
+| A4 `ma200_ratio` | +0.1206 | +0.2089 | +0.2739 | **+0.3729** |
+| A6 `vol_gated` | +0.1412 | +0.1945 | +0.2748 | **+0.3283** |
+| A7 `sector_neutral` | +0.0809 | +0.1361 | +0.2018 | +0.1592 |
+| A3 `hi52_prox` | −0.0235 | −0.0158 | −0.0036 | −0.0365 |
+| A5 `vol_scaled` | +0.0989 | +0.1219 | +0.1978 | +0.1807 |
+
+That is the shape the literature predicts and it is the first evidence on this
+programme that **60 trading days was the wrong place to look.** Registering the
+horizon as the axis is what surfaced it.
+
+**But the rule I froze then selected the horizon where the effect is SMALLEST.**
+Because `block_length = h`, the number of independent blocks falls roughly
+**12×** from h=20 (~57 blocks on 1,142 dates) to h=250 (~4.5 blocks)
+`[DERIVED]`. Block `t` therefore **falls as the horizon rises even while the
+effect grows**, so a rule that maximises `t` is a rule that prefers short
+horizons. A2's selected h=20 spread (+0.1736) is the **smallest of its four**.
+
+**My control rule compounds it in the same direction.** With few blocks the
+placebo `|t|` distribution widens, so the fixed `|t| < 2.0` bar false-flags more
+often at long horizons — visible in the table: 5 of 7 arms are PLACEBO-DIRTY at
+h=250, versus 2 of 7 at h=60. This is exactly the corpus-geometry dependence
+registered in the traded-estimand prereg's Amendment 1, now biting on the horizon
+axis.
+
+So **two of my own frozen rules both discriminated against the horizon the theory
+points at.** I cannot repair that here: §8 forbids revising a verdict by changing
+the selection rule, and this verdict is UNRESOLVED.
+
+## Honest accounting of what the holdout cost
+
+The holdout was spent on **one** pair, A2 @ h=20. The other 27 (arm, horizon)
+pairs are unseen on it. That does **not** make the holdout fresh: a second use of
+the same dates is a second test on the same data and must be registered with that
+multiplicity stated. It is weaker evidence than a virgin holdout, and any
+follow-up must say so rather than present the holdout as untouched.
+
+## What a corrected registration would have to fix — stated, not executed
+
+1. **Select on effect size subject to a minimum block count**, not on `t` — or
+   pre-declare the horizon from theory (12−1 at a long horizon) and skip the
+   empirical selection entirely, which removes the bias by removing the choice.
+2. **Make the control bar horizon-aware**, calibrated per block count, since a
+   fixed `|t| < 2.0` is not the same test at 57 blocks and at 4.5.
+3. Obtain a **dividend-adjusted** series. §3's confound stands unchanged: the
+   monotone rise with horizon is *also* what a dividend-yield tilt would produce
+   in a price-only series, since the omitted dividend accumulates with the
+   horizon. **This is the single most likely alternative explanation for the
+   table above and it is not ruled out by anything measured here.**
+
+## What is NOT claimed
+
+Not that momentum works. Not that the screen table is evidence — §6 forbids it
+and the table's monotone pattern has an unexcluded dividend explanation. Not that
+`mom_6_1` at a long horizon would pass; it was never tested on the holdout. No
+P&L: units are SD. No model built, nothing deployed, not even to shadow.
