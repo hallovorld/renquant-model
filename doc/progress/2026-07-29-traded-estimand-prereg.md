@@ -101,20 +101,23 @@ VERIFICATION:
           and no stack): fold means 1/30 = 3%, block means 2/30 = 7%,
           ~16% of valid experiments voided.
           Two PRE-EXISTING doc/output inconsistencies were surfaced by this
-          re-run and are left for review rather than silently edited, since
-          both touch registered text:
+          re-run:
             (1) §5 Amd.1's table states the ALL-clean void rate as `14%`
                 `[DERIVED — 1-0.97^5]`, but the verifier prints `~16%`
                 (P(survive)=84%). Cause is rounding propagation only:
                 1-(29/30)^5 = 15.6% from the exact 1/30, vs 1-0.97^5 =
-                14.1% from the rounded 3%. No measurement changed.
-            (2) §6 cites `[VERIFIED — calibration §C]` for the real arm's
+                14.1% from the rounded 3%. No measurement changed. Left
+                as-is — presentation rounding, not a wrong citation.
+            (2) §6 cited `[VERIFIED — calibration §C]` for the real arm's
                 half-width `0.2176 sd` at effect `0.3680 sd`, but §C no
                 longer emits a real-arm half-width (by design — it defers
                 that to the runner at verdict time to preserve
-                controls-first ordering). The number itself reproduces, but
-                from §B: (0.5432-0.1081)/2 = 0.2176. The citation should
-                read §B. The document contains no
+                controls-first ordering). The number itself reproduces,
+                from §B: (0.5432-0.1081)/2 = 0.2176. FIXED (fixed by
+                claude, this push): the citation now reads
+                `[VERIFIED — calibration §B]` in §6, matching where the
+                number actually comes from. No measurement changed.
+          The document contains no
           outcome; that is the deliverable. Its own §5 records the
           measurement that disqualifies the `shift120` displacement placebo
           (control `t=+2.90`, more significant than the real arm it was meant

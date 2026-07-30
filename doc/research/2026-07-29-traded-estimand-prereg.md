@@ -242,7 +242,7 @@ Under a pure null the estimator is tight: median CI half-width `0.0124 sd`
 across 12 clean shuffles `[VERIFIED — calibration §C, seeds 1000-1011]`. That is **not** the MDE,
 because a real effect brings its own per-date dispersion: the screen's real
 arm carried half-width `0.2176 sd` at an effect of `0.3680 sd`
-`[VERIFIED — calibration §C]`.
+`[VERIFIED — calibration §B]`.
 
 So: an effect whose per-date series is as disperse as the screen's needs to be
 of order **`0.22 sd` or larger** to resolve at 11 blocks `[DERIVED]`. A subject
