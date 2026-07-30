@@ -209,3 +209,41 @@ it does not run.
 
 No new prereg. No re-run of the voided screen. No change to any production
 surface. No claim that the ensemble is bad.
+
+
+## §8 FLIP COUNT — run, and it decides C vs D
+
+Review permitted this as a descriptive feasibility measurement under three
+conditions. All three are now enforced in code, not promised in prose
+(`tools/goal4_decision_flip_count.py`, `tests/test_goal4_flip_count_label_isolation.py`,
+11 tests):
+
+1. **Label isolation, at COLUMN level.** Two of the three pinned panels carry
+   `fwd_60d_excess` **inline** `[VERIFIED — schema read, 2026-07-30]`, so choosing
+   which *file* to open isolates nothing. Every read passes an explicit `columns=`
+   list, so a label is never materialised — not read-then-dropped.
+2. **No performance reported.** A test asserts no result key is label-shaped and
+   that none of `ic / sharpe / mean_return / pnl / alpha` appears.
+3. **No favourable rule selectable.** The ensemble is the mean of within-date score
+   **ranks**, not raw scores. The members are on different scales; a raw mean would
+   be an unregistered weighting choice chosen after the fact.
+
+**Result, top-10 per date** `[VERIFIED — tools/goal4_decision_flip_count.py, this session]`:
+
+| quantity | value |
+|---|---:|
+| common dates across all three members | 508 |
+| median names scored per date | 142 |
+| **total flips** | **2 201** |
+| flips per date, mean / median | **4.33 / 4** |
+| dates with **zero** flips | **0** |
+| dates with at least one flip | **508 / 508** |
+| max flips on a single date | 8 |
+
+**The boundary is crossed constantly.** The ensemble would change **4.3 of the top
+10 picks on a typical date**, on **every** date in the window — not the single digits
+per year that would have made option C a second power wall.
+
+**This settles the §5 gate in favour of C.** It does **not** say the ensemble is
+better — it reports no performance and cannot. It says the decision-boundary
+estimand has units to measure, which is the one thing D assumed it might not.
