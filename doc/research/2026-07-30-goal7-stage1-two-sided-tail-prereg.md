@@ -445,3 +445,83 @@ These are **void** and must not be cited from this document:
 **Mandatory in the report** (extending §3): the realised evaluation/embargo date counts
 and the two dropped dates, checked against A3.1. A divergence means the corpus moved
 and the run is not the registered one.
+
+---
+
+# AMENDMENT 3 — the window is now COMPUTED, not "recomputed later"
+
+Registered 2026-07-30, before any run. Codex on #117: Amendment 2 *"correctly burns the
+contaminated 2021-10-08 onward period, but it reopens the freeze point that Amendment 1
+just closed"* — `n_blocks` was left to be "recomputed", and the embargo boundary, date
+count, dropped remainder and Student-t leg were unpinned, so **the partition and its power
+condition remained mutable at run time.** Correct. Fixing a contamination defect by
+re-opening a mutability defect is not a fix. Everything is computed here and frozen.
+
+## A3.1 The separation rule that actually binds
+
+Amendment 2 burned dates from **2021-10-08**. But a date `t` inside the surviving window
+still carries a label built from returns **after** `t`, so an evaluation date within 120
+trading days of the boundary would take its label from the burned period. The operative
+rule is therefore stronger than "stop at the boundary":
+
+> **No evaluation date's label may use a return from the burned period.** The last
+> admissible date is the latest `t` whose 120th following trading day still precedes
+> 2021-10-08.
+
+**This SUPERSEDES Amendment 1's 60-trading-day embargo for this design**, and the reason
+is stated rather than assumed: an embargo separates a *screen* partition from a *holdout*
+partition. This design has **one** once-used window and no second partition, so there is
+nothing for an embargo to separate — the label-overlap rule is what does the separating,
+and it is strictly stronger (120 trading days, not 60). Carrying both would be
+belt-and-braces with no stated purpose, at a cost in power that is already the binding
+constraint.
+
+## A3.2 The frozen partition
+
+Computed from the benchmark's own trading-day index
+`[VERIFIED — RenQuant/data/ohlcv/SPY/1d.parquet index, read-only, this session]`:
+
+| quantity | value |
+|---|---|
+| burn boundary (from Amendment 2) | 2021-10-08 |
+| trading days strictly before it | 1452 (2016-01-04 … 2021-10-07) |
+| **last admissible evaluation date** | **2021-04-19** — its 120th following trading day is the last one clear of the burn |
+| **evaluation window** | **2016-12-29 … 2021-04-19**, used ONCE |
+| **`N_eval`** | **1082** |
+| **`n_blocks`** | **`floor(1082 / 60) = 18`** |
+| **dropped remainder** | **2 days** (dropped, never equal-weighted) |
+| **`t_{0.975, 17}`** | **2.1098** `[DERIVED — scipy.stats.t.ppf(0.975, 17)]` |
+| §7 power condition `n_blocks ≥ 6` | **satisfied** |
+
+`T_crit` remains `max(P95_null, t_{0.975, n_blocks−1})`; the Student-t leg is now pinned at
+**2.1098** and only `P95_null` is measured at run time, from the 200 registered
+permutations.
+
+**Superseded and no longer applicable:** Amendment 1's §2A split table and its 10-block
+claim, and Amendment 1's 60-day embargo band. Those described a partition ending inside
+the burned period.
+
+## A3.3 The one quantity that can still move, and its pre-committed consequence
+
+`N_eval = 1082` counts **dates**. Amendment 1's rule that a date with fewer than 20
+admissible names is dropped from both arms can only **reduce** it, and cannot be evaluated
+without the corpus. So:
+
+- the realised `N_eval`, `n_blocks` and dropped remainder are recomputed under the frozen
+  rule at run time and **reported against the 1082 / 18 / 2 pinned here**, with any
+  shortfall attributed;
+- `n_blocks` would have to fall from 18 to below 6 — a loss of over two thirds of the
+  dates — for the §7 underpowered clause to bite. If it does, the verdict is
+  **UNRESOLVED (underpowered)** and the run does not proceed to a verdict on the arm.
+
+That is the only degree of freedom left, it moves in one direction only, and its
+consequence is pre-committed.
+
+## A3.4 A cost I overstated, corrected
+
+Amendment 2 said the uncontaminated window trades a 627-date holdout for "a shorter, older
+window". **Older, yes. Shorter, no.** 1082 dates and **18 blocks** against Amendment 1's
+627 dates and 10 blocks — the screen partition is longer than the holdout was, so removing
+the contamination *increases* power rather than costing it. The real cost is regime: 2016
+to early 2021 is not the regime the model trades today, and §7's limit on what a pass buys
+stands unchanged for that reason and not for a power reason.

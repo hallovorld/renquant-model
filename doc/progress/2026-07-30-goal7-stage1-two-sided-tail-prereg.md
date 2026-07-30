@@ -11,6 +11,16 @@ WHY/DIR:   GOAL-7 is a standalone momentum model for shadow, at most ten factors
            (d0 +0.135, middle −0.03…−0.09, d9 +0.375), rank correlation with decile
            only +0.27, full-cross-section IC t = +0.589 ≈ 0. Both extremes pay and the
            middle does not, so a linear ranker cancels the two ends against each other.
+AMENDMENT 3 (2026-07-30, before any run): codex was right that Amendment 2 fixed a
+contamination defect by re-opening a mutability one. The partition is now COMPUTED from
+the benchmark's trading-day index and frozen: window 2016-12-29..2021-04-19, N_eval=1082,
+n_blocks=18, dropped remainder 2, Student-t leg t_(0.975,17)=2.1098. The binding
+separation rule is that no evaluation date's label may use a return from the burned
+period, which supersedes the 60-day embargo because this design has ONE once-used window
+and no second partition for an embargo to separate. Correction: Amendment 2 called the
+uncontaminated window "shorter"; it is LONGER (18 blocks vs 10), so removing the
+contamination increases power. The cost is regime, not power.
+
 EVIDENCE:  n/a — this PR makes NO model or data claim. Every number is tagged as prior
            work with a reference; nothing was measured for it.
 NEXT:      Run the §6 self-checks against the Amendment 3 partition, then the screen.
