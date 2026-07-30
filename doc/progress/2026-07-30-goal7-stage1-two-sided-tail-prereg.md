@@ -143,6 +143,40 @@ is the obvious trade. Consequence: Amendment 1's 120-embargo robustness obligati
 **discharged, not carried** — there is no 60/120 gap left to re-run. Both sets of
 figures are recorded so the choice is auditable.
 
+## Review round 3 — Amendment 4: two Amendment 3s, one specification
+
+Two sections titled "AMENDMENT 3" were written concurrently against the same review —
+mine and another session's. Codex caught it: an executable spec cannot ask readers to
+reconcile contradictory clauses. Amendment 4 is the single authoritative partition;
+both A3s are marked NOT EXECUTABLE in place and retained unedited.
+
+**They agreed on every number** (eval 2016-12-29 → 2021-04-19, `N_eval = 1082`,
+`n_blocks = 18`, `t_{0.975,17} = 2.1098`) — I recomputed both routes independently
+before reconciling rather than assuming the agreement. The conflict was in the rule:
+mine registered a 120-date **embargo band**; the other derived the same dates from a
+**label-overlap rule**.
+
+**I withdrew my own framing.** An embargo separates a screen partition from a holdout.
+This design has one once-used window and no second partition, so there is nothing for
+an embargo to separate — and naming those 120 dates as one invites a future reader to
+think a usable second partition exists. The other session's rule is the correct object
+and is strictly stronger; the dates are identical either way.
+
+Two things I pinned that neither A3 did:
+
+* **Calendar source of truth.** A3-b counted the 120 steps on `SPY/1d.parquet`; A4.3
+  names the **corpus's own** index, since the label is built from the corpus's prices.
+  I checked whether it mattered: the two indices are **identical date-for-date** over
+  their common range (1,452 dates, 2016-01-04 → 2021-10-07) and both give last-eval
+  2021-04-19 [VERIFIED — element-wise comparison + the 120-step on each, this session].
+  Named anyway — "they agreed when I checked" is not a specification.
+* **A3-b's last open quantity is closed.** It held `N_eval` could still fall at run
+  time because the ≥20-name rule "cannot be evaluated without the corpus". It can:
+  every date in the window carries ≥ **126** eligible names (median 128), so the rule
+  drops **zero** dates [VERIFIED — per-date eligible-name counts, this session].
+  `N_eval = 1082` is realised, not an upper bound, and §7's `n_blocks < 6` branch
+  cannot fire on this partition.
+
 ## Live-surface impact
 
 Still none. Documents only. No run has been executed.

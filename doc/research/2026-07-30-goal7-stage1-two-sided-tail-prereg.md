@@ -379,6 +379,12 @@ exist uncontaminated in this corpus.
 
 # AMENDMENT 3 — the post-contamination partition, computed and frozen
 
+> ⚠️ **NOT EXECUTABLE — superseded by AMENDMENT 4.** This is "A3-a", one of two
+> concurrently written sections both titled Amendment 3. Its arithmetic is correct and
+> is restated in A4.4; its **120-date embargo band is withdrawn** as a registered
+> object — the same 120 dates are excluded by A4.2's label-overlap rule instead.
+> Retained unedited for auditability. Do not cite as the specification.
+
 Registered 2026-07-30, before any run. Amendment 2 correctly burned 2021-10-08 onward
 but left `n_blocks` to be "recomputed" at run time, which reopened the freeze point
 Amendment 1 had just closed: a partition and a power condition that are still mutable
@@ -449,6 +455,13 @@ and the run is not the registered one.
 ---
 
 # AMENDMENT 3 — the window is now COMPUTED, not "recomputed later"
+
+> ⚠️ **NOT EXECUTABLE — superseded by AMENDMENT 4.** This is "A3-b", one of two
+> concurrently written sections both titled Amendment 3. **Its separation rule is the
+> one adopted** (A4.2), but its calendar is restated as the corpus index (A4.3) and its
+> §A3.3 "one quantity that can still move" is **closed** — the ≥20-name rule drops zero
+> dates in the window (A4.5). Retained unedited for auditability. Do not cite as the
+> specification.
 
 Registered 2026-07-30, before any run. Codex on #117: Amendment 2 *"correctly burns the
 contaminated 2021-10-08 onward period, but it reopens the freeze point that Amendment 1
@@ -525,3 +538,105 @@ window". **Older, yes. Shorter, no.** 1082 dates and **18 blocks** against Amend
 the contamination *increases* power rather than costing it. The real cost is regime: 2016
 to early 2021 is not the regime the model trades today, and §7's limit on what a pass buys
 stands unchanged for that reason and not for a power reason.
+
+---
+
+# AMENDMENT 4 — THE SOLE AUTHORITATIVE PARTITION (supersedes both A3 sections)
+
+Registered 2026-07-30, before any run. **This is the only executable specification of
+the partition. Where it differs from anything above, this text wins.**
+
+Two sections above are both titled "AMENDMENT 3", written concurrently against the
+same review. Codex on #117: the document *"has two separate 'AMENDMENT 3' sections
+with incompatible separation descriptions"* and an executable spec *"cannot require
+readers to reconcile contradictory A3 clauses."* Correct — and the reconciliation is
+not a reader's job, so it is done here once.
+
+Referred to below as **A3-a** ("The post-contamination partition, computed and frozen",
+which registers a 120-date *embargo* band) and **A3-b** ("The window is now COMPUTED",
+which registers no embargo and derives the cutoff from a label-overlap rule).
+
+## A4.1 What the two sections actually disagreed about — and what they did not
+
+**They agree on every number.** Both land on evaluation `2016-12-29 → 2021-04-19`,
+`N_eval = 1082`, `n_blocks = 18`, remainder 2, `t_{0.975,17} = 2.1098`
+`[VERIFIED — recomputed both routes independently this session]`. The conflict is in
+the *rule*, and it is real: A3-a registers a 120-date embargo band as a separate
+object; A3-b says an embargo separates a screen partition from a holdout, this design
+has neither, and the thing doing the separating is the label-overlap rule.
+
+**A3-b's rule is adopted. A3-a's embargo framing is withdrawn.** An "embargo" with
+nothing on the far side of it is not an embargo; naming those 120 dates as one invites
+a future reader to think a second partition exists and could be used. It cannot. The
+dates are excluded because admitting them would build a label from burned returns —
+that is the whole reason, and it is sufficient.
+
+## A4.2 The sole authoritative rule
+
+> **No evaluation date's label may use a return from the burned period.**
+> The last admissible evaluation date is the latest `t` whose 120th following trading
+> day still precedes the Amendment 2 burn boundary of **2021-10-08**.
+
+Nothing else separates the window. Amendment 1's 60-trading-day embargo is **void for
+this design** (A3-b), and so is A3-a's 120-date embargo *band as a registered object* —
+the 120 dates it named are exactly the dates this rule excludes, so the partition is
+unchanged; only the justification and the name are.
+
+## A4.3 Calendar / source of truth
+
+> The trading-day index of the **pinned corpus itself** —
+> `sorted(unique(momentum_factor_matrix_tr.parquet.date))`, sha256 `85c27fc1…` per §2A.
+
+The label is built from the corpus's own price series, so the corpus's index is what
+actually determines a date's 120th following day; using any other calendar to count
+steps for a corpus-derived label would be a different guard than the one intended.
+
+A3-b derived the same cutoff from `RenQuant/data/ohlcv/SPY/1d.parquet`. **That choice
+is verifiably not load-bearing here:** over their common range the two indices are
+identical date-for-date — 1,452 dates from 2016-01-04 to 2021-10-07 in both — and both
+yield last-eval-date `2021-04-19` with its 120th following day `2021-10-07`
+`[VERIFIED — element-wise comparison of the two date indices and the 120-step on each,
+this session]`. The corpus index is named authoritative anyway, because "the two agreed
+when I checked" is not a specification.
+
+## A4.4 The frozen partition
+
+| quantity | value |
+|---|---|
+| **evaluation window (ONE use)** | **2016-12-29 → 2021-04-19** |
+| **`N_eval`** | **1,082** |
+| **`n_blocks`** | **18** (`floor(1082/60)`) |
+| **blocks span** | 2016-12-29 → **2021-04-15** |
+| **dropped remainder** | **2 dates: 2021-04-16, 2021-04-19** (trailing; dropped, never equal-weighted) |
+| **excluded — label would touch the burn** | **120 dates: 2021-04-20 → 2021-10-07** |
+| **excluded — burned (Amendment 2)** | 2021-10-08 → 2026-07-29 |
+| **`t_{0.975,17}`** | **2.1098** `[DERIVED — scipy.stats.t.ppf(0.975, 17), this session]` |
+| `T_crit` | `max(P95_null, 2.1098)`; only `P95_null` is measured at run time |
+
+All of it `[VERIFIED — computed on the §2A-pinned matrix under §2A eligibility, this
+session]`. The excluded band is listed as a *consequence* of A4.2, not as a registered
+embargo.
+
+## A4.5 A3-b's remaining degree of freedom is closed, not carried
+
+A3-b §A3.3 held that `N_eval = 1082` could still fall at run time, because Amendment 1
+drops any date with fewer than 20 admissible names and that "cannot be evaluated
+without the corpus". **It has been evaluated.** In the evaluation window every date
+carries at least **126** eligible names against a bar of 20 — median 128 — so the rule
+drops **zero** dates `[VERIFIED — per-date eligible-name counts over 2016-12-29 →
+2021-04-19, this session]`.
+
+`N_eval = 1082` is therefore the **realised** count, not a pre-filter upper bound, and
+`n_blocks = 18` is not provisional. The run-time recomputation and reporting obligation
+stands as a *check* — a divergence means the corpus moved and the run is not the
+registered one — but it is no longer a live source of variation, and the §7
+`n_blocks < 6` branch cannot fire on this partition.
+
+## A4.6 Status of prior text
+
+A3-a and A3-b are **retained unedited** for auditability and are **not executable**;
+neither may be cited as the specification. Their shared arithmetic is correct and is
+restated in A4.4. Superseded: Amendment 1's §2A split table and its `n_blocks = 10` /
+`t_{0.975,9} = 2.2622` figures, Amendment 1's 60-date embargo, Amendment 1's
+120-embargo robustness obligation (discharged — 120-day separation is the primary rule,
+so there is no second variant to re-run), and A3-a's embargo band as a named object.
