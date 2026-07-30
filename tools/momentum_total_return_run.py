@@ -302,15 +302,29 @@ def per_date_e2(sub: pd.DataFrame, arm: str, ycol: str) -> pd.Series:
 
 
 def holm(pairs: list[tuple[str, float]]) -> dict:
-    """Holm-Bonferroni over (name, |t|) using a normal approximation."""
+    """Holm-Bonferroni step-down over (name, |t|), normal approximation.
+
+    Sort p ascending; reject while `p_i <= 0.05/(m-i)`; **at the first failure,
+    STOP and reject nothing further** — that stopping rule is what makes Holm
+    control FWER, and omitting it makes the procedure anti-conservative.
+
+    BUGFIX, post-run and disclosed: the frozen revision computed
+    `reject = (max p so far <= thr)`, which for ascending p reduces to the
+    per-test condition `p_i <= thr_i` with NO step-down. That wrongly rejects a
+    later test when an earlier one failed but the later one clears its own
+    (larger) threshold — e.g. p = [0.001, 0.03, 0.04] wrongly rejected the third.
+    It did NOT change this study's run: the only failing arm had the LARGEST p,
+    so no test followed it and the outputs are identical (verified by re-running).
+    """
     from math import erfc, sqrt
     p = [(n, erfc(abs(t) / sqrt(2))) for n, t in pairs]     # two-sided
     p.sort(key=lambda x: x[1])
-    m, out, prev = len(p), {}, 0.0
+    m, out, stopped = len(p), {}, False
     for i, (n, pv) in enumerate(p):
         thr = 0.05 / (m - i)
-        prev = max(prev, pv)
-        out[n] = {"p": pv, "threshold": thr, "reject": bool(prev <= thr)}
+        if not stopped and pv > thr:
+            stopped = True
+        out[n] = {"p": pv, "threshold": thr, "reject": bool(not stopped)}
     return out
 
 

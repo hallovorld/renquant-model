@@ -1,0 +1,23 @@
+{
+  "n_ticker_files": 2790,
+  "files_with_dividend": 240,
+  "files_with_split_ratio": 72,
+  "watchlist_n": 145,
+  "watchlist_with_dividend": 111,
+  "watchlist_with_split_ratio": 39,
+  "rows_total": 294120,
+  "n_nan": 759,
+  "n_zero": 289014,
+  "n_negative": 0,
+  "n_positive": 4347,
+  "n_payers": 111,
+  "n_nonpayers": 0,
+  "nonpayer_tickers": [],
+  "median_gap_days_pooled": 91.0,
+  "exdiv_days": 4344,
+  "mean_ret_exdiv_bp": -58.17909072229435,
+  "mean_ret_other_bp": 8.54170422970683,
+  "diff_bp": -66.72079495200119,
+  "diff_se_bp": 3.2011291783560276,
+  "mean_event_yield_bp": 61.54215588172303
+}

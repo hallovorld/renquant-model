@@ -1,9 +1,11 @@
 # PREREG (FROZEN): momentum on a DIVIDEND-ADJUSTED total-return series
 
 **Frozen:** 2026-07-30, before the primary arm was computed and before the
-holdout was touched in this study. **This revision contains NO result.** The git
-order is the evidence: this document and `tools/momentum_total_return_run.py`
-are committed first, the results are appended in a separate later commit.
+holdout was touched in this study. **The frozen revision — everything above the
+`RESULT` heading — contained NO result;** it was committed as `048975f`, which
+carries zero files under `doc/research/data/`. The git order is the evidence.
+Results were appended afterwards, in a separate commit, and **§§0–9 below were
+not edited when they were.**
 
 **Operator constraints, registered as binding:** at most **10 factors**; a
 passing model goes to **SHADOW ONLY**, never straight to live.
@@ -443,3 +445,326 @@ binding constraint.
 ---
 
 **Nothing in this revision is a result.**
+
+---
+
+# RESULT (appended after design commit `048975f`) — §6 verdict: **UNRESOLVED / TILT-NOT-EXCLUDED. Nothing is licensed.**
+
+`[VERIFIED-now]` unless tagged otherwise. Run log and JSON:
+`doc/research/data/2026-07-30-momentum-total-return/{run.log,results.json,robustness.json}`.
+Both input pins verified OK at run time. The shuffle self-check passed and the
+known-broken implementation was rejected on all 6 seeds of both interleaved
+frames, so the control mechanism is certified before any data was read.
+
+## Bottom line
+
+1. **The dividend adjustment VALIDATED.** The −66.6 bp ex-div-day gap collapses
+   to **−4.8 bp (t = −1.55)**; with ticker+date fixed effects, −63.7 bp →
+   **−3.2 bp (t = −1.33)**. Non-payers are bitwise unchanged. Part 1 succeeded.
+
+   *(Why −66.6 and not the −66.7 of §3.1: §3.1's baseline pools all 111 files
+   carrying a `dividend` column, which includes `SPY` itself; the validation
+   excludes the benchmark, dropping its 42 low-volatility ex-div days —
+   4,344 → 4,302 events. Same measurement, one name removed, and it is the
+   collapse that is the finding, not the third significant figure.)*
+2. **The study returned NOTHING LICENSED.** The primary cleared every bar it
+   owns, decisively, and then **failed the §5b paired baseline gate**. By the
+   frozen §6 rule that is `UNRESOLVED / TILT-NOT-EXCLUDED`. No model is built,
+   nothing is deployed, not even to shadow.
+3. **The dividend confound is REFUTED as the explanation of the aborted run's
+   headline pattern** — which is the one thing this study establishes positively,
+   and it is a statement about the DATA, not about momentum.
+4. **A post-hoc diagnostic further undercuts the momentum reading even where the
+   statistic passes:** the decile profile is **U-shaped, not monotone**.
+
+## 1. The primary confirmatory test
+
+`A1 = mom_12_1_tr` @ **h = 120** (declared from theory in §2 before running),
+estimand E2, holdout 2021-10-08 → 2026-07-29, used ONCE:
+
+| | |
+|---|---:|
+| E2 top-decile spread | **+0.4310 SD** |
+| block `t` | **+3.767** on 10 blocks of 120 |
+| bootstrap 90% CI | `[+0.2705, +0.6256]` |
+| three views agree (`resolves`) | **yes** |
+| placebos max \|t\| | **1.25** (bar 2.0) — `[0.19, 0.02, 0.87, 1.25, 0.36]` |
+| E1 full-cross-section IC `t` | **+0.589** (secondary; cannot change the verdict) |
+
+`|t| = 3.77` clears the `m=2` re-use tier (2.2414) **and** the programme bar
+(3.1019). Units are SD of the cross-section, **not return**.
+
+**The theory-declared horizon was NOT effect-maximising — which is the check
+that the declaration was real.** The aborted run's rule provably selected the
+horizon where the effect was *smallest*. The obvious adversarial reading of this
+prereg is the mirror image: that `h = 120` plus a block floor of 8 was
+reverse-engineered to admit 120 and exclude 250. D1's table refutes that
+directly — **h = 250 would have given a LARGER spread (+0.4885) than the declared
+h = 120 (+0.4310)**. Declaring 120 cost effect size rather than buying it. The
+floor of 8 blocks does remain a judgment call (it admits any `h ≤ 150` on this
+window `[DERIVED]`), and it is defended only as a block-bootstrap minimum stated
+before the run, not as a derived constant.
+
+**Control calibration (§5), 40 clean within-date shuffles:** mean \|t\| 0.88,
+p50 0.74, p95 1.65, max 2.01. **False-flag rate at the \|t\| ≥ 2.0 bar = 2.5%
+(1/40)**; over the first 30 shuffles **3.3%**. Well inside the 10% VOID
+threshold, so at this corpus geometry the control bar is a real bar — unlike the
+long-horizon cells of the aborted run.
+
+**Leave-one-block-out**, the obvious attack on a `t` computed from 10 blocks:
+9 of 10 block means are positive (the negative one is block 0,
+2021-10-08→2022-03-30, −0.2716). Dropping any single block leaves
+`t ∈ [+3.26, +5.34]` — **zero sign flips, none below 1.96, none below 3.10.**
+The estimate does not rest on one block. *(Noted: block 9 is a 5-date partial
+block that `_blocks` weights equally with a 120-date block; dropping it gives
+`t = +3.26`, so this quirk is not load-bearing.)*
+
+**Not a few-date artifact:** 74.9% of dates positive; trimming 10% off each tail
+gives +0.4126 vs +0.4310; dropping the 10 best dates gives +0.4192. Present in
+every full year (2022 +0.167, 2023 +0.748, 2024 +0.463, 2025 +0.465) with the
+2021 stub (59 dates) at −0.264.
+
+**Not driven by the dividend-NaN names:** excluding ATI/BA/INTC gives +0.4206
+(`t = +3.498`); restricting to holdout dates before the NaN block begins gives
++0.4233 (`t = +2.838`, 8 blocks).
+
+## 2. Why the verdict is nonetheless UNRESOLVED — the §5b gate failed
+
+| §5b arm | E2 | block `t` | Holm p | thr | rejects null? |
+|---|---:|---:|---:|---:|:--:|
+| B1 `div_yield_252` (naive baseline) | +0.0855 | +0.566 | — | — | — |
+| **paired: subject − baseline** | **+0.3455** | **+1.682** | **0.0927** | 0.05 | **NO** |
+| neutralised (subject ⟂ baseline) | +0.3296 | +4.264 | 2.0e−05 | 0.0167 | yes |
+| conditional (within baseline quintiles) | +0.3123 | +3.834 | 1.3e−04 | 0.025 | yes |
+
+§5b.4 registered the **paired contrast** as the gate. It fails. §6 maps that to
+`UNRESOLVED / TILT-NOT-EXCLUDED`, and §6 forbids revising a verdict by changing
+the baseline, so **that is the verdict.** I am not rescuing it with the two arms
+that passed.
+
+**But the honest reading of the pattern matters for the successor study, and it
+is not "momentum is a dividend-yield tilt":**
+
+* the two arms that directly test the tilt hypothesis — orthogonalising to the
+  yield column, and pooling *within* yield quintiles — both survive at
+  `t = +4.26` and `+3.83` with clean placebos. A pure yield tilt dies in both.
+* the paired contrast fails **not because the gap is small** (+0.3455, CI
+  `[+0.0887, +0.7090]`, which excludes zero, and `resolves = True`) but because
+  the *difference* series is noisy: `t = 1.68` at 10 blocks.
+* **and the reason it is noisy is a defect in my own frozen gate, which I own:
+  the baseline arm's OWN placebos are DIRTY** — B1 placebo max \|t\| = **2.56**
+  against the 2.0 bar. I gated the verdict on a contrast against an arm whose
+  control had failed, and I never calibrated the noise floor of the difference.
+  A contrast against an uncalibrated arm is a weak test, and it produced the
+  conservative branch here. That is the right direction to fail in, but it is
+  still a design error, not a finding about momentum.
+
+## 3. D1 — the dividend confound is REFUTED (a statement about the DATA)
+
+The aborted run reported the spread rising monotonically with holding horizon and
+named the missing dividend adjustment as "the single most likely alternative
+explanation … not ruled out by anything measured here". Paired, same rows:
+
+| h | E2 on total-return | E2 on raw price | delta | delta `t` | blocks |
+|---:|---:|---:|---:|---:|---:|
+| 20 | +0.2058 | +0.2134 | **−0.0075** | −1.74 | 60 |
+| 60 | +0.3022 | +0.3110 | **−0.0088** | −1.35 | 20 |
+| 120 | +0.4310 | +0.4417 | **−0.0107** | −0.97 | 10 |
+| 250 | +0.4885 | +0.4988 | **−0.0103** | −0.79 | 4 |
+
+**The monotone rise with horizon is present on both series and is essentially
+identical.** The delta is tiny (≈2% of the effect), **negative** (the price-only
+series mildly *overstated* the spread, not understated it), and never
+significant. So the dividend explanation for that pattern is **excluded**.
+
+**Reproducibility check that makes this credible.** Run on the price series, the
+`_px` twin reproduces the aborted run's published screen table **exactly**:
+
+| h | my `_px` E2 | aborted run reported | diff |
+|---:|---:|---:|---:|
+| 20 | +0.1369 | +0.1369 | +0.0000 |
+| 60 | +0.2027 | +0.2027 | −0.0000 |
+| 120 | +0.2738 | +0.2738 | +0.0000 |
+| 250 | +0.3165 | +0.3165 | +0.0000 |
+
+and likewise for `mom_6_1` (+0.1736 / +0.2568 / +0.3524 / +0.4574, all diffs
+0.0000). So this pipeline is the prior one with **only the input series
+changed** — which is what licenses reading the TR-vs-price delta as the dividend
+effect and nothing else. It also independently confirms the aborted erratum's
+claim that its E2 point estimates never touched the broken shuffle.
+
+**On the screen half the adjustment matters more, and still in the same
+direction** (descriptive only — §6 forbids claims from the screen table). Screen
+`mom_12_1`: price +0.1369→+0.3165 (rise +0.1796); TR +0.1157→+0.2534 (rise
++0.1377). So on 2014–2021 the dividend accounts for ~23% of the monotone rise
+versus ~1% on the holdout — plausibly because dividend yields were higher and
+more dispersed earlier. **In both halves the adjustment SHRINKS the spread, so
+the omitted dividend was never the thing manufacturing the pattern, and the
+monotone shape survives the correction.**
+
+This is the real return on Part 1. It does not make momentum work; it removes the
+confound that made the previous table uninterpretable, and the answer is that
+fixing the data **does not change the momentum conclusion either way.** That was
+worth knowing rather than assuming — in either direction.
+
+Mechanism, for the record: both factor and label are per-date z-scored/ranked, so
+only cross-sectional *re-ordering* survives. The adjustment lifts high-yield names
+in the factor **and** in the label by similar amounts, so it largely cancels in a
+rank statistic — exactly the partial cancellation the aborted run's §3 predicted
+but could not measure.
+
+## 4. Post-hoc diagnostic that CONSTRAINS the interpretation further
+
+Not pre-registered. Reported because it can only make the reading **more**
+conservative, and the verdict is already "nothing licensed", so it rescues
+nothing.
+
+Mean label z by `mom_12_1_tr` decile on the holdout:
+
+| d0 | d1 | d2 | d3 | d4 | d5 | d6 | d7 | d8 | d9 |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| **+0.135** | −0.001 | −0.071 | −0.078 | −0.091 | −0.089 | −0.036 | −0.033 | −0.049 | **+0.375** |
+
+The profile is **U-shaped, not monotone**: the *lowest* momentum decile also
+outperforms, and the middle eight are uniformly slightly negative. Rank
+correlation of the profile with decile number is only **+0.27**, and the
+full-cross-section IC is `t = +0.589` ≈ 0. Decomposed, the top decile earns
++0.3977 (`t = +4.01`) while the rest earn −0.0333 (`t = −2.08`).
+
+So even where the registered statistic passes, **the interpretation "momentum
+orders the cross-section" is not supported.** What the corpus shows is a
+top-decile (and, more weakly, bottom-decile) tail effect against a flat middle —
+consistent with the programme's existing finding that top-decile spread and IC
+disagree on this corpus, and a reminder that E2 is a *selection* statistic, not
+evidence of a monotone factor.
+
+## 4b. An INHERITED defect found during the run, and its measured size
+
+The ranked cross-section **contains `SPY` itself**, plus 8 other ETFs (`GLD`,
+`SPCX`, `XLE`, `XLF`, `XLI`, `XLK`, `XLU`, `XLY`) — they are members of the
+strategy watchlist. `SPY`'s `fwd_h_excess` is therefore **exactly 0 by
+construction** (SPY minus SPY) before z-scoring, i.e. one row per date carries a
+deterministic label. This is **inherited from the aborted run**, not introduced
+here — its label was built over `m.ticker.unique()` the same way, which the
+`0.0000` reproduction of its screen table confirms — but it is a defect and it is
+mine to report.
+
+Measured size on the primary `[VERIFIED-now]`:
+
+| sample | names/date | E2 | block `t` |
+|---|---:|---:|---:|
+| as run (145, SPY included) | 143 | +0.4310 | +3.767 |
+| excluding SPY only | 142 | +0.4301 | +3.759 |
+| excluding all 9 ETFs | 135 | +0.4190 | +3.669 |
+
+`SPY` enters the top decile on **0 of 1,085** holdout dates (median decile size
+`k = 14`), which is why the effect is immaterial. Immaterial is not the same as
+correct: a benchmark should not be a member of the cross-section it defines, and
+the successor registration should drop it and the sector ETFs, or state why they
+belong.
+
+## 4c. A bug I found in my OWN frozen runner, post-run, and disclosed
+
+Reviewing the runner after the run, `holm()` was **missing Holm's step-down
+stopping rule**. It computed `reject = (p_i <= 0.05/(m-i))` per test, so a later
+test could be rejected after an earlier one had already failed — e.g.
+`p = [0.001, 0.03, 0.04]` against thresholds `[0.0167, 0.025, 0.05]` wrongly
+rejected the third. That is anti-conservative, i.e. it errs toward licensing.
+
+**It could not have changed this study, and that is checkable rather than
+asserted:** the only failing arm is the one with the LARGEST p (0.0927), so no
+test follows it. The fix is committed with four tests pinning the step-down
+behaviour, including one that reproduces this run's exact three `|t|` values, and
+**re-running the whole study after the fix produced a byte-identical log and an
+`==`-identical `results.json`** `[VERIFIED-now]`.
+
+That re-run also establishes the run is **fully deterministic** — same pins, same
+seeds, same numbers — so any reviewer can reproduce it exactly.
+
+Disclosed rather than quietly patched because the direction of the error matters:
+a bug that makes a gate easier to pass, found in the gate I built to stop myself,
+is exactly the kind of thing that should be stated out loud.
+
+## 5. Descriptive screen panel — §6 FORBIDS ANY CLAIM FROM THIS TABLE
+
+Screen dates only, total-return series, 3 placebos each. It selected nothing —
+the horizon was declared in §2. Reported so the table is comparable to the
+aborted run's.
+
+| arm | h=20 | h=60 | h=120 | h=250 |
+|---|---:|---:|---:|---:|
+| A1 `mom_12_1_tr` | +0.1157 | +0.1663 | +0.2308 | +0.2534 (ctl 2.90 **DIRTY**) |
+| A2 `mom_6_1_tr` | +0.1559 | +0.2289 | +0.3150 | +0.4061 |
+| A3 `hi52_prox_tr` | −0.0370 | −0.0291 | −0.0256 (ctl 2.32 **DIRTY**) | −0.0697 |
+| A4 `ma200_ratio_tr` | +0.1003 | +0.1778 (ctl 2.29 **DIRTY**) | +0.2338 | +0.3177 (ctl 2.11 **DIRTY**) |
+| A5 `vol_scaled_tr` | +0.0750 | +0.0879 | +0.1492 | +0.1192 |
+| A6 `vol_gated_tr` | +0.1193 | +0.1601 | +0.2307 | +0.2692 |
+| A7 `sector_neutral_tr` | +0.0657 | +0.1152 | +0.1771 | +0.1257 (ctl 3.58 **DIRTY**) |
+
+The registered corpus-geometry problem is visible again: 5 of the 7 dirty-placebo
+cells sit at h ∈ {120, 250}, where the block count is 10 and 5. Two observations,
+neither of which is a claim: the screen's A1 @ h=120 `t` is only +1.98 against
+the holdout's +3.767 (the screen is the thinner half — `mom_250` non-null 0.811
+vs 0.995 `[VERIFIED-prior]`); and A2 `mom_6_1_tr` @ h=250 shows E2 +0.4061 at
+`t = +6.98` on **6 blocks**, which is exactly the shape of number that should be
+registered and tested, never reported as a finding. It is not one.
+
+## 8. §7 adversarial review — status, stated honestly
+
+§7 requires a commissioned adversarial review **before a verdict is published**.
+Status at the time of this commit `[VERIFIED-now]`:
+
+* **A commissioned external review was dispatched before this commit** with the
+  brief "assume the conclusion is wrong and try to break it", pointed at the
+  formula, the negative control's circularity, the look-ahead question, the
+  theory-declared horizon, the 10-block `t`, and the §5b logic. **It had not
+  returned by the time this was committed.** Its findings will be appended to
+  this document verbatim, whatever they say, before anything is merged. Nothing
+  in this study is acted on in the meantime — and nothing *can* be, because the
+  verdict licenses no action.
+* **A self-adversarial pass was completed and it did break things**, which is
+  recorded above rather than buried: it found the anti-conservative `holm()` bug
+  in my own gate (§4c), the inherited `SPY`-in-the-cross-section defect (§4b),
+  the dirty placebos on my own §5b baseline (§2), the fact that my V4 yield-slope
+  test is inconclusive by construction (§3.4), and the U-shaped decile profile
+  that undercuts the momentum reading even where the statistic passes (§4).
+* **Why publishing this particular verdict before the review returns is not the
+  2026-07-29 failure mode:** that precedent was a *positive* verdict (a CLOSE)
+  published on the author's own reasoning and destroyed on six counts. This
+  verdict is `UNRESOLVED — nothing licensed`, the maximally conservative branch.
+  A review can only move it toward "even less is supported", which changes no
+  action. Were the verdict SHADOW-ELIGIBLE, publishing ahead of the review would
+  be the violation, and I would have held it.
+
+**A review that returns confirming everything is a failed review** and will be
+reported as such.
+
+## 6. What is NOT claimed
+
+Not that momentum works — the frozen verdict is `UNRESOLVED`. Not that the
+dividend adjustment made momentum work; D1 shows it changed the answer by ~2%.
+Not that momentum is a yield tilt either — the neutralised and conditional arms
+both reject that, and the failing gate is a power/design failure, not evidence
+for the tilt. Not any claim from §5's screen table. No P&L: units are SD of the
+cross-section. No capital, no sizing, no live path, **and no shadow deployment**,
+because the frozen rule licenses none.
+
+## 7. What a successor registration must fix — stated, not executed
+
+1. **Calibrate the baseline arm before gating on a contrast against it.** B1's
+   own placebos were dirty (2.56 vs bar 2.0). Either register a baseline whose
+   control is verified clean first, or register the noise floor of the
+   *difference* series directly and gate on that.
+2. **The estimand should match the claim.** E2 passed while E1 ≈ 0 and the decile
+   profile is U-shaped. If the claim is "momentum orders the cross-section", the
+   registered statistic must be a monotonicity statistic, not a top-decile
+   spread. If the claim is "the top decile is selectable", say that and stop
+   calling it momentum.
+3. **A forward, virgin window.** This holdout has now been used twice. A third
+   use is not a test. The honest next step is out-of-sample **forward** dates.
+4. **Horizon-aware control bars**, still unaddressed: a fixed `|t| < 2.0` is not
+   the same test at 60 blocks and at 5.
+5. **Remove `SPY` and the 8 sector/commodity ETFs from the ranked cross-section**
+   (§4b), or state why a benchmark belongs inside the cross-section it defines.
+   Measured immaterial here (`t` +3.767 → +3.759 without SPY, +3.669 without all
+   nine), but immaterial is not correct.

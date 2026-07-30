@@ -1,0 +1,58 @@
+{
+  "built_utc": "2026-07-30T11:15:29.687814+00:00",
+  "sha256": "85c27fc1d5a56a4c585c03db22dc8be0123badfc83ef23e46cdd358c704eb35a",
+  "source": "/private/tmp/claude-502/-Users-renhao-git-github-renquant-orchestrator/428feb92-8ee7-4b4f-afed-1e4fa82ef367/scratchpad/mom-total-return/total_return_close.parquet",
+  "tr_formula": "TR[t] = close[t]/prod_{s>t}(1+dividend[s]/close[s])",
+  "n_rows": 364736,
+  "n_tickers": 145,
+  "n_dates": 3161,
+  "px_twin_reproduces_pinned_library": true,
+  "nonpayer_factor_max_abs_diff": 0.0,
+  "factors_tr": [
+    "mom_20_tr",
+    "mom_60_tr",
+    "mom_120_tr",
+    "mom_250_tr",
+    "mom_12_1_tr",
+    "mom_6_1_tr",
+    "mom_12_2_tr",
+    "hi52_prox_tr",
+    "ma200_ratio_tr",
+    "vol_60_tr",
+    "vol_250_tr",
+    "beta_60_spy_tr",
+    "beta_250_spy_tr",
+    "mdd_250_tr"
+  ],
+  "factors_px": [
+    "mom_20_px",
+    "mom_60_px",
+    "mom_120_px",
+    "mom_250_px",
+    "mom_12_1_px",
+    "mom_6_1_px",
+    "mom_12_2_px",
+    "hi52_prox_px",
+    "ma200_ratio_px",
+    "vol_60_px",
+    "vol_250_px",
+    "beta_60_spy_px",
+    "beta_250_spy_px",
+    "mdd_250_px"
+  ],
+  "baseline_column": "div_yield_252 = sum(dividend[t-251..t]) / close[t], 252 bars inclusive",
+  "split": {
+    "screen": [
+      "2014-01-02",
+      "2021-07-14"
+    ],
+    "embargo": [
+      "2021-07-15",
+      "2021-10-07"
+    ],
+    "holdout": [
+      "2021-10-08",
+      "2026-07-29"
+    ]
+  }
+}

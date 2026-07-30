@@ -136,3 +136,45 @@ def test_the_fixture_is_actually_interleaved():
         d = f["_dcode"].to_numpy()
         n_runs = 1 + int((d[1:] != d[:-1]).sum())
         assert n_runs > len(np.unique(d)), "fixture is date-contiguous, not interleaved"
+
+
+# ------------------------------------------------- the Holm step-down rule -----
+def _t_for_p(p: float) -> float:
+    """|t| whose two-sided normal p-value is p."""
+    from statistics import NormalDist
+    return NormalDist().inv_cdf(1.0 - p / 2.0)
+
+
+def test_holm_stops_at_the_first_failure():
+    """The bug fixed post-run: without the step-down stop, a later test that
+    clears its own larger threshold is wrongly rejected after an earlier
+    failure. p = [0.001, 0.03, 0.04] against thresholds [0.0167, 0.025, 0.05]."""
+    out = T.holm([("a", _t_for_p(0.001)), ("b", _t_for_p(0.03)),
+                  ("c", _t_for_p(0.04))])
+    assert out["a"]["reject"] is True
+    assert out["b"]["reject"] is False
+    assert out["c"]["reject"] is False, "step-down not applied: c was rejected"
+
+
+def test_holm_rejects_all_when_every_p_clears_its_threshold():
+    out = T.holm([("a", _t_for_p(0.001)), ("b", _t_for_p(0.002)),
+                  ("c", _t_for_p(0.003))])
+    assert all(v["reject"] for v in out.values())
+
+
+def test_holm_rejects_none_when_the_smallest_p_fails():
+    out = T.holm([("a", _t_for_p(0.02)), ("b", _t_for_p(0.03)),
+                  ("c", _t_for_p(0.04))])
+    assert not any(v["reject"] for v in out.values())
+
+
+def test_holm_reproduces_this_studys_reported_outcome():
+    """The actual run: paired |t|=1.6815, neutralised 4.2643, conditional 3.8339.
+    The failing arm has the LARGEST p, so the bug could not have changed it."""
+    out = T.holm([("paired", 1.6815325007993496),
+                  ("neut", 4.264325544116872),
+                  ("cond", 3.8339122757588773)])
+    assert out["neut"]["reject"] is True
+    assert out["cond"]["reject"] is True
+    assert out["paired"]["reject"] is False
+    assert abs(out["paired"]["p"] - 0.09266) < 1e-4

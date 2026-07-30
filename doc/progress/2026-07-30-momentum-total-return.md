@@ -1,12 +1,21 @@
 # 2026-07-30 — dividend-adjusted total-return series, and a re-registered momentum study
 
-## What this commit is
+## What this is
 
-**A FREEZE. It contains no result.** The prereg
-`doc/research/2026-07-30-momentum-total-return-prereg.md`, the runner
-`tools/momentum_total_return_run.py`, the data builders and the shuffle tests,
-committed **before** the primary arm is computed. Results are appended in a
-separate later commit; the git order is the evidence.
+**Two commits, deliberately in this order.**
+
+1. **`048975f` — THE FREEZE, containing no result.** The prereg
+   `doc/research/2026-07-30-momentum-total-return-prereg.md`, the runner
+   `tools/momentum_total_return_run.py`, the data builders and the shuffle
+   tests, committed **before** the primary arm was computed. It carries zero
+   files under `doc/research/data/`.
+2. **the results commit**, which appends the `RESULTS` sections to that prereg
+   and to this doc and adds the run artifacts. It changes exactly 3 lines of the
+   frozen §§0–9 (a header note saying results were appended) and is otherwise
+   pure addition.
+
+The git order is the evidence that nothing was selected after seeing a number.
+Sections below up to `# RESULTS` are the freeze; everything after it is the run.
 
 ## Why
 
@@ -110,3 +119,77 @@ Umbrella read-only — no writes, no `git`, no symlinks into it. All artifacts i
 the session scratchpad. `--smoke` was run on this exact environment before the
 freeze (self-check PASS, both pins OK, label built, screen + baseline + Holm
 paths exercised) without computing the primary or reading holdout dates.
+
+---
+
+# RESULTS (appended after the freeze `048975f`)
+
+## Bottom line
+
+**Part 1 VALIDATED. Part 2 returned nothing.**
+
+1. **The dividend adjustment validated.** Ex-div-day gap **−66.6 bp (t=−20.6) →
+   −4.8 bp (t=−1.55)**, 92.7% removed; with ticker+date fixed effects −63.7 →
+   **−3.2 bp (t=−1.33)**. Negative control exactly 0.0, bitwise, on all 34
+   non-payers.
+2. **§6 verdict: `UNRESOLVED / TILT-NOT-EXCLUDED`. NOTHING IS LICENSED.** No
+   model, no shadow deployment, no capital action.
+3. The primary cleared every bar it owns — E2 = **+0.4310 SD**, block
+   `t = +3.767` on 10 blocks (programme bar 3.1019), CI `[+0.2705, +0.6256]`,
+   three views agree, placebos max \|t\| 1.25 vs bar 2.0, 40-shuffle false-flag
+   rate **2.5%**, leave-one-block-out `t ∈ [+3.26, +5.34]` with zero sign flips
+   — and then **failed the §5b paired baseline gate** (`t = +1.682`, Holm
+   p = 0.093). The frozen rule maps that to UNRESOLVED and I did not override it.
+4. **The dividend confound is REFUTED as the explanation of the aborted run's
+   monotone-with-horizon pattern.** Paired TR-minus-price delta is
+   −0.0075/−0.0088/−0.0107/−0.0103 at h=20/60/120/250, all \|t\| ≤ 1.74 — ≈2% of
+   the effect and *negative*. The `_px` twin reproduces the aborted run's
+   published screen table to **0.0000**, which is what licenses reading that
+   delta as the dividend effect and nothing else.
+
+## Two things I got wrong, recorded
+
+* **My §5b gate was mis-designed and it is why the study is UNRESOLVED.** The
+  baseline arm B1 `div_yield_252` had **dirty placebos of its own** (max
+  \|t\| = 2.56 vs bar 2.0), and I gated the verdict on a paired contrast against
+  it without ever calibrating the noise floor of the difference. The contrast
+  failed on power (delta +0.3455, CI `[+0.0887, +0.7090]` excluding zero,
+  `resolves = True`, but `t = 1.68`), not on effect size. Meanwhile the two arms
+  that actually test the tilt hypothesis — orthogonalising to the yield column
+  and pooling *within* yield quintiles — both survive at `t = +4.26` and
+  `+3.83`. So the failing gate is **not** evidence that momentum is a yield tilt;
+  it is my own uncalibrated control.
+* **My W4 factor-level negative control was wrong on first write** and asserted
+  that a non-payer's `beta_*_spy` must be unchanged. It must not: beta's
+  benchmark leg is SPY, which is itself a payer. Split into own-series factors
+  (exactly 0.0) and benchmark-dependent factors (correctly non-zero).
+
+## A post-hoc caveat that undercuts even the passing statistic
+
+Mean label z by `mom_12_1_tr` decile is **U-shaped, not monotone**: d0 = +0.135,
+d1–d8 ≈ −0.03…−0.09, d9 = +0.375; profile/decile rank correlation only **+0.27**;
+full-cross-section IC `t = +0.589` ≈ 0. So the *lowest* momentum decile also
+outperforms and the middle is flat. **Even where E2 passes, "momentum orders the
+cross-section" is not supported** — what the corpus shows is a tail effect. Not
+pre-registered; reported because it can only make the reading more conservative,
+and the verdict is already "nothing licensed".
+
+## Verification of the git order
+
+Freeze commit `048975f` carries **zero** files under `doc/research/data/`. The
+results commit changes exactly **3 lines** of §§0–9 (the header note saying
+results were appended) and is otherwise pure addition — checkable with
+`git diff 048975f -- doc/research/2026-07-30-momentum-total-return-prereg.md`.
+
+## No look-ahead — proven, not asserted
+
+`R[t] = prod_{s>t} g[s]` uses FUTURE dividends, so this needed settling. Every
+factor is a *ratio* of TR values, and the anchor cancels: e.g.
+`mom_12_1(t) = (P[t−20]/P[t−250]) · prod_{t−250<s≤t−20} g[s]`, i.e. only
+dividends **inside the formation window**. Verified numerically by rebuilding a
+forward-cumulative index that at each `t` uses only dividends up to `t`:
+`max|backward − forward|` = 3.6e−15 (`mom_12_1`), 5.6e−16 (`hi52_prox`), 8.9e−16
+(`ma200_ratio`), 2.6e−15 (`vol_250`), and the two series differ by a pure
+per-ticker constant (max relative spread 1.8e−15). The only anchor-sensitive
+quantity is the TR **level**, which prereg §3.2 forbids using — that prohibition
+is load-bearing, not stylistic.
