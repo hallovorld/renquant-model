@@ -252,3 +252,83 @@ strength of my own reasoning. That is the only thing that has worked on this
 programme's contested questions: a CLOSE published on this very family of models was
 retracted, a second was withheld, and the commissioned review destroyed it
 `[VERIFIED — prior work, 2026-07-29 closure retraction, §"The process lesson"]`.
+
+---
+
+# AMENDMENT 1 — the positive control was unsatisfiable by construction
+
+Registered 2026-07-30, **before any re-run**. The screen executed under this prereg
+(model#118) VOIDed on §5.1, and the frozen text worked exactly as intended: it forbade
+adjusting `α` and forced a VOID rather than a tuned pass. **The defect is in the design I
+wrote, not in the execution.**
+
+## A1.1 The diagnosis, and a correction to my own first account of it
+
+§5.1 fixed `α = 2·sin(π·0.05/6) = 0.0523538966` from the identity
+`ρ_s = (6/π)·arcsin(ρ/2)`. **That identity is asymptotic.** At finite cross-section width
+it does not deliver a realised Spearman IC of 0.05, so the `|mean − 0.05| ≤ 0.01`
+assertion I also registered was unreachable — the control could not pass however correct
+the implementation.
+
+My first account of this said the real-panel shortfall exceeded clean simulation, implying
+a further undiagnosed component. **That was wrong, and it was wrong for a familiar
+reason: I compared against the wrong width.** The panel's universe is 145 tickers, but its
+mean admissible rows per date is **115.4** (`364736 / 3161`)
+`[VERIFIED — tr_matrix_metadata.json n_rows / n_dates]`. Simulating at the *realised*
+width, 2000 draws, seed 20260730 `[VERIFIED — scipy Monte Carlo, this session]`:
+
+| n | mean realised Spearman | s.e. | 3·s.e. band |
+|---:|---:|---:|---|
+| 115 | **0.04232** | 0.00207 | **[0.03610, 0.04855]** |
+| 141 | 0.04028 | 0.00196 | [0.03440, 0.04616] |
+
+model#118 measured **0.03681** on the real panel, which falls **inside** the n=115 band.
+So there is **no evidence of any component beyond finite-sample bias at the panel's actual
+width**, and the fix below is sufficient rather than merely necessary. Retracting the
+"further component" claim explicitly rather than letting it stand.
+
+## A1.2 The replacement, registered
+
+`α` is no longer taken from a closed form. It is **calibrated on the panel's own
+geometry**, before the treatment arm is computed:
+
+1. **Calibrate on the object, not on a model of it.** Draw the synthetic member using the
+   panel's *actual* per-date admissible ticker sets and its actual rank structure — not a
+   synthetic iid cross-section of nominal width. The 145-vs-115 error above is precisely
+   what calibrating against an idealisation costs.
+2. **Bisection**, not search-with-judgement: find `α ∈ (0, 1)` such that the mean realised
+   per-date Spearman IC of the synthetic member against the realised forward return equals
+   **0.05**, using **2000** draws at seed **20260730**, bisection tolerance `1e-4` on `α`,
+   maximum 40 iterations.
+3. **The acceptance band is DERIVED, not asserted:** `±3 ×` the standard error of the
+   calibration's mean, reported alongside `α`. At 2000 draws that is roughly `±0.006`
+   `[DERIVED — 3 × 0.00207 from the table above]` — tighter than the `±0.01` I originally
+   asserted, and it is a measured property of the calibration rather than a number I chose.
+4. **If no `α` in `(0, 1)` reaches 0.05 within the derived band, the screen VOIDs.** `α`
+   is still **never** hand-adjusted after seeing a result; the prohibition in §5.1 stands
+   unchanged and now applies to the calibrated value.
+5. The calibrated `α`, the achieved mean IC, its standard error, the draw count, the
+   iteration count and the realised per-date width distribution all appear in the report.
+
+## A1.3 What this amendment does NOT change
+
+Everything else in the frozen text: the §2 identity abort gate, the §2.5 sealed source
+manifest, the equal-weight unfitted combination, the §4 paired estimand and block
+estimator, `T_crit = max(P95_null, t_{0.975, n_blocks−1})`, the null control and its 10%
+validity ceiling, the non-tautology check, the descriptive-only redundancy table, and the
+four §6 outcomes with their licences.
+
+**A re-run executes the whole frozen sequence from §2, not just the control.** The screen
+VOIDed at §5.1 before the treatment arm was computed, so no arm of this study has a
+result, and picking up mid-sequence would mean running a treatment whose identity and
+manifest gates were established in a different session.
+
+## A1.4 The generalisation worth carrying
+
+Two designs of mine failed the same way within hours: a **1.96** critical value frozen for
+a `t` over single-digit blocks, and an **asymptotic** `ρ_s`–`ρ` identity frozen as an exact
+finite-sample target. Both are large-sample quantities applied at small `n`, and both were
+caught by review or by a control rather than by me. The registered practice that follows:
+**any constant derived from an asymptotic argument must be re-derived at the realised
+sample geometry before it is frozen, and its tolerance derived from that same
+computation.**
