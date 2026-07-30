@@ -1,0 +1,18 @@
+LIVE checkpoint path: /Users/renhao/git/github/RenQuant/artifacts/patchtst_shadow/pt07_strict_trainfit_embargo60_20260522/seed_44/hf_patchtst_all_seed44_model.pt
+LIVE checkpoint sha256 (full, computed here): 07046963994dbb8da29bfc66f99d21399e39d6d2dbd842c180299bce67c07571
+shadow_scorer_health.jsonl hf_patchtst records: 4
+  run_date=2026-07-27 content_sha256=sha256:07046963994dbb8d config_fingerprint=sha256:f8fb2259b2bf1537 staleness_days=621 status=fault state=degraded reasons=['stale_621d_limit_28d']
+  run_date=2026-07-28 content_sha256=sha256:07046963994dbb8d config_fingerprint=sha256:f8fb2259b2bf1537 staleness_days=622 status=fault state=degraded reasons=['stale_622d_limit_28d']
+  run_date=2026-07-28 content_sha256=sha256:07046963994dbb8d config_fingerprint=sha256:f8fb2259b2bf1537 staleness_days=622 status=fault state=degraded reasons=['stale_622d_limit_28d']
+  run_date=2026-07-29 content_sha256=sha256:07046963994dbb8d config_fingerprint=sha256:f8fb2259b2bf1537 staleness_days=623 status=fault state=degraded reasons=['stale_623d_limit_28d']
+distinct truncated content_sha256 values across all hf_patchtst health records: {'sha256:07046963994dbb8d'}
+full re-hash matches the (16-char-truncated) served digest in EVERY health record: True
+sidecar trained_date=2026-05-22 effective_train_cutoff_date=2024-11-13 feature_count=172 config_fingerprint=sha256:f8fb2259b2bf1537
+
+43-fold WF research corpus scan: 43 checkpoints hashed from /Users/renhao/renquant_bundles/patchtst-wf-corpus-b4e47e2c
+any fold's checkpoint sha256 == live served sha256? False
+
+runs.alpaca_shadow.db: hf_patchtst candidate_scores present on 17 distinct (date, model_content_sha256) groups, span 2026-06-22..2026-07-21
+of those, dates where model_content_sha256 is a verified prefix-match of the LIVE digest: ['2026-07-20', '2026-07-21']
+n execution-identity-VERIFIED hf_patchtst score dates: 2
+frozen §3 estimator at L=60,h=60 needs an admissible-date span of at least 120 consecutive trading days on ONE identity-verified score series before even n_blocks=1 exists; §7 expects roughly ~500 admissible dates (n_blocks~8) for a powered result.

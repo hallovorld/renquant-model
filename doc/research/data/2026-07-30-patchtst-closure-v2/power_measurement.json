@@ -1,0 +1,21 @@
+{
+  "live_checkpoint_sha256": "07046963994dbb8da29bfc66f99d21399e39d6d2dbd842c180299bce67c07571",
+  "n_score_dates_total": 17,
+  "n_score_dates_identity_verified": 2,
+  "identity_verified_dates": [
+    "2026-07-20",
+    "2026-07-21"
+  ],
+  "gate_lag": 60,
+  "horizon": 60,
+  "block_len": 60,
+  "n_verified_dates_on_label_axis": 0,
+  "N_eval": 0,
+  "n_blocks": 0,
+  "dropped_remainder": 0,
+  "power_clause_7_1_fires": true,
+  "min_blocks_powered": 6,
+  "T_crit": "not computable: n_blocks < 2, no Student-t leg exists",
+  "treatment_t": "not computable: no block means exist",
+  "positive_control": "not computable on the registered date set (0 admissible dates); running it on a different date set would not be the \u00a74.1 control"
+}

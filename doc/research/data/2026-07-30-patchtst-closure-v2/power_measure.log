@@ -1,0 +1,18 @@
+live served checkpoint sha256: 07046963994dbb8da29bfc66f99d21399e39d6d2dbd842c180299bce67c07571
+hf_patchtst score dates in runs.alpaca_shadow.db: 17 total; 2 identity-VERIFIED against the live digest
+identity-verified score dates: ['2026-07-20', '2026-07-21']
+names per verified date: {Timestamp('2026-07-20 00:00:00'): 70, Timestamp('2026-07-21 00:00:00'): 71}
+
+verified score dates present on the panel label axis: 0 of 2
+NOTE: the verified score dates post-date the panel's last label date (2026-04-28), so no forward label exists for them at all.
+
+=== §3 estimator on the identity-verified series, MEASURED ===
+N_eval (admissible dates at L=60, h=60) = 0
+n_blocks = floor(N_eval/60) = 0
+dropped remainder days = 0
+§7 clause 1 threshold: n_blocks < 6 -> UNRESOLVED (underpowered)
+§7 clause 1 fires: True
+minimum score-date span needed for even ONE admissible date at L=60,h=60: 61 contiguous scored trading days (plus 60 further trading days of label history for the forward window to close)
+
+=== §4.1 positive control, on the SAME dates (as registered) ===
+§4.1 registers the control as 'prod XGB, unpermuted, same harness, SAME DATES'. The treatment's registered date set is the identity-verified series, whose admissible-date count is 0, so the control on that same date set has the same 0 admissible dates and is not computable either. Running it on a DIFFERENT (longer) date set would not be the registered control.
