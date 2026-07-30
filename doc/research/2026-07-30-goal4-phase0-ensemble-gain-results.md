@@ -1,9 +1,27 @@
 # RESULTS — GOAL-4 Phase 0: does combining the existing scorers gain anything?
 
-**STATUS: verdict WITHHELD pending adversarial review (§7).** The review and
-its disposition are appended verbatim below before this PR is mergeable.
-Do not cite anything in this document as confirmed until that section is
-present and states UPHELD.
+**STATUS: §7 adversarial review returned NOT UPHELD.** The review is
+appended verbatim below (§7), with my disposition. It **confirmed the VOID
+verdict** — independently reproducing both of §5.1's failure reasons from
+raw data — while finding **three real defects in this document's supporting
+prose**, all now corrected in place with the retraction stated rather than
+silently edited:
+
+1. A **false claim** that the served PatchTST checkpoint's sha256 was
+   cross-checked against its own emitted `.metadata.json.artifact_sha256`.
+   That field does not exist on the served artifact. Corrected.
+2. Decision-relevant numbers (the label-divergence figures, the clf
+   recipe-script hash) were **hardcoded narrative strings** no delivered
+   script recomputed — "asserted instead of measured", a named recurring
+   failure on this programme. Now measured by
+   `tools/goal4_phase0_verify_claims.py`, output committed as
+   `claims_verification.json`.
+3. The **"58.5% of rows diverge"** headline was arithmetically true at an
+   undisclosed `>1e-9` tolerance but materially overstated: genuine
+   revisions are **0.885%** of rows, concentrated in the final two weeks of
+   the panel's coverage. Corrected with the full tolerance breakdown.
+
+None of the three changes the verdict, which remains **VOID**.
 
 Executes `doc/research/2026-07-30-goal4-phase0-ensemble-gain-prereg.md`
 (renquant-model#114) literally. Code: `tools/goal4_phase0_manifest.py`
@@ -40,9 +58,15 @@ for the full identity-construction note and every digest.
 
 | member | role | served artifact | identity strength |
 |---|---|---|---|
-| prod_XGB | benchmark | `artifacts/prod/panel-ltr.alpha158_fund.json` | full: 43/43 WF-fold config_fingerprint match `[VERIFIED]` |
-| certified_clf | candidate | `artifacts/shadow/panel-clf.top-decile.fwd60.json` | partial: recipe-script sha256 + hyperparameter match, no per-fold digest `[VERIFIED, disclosed limitation]` |
-| PatchTST | candidate | `artifacts/patchtst_shadow/pt07_.../hf_patchtst_all_seed44_model.pt` | full: 43/43 WF-fold checksum+fingerprint match `[VERIFIED]` |
+| prod_XGB | benchmark | `artifacts/prod/panel-ltr.alpha158_fund.json` | full: 43/43 WF-fold config_fingerprint match `[VERIFIED — tools/goal4_phase0_verify_claims.py]` |
+| certified_clf | candidate | `artifacts/shadow/panel-clf.top-decile.fwd60.json` | partial: recipe-script sha256 + hyperparameter match, no per-fold digest `[VERIFIED — tools/goal4_phase0_verify_claims.py; disclosed limitation]` |
+| PatchTST | candidate | `artifacts/patchtst_shadow/pt07_.../hf_patchtst_all_seed44_model.pt` | full: 43/43 WF-fold checksum+fingerprint match `[VERIFIED — tools/goal4_phase0_verify_claims.py]` |
+
+Note (§7 review, count 1): the SERVED artifacts' own metadata does **not**
+emit a self-digest to cross-check against — served-artifact identity rests
+on `config_fingerprint` + `strategy_config.json` wiring. The
+`artifact_sha256` cross-check applies to the per-FOLD metadata, which is
+where the 43/43 checksum claims come from.
 
 ## §2.5 sealed manifest
 
@@ -86,6 +110,14 @@ reported. `[VERIFIED — results.json.main]`
   by construction; the assertion tested is the defensive
   `is_monotonic_increasing` check added specifically as a belt-and-braces
   guard, and it is proven live, not decorative.
+  **STRENGTHENED (§7 review, count 4):** the reviewer correctly noted the
+  delivered self-check proves only that the *assertion fires*, not the
+  structural-immunity claim itself. That claim is now demonstrated
+  EMPIRICALLY: bypassing the assertion and iterating the dates in reverse
+  produces bit-identical per-date `g(t)` over a 120-date sample
+  `[VERIFIED — tools/goal4_phase0_verify_claims.py →
+  claims_verification.json.selfcheck_immunity]`. The reviewer ran the same
+  test independently and reached the same result.
 - No undersized block: **PASS** — every retained block has exactly 60
   dates by construction (remainder dropped, not equal-weighted).
   `[VERIFIED — run.log, results.json.self_checks]`
@@ -126,4 +158,76 @@ No regression; this change adds only `tools/goal4_phase0_manifest.py`,
 
 ## §7 Adversarial review
 
-`[TO BE APPENDED VERBATIM — commissioned, not yet run as of this commit]`
+Commissioned per §7 ("The verdict is withheld pending adversarial review
+and is not published on the strength of my own reasoning"). The reviewer
+was given the frozen prereg, this document, the README, the manifest,
+results.json, run.log and both tool scripts, and was instructed to attack —
+explicitly including the possibility that the identity construction, the
+label substitution, or the permutation reading were unregistered
+relaxations that should have produced a different disposition.
+
+**Disposition: NOT UPHELD — accepted in full, all four counts.** The
+review confirms the VOID verdict (it independently reproduced both §5.1
+failure reasons from raw data, and re-verified 43/43 folds for both
+prod_XGB and PatchTST rather than the 3 digests it was asked to spot-check)
+but identifies real defects in this document's supporting prose. I accept
+every count without contest:
+
+- **Count 1 (false claim).** Independently re-verified by me: the served
+  PatchTST checkpoint's metadata has no `artifact_sha256` field. My claim
+  was false as written. Corrected in this document and the README.
+- **Count 2 (asserted instead of measured).** Accepted. Every load-bearing
+  narrative number is now MEASURED by `tools/goal4_phase0_verify_claims.py`
+  and committed as `claims_verification.json`.
+- **Count 3 (58.5% overstated).** Accepted, and this is the count I regard
+  as most serious, because it is the one where my framing asserted more
+  than the data supported. Genuine revisions are 0.885% of rows, not 58.5%;
+  the tolerance was undisclosed. Retracted and corrected with the full
+  bucket breakdown. The label swap remains correct, but on §4's
+  "same `r_{t→t+h}`" clause — which is unconditional — not on the severity
+  of the discrepancy.
+- **Count 4 (self-check narrower than its claim).** Accepted; structural
+  immunity now demonstrated empirically rather than asserted.
+
+The review's finding on the permutation construction (count C) — that my
+joint-permutation reading is exactly equivalent to permuting the label, and
+that the joint-vs-independent choice is not outcome-determinative here
+because both are dominated by the student-t leg — is a **confirmation**,
+not a defect, and I have left the implementation unchanged.
+
+No count changes the verdict. **VOID stands.**
+
+The review follows VERBATIM, unedited:
+
+---
+
+**Disposition: NOT UPHELD**
+
+### A. §2 identity
+`[VERIFIED — this task]` Recomputed 3 digests myself: served prod_XGB artifact and served PatchTST checkpoint both matched the manifest exactly. Went beyond the requested sample and re-verified **all 43/43** WF folds for both prod_XGB (config_fingerprint match) and PatchTST (file sha256 == fold's own metadata artifact_sha256, AND config_fingerprint match) — zero mismatches across the full population.
+
+Found one **concrete false claim**: the README states the served PatchTST checkpoint's sha256 was "matched against its own emitted `.metadata.json.artifact_sha256`." I dumped every key in that exact file — **no such field exists**, and the manifest-generation code never checks one for the served artifact (only fold-level metadata files carry that field, and those legitimately check out). Narrative overstatement, not fatal to identity (config_fingerprint is real and verified), but false as written.
+
+certified_clf's recipe-hash claim: the code defines `clf_driver` but never hashes it — the cited hash is a hardcoded string (asserted, not measured, by the delivered code). I independently corroborated it via git archaeology instead: the WF corpus's own build-time provenance record cites the same hash pinned to commit `e07f6f838e9c2e359474d8ee71d4ca6034714068`, and `git log <that commit>..HEAD -- scripts/train_topdecile_clf_shadow.py` is empty — genuinely no drift. Claim holds, but not via the mechanism the code claims to exercise.
+
+### B. Label corpus substitution
+`[VERIFIED — my own script]` Independently joined both parquets: 147,066 overlapping rows (matches), and at a >1e-9 tolerance (undisclosed — found by threshold sweep), 86,017/147,066 = 58.49% diverge, mean abs diff 0.001875, max 1.867148 — all reproduce exactly. But **neither delivered script computes this comparison** — it's a hardcoded narrative string. Deeper analysis changes the picture: 84,656 of the 86,017 "divergent" rows differ by only 1e-9–1e-6 (float noise, not a vintage issue); only 1,302 rows (0.89%) differ by >1%, and those cluster almost entirely in the *last two weeks* of prod_XGB's coverage window — a late-arriving-revision explanation, not a blanket vintage mismatch. The swap is still substantively defensible, but "58.5%" overstates scope, and because no code reproduces it, **the HARKing-order question is unverifiable from the artifacts** — a real gap given this is this programme's most-repeated failure mode.
+
+### C. Permutation construction
+`[VERIFIED]` The equivalence claim is exactly true — I built a direct test (permute all member columns by π vs. permute the label alone by π⁻¹) and got bit-identical `g(t)`. A toy simulation matching the observed redundancy correlations gives P95(|t|)≈2.24 (joint) vs ≈2.15 (independent) — a small difference, and in the actual run **both are dominated by the student-t leg (2.3646)** regardless, so this design choice plausibly wasn't outcome-determinative. Reasoned, not fully verified on real data.
+
+### D. Positive control math
+`[VERIFIED — line-by-line + independent Monte Carlo]` Traced `build_positive_control` against §5.1 exactly — tie-break, seed formula, α, mixing formula all correct; no bug found. My own from-scratch reimplementation (different RNG, pure iid-normal, 3000 trials/n) gives n=140→0.0406 vs. claimed 0.0424 — same shape, same conclusion: real, inherent finite-sample bias, not an implementation defect.
+
+### E. Self-checks
+The assertion genuinely fires (not decorative), but I directly executed `compute_g_series` with it bypassed on reverse-sorted dates and got **bit-identical** output — confirming the "structurally impossible" claim is true. The delivered self-check, however, only proves the assert fires; it doesn't itself demonstrate that immunity (an empirical bypass-and-compare test, like mine, would). Narrower than its stated claim.
+
+### F. The VOID decision
+Every angle re-derived from raw data reproduces the reported values closely enough that VOID is correct and robust to every defect found. No additional undisclosed deviations from §3–§6 found.
+
+### G. Anomaly
+The 3 untracked files (mtimes predate the used manifest by minutes) are absent from every other worktree checked (including the thematically adjacent `prereg/goal4-phase0-ensemble-gain-gate` worktree), absent from `git log --all`, and match no running process. Origin unresolved after a bounded search; not imported/executed by the run that produced the reported results.
+
+---
+
+*End of verbatim review.*

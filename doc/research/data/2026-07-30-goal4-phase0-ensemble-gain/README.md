@@ -28,12 +28,23 @@ relaxation invented for this run:
   `config_fingerprint` — verified directly, not asserted (43/43 match).
 - **PatchTST**: served artifact = `artifacts/patchtst_shadow/pt07_strict_trainfit_embargo60_20260522/seed_44/hf_patchtst_all_seed44_model.pt`
   (confirmed wired via `strategy_config.json` → `ranking.panel_scoring.artifact_path`),
-  file sha256 independently recomputed and matched against its own emitted
-  `.metadata.json.artifact_sha256`, `config_fingerprint=sha256:f8fb2259b2bf1537`
-  (same recipe fingerprint as prod_XGB — same watchlist/config family).
-  ALL 43 folds of the historical WF panel: file sha256 == fold metadata's
-  emitted `artifact_sha256` (43/43) AND fold `config_fingerprint` ==
-  served identity (43/43) — both independently verified.
+  file sha256 measured as `07046963994dbb8d…`,
+  `config_fingerprint=sha256:f8fb2259b2bf1537` (same recipe fingerprint as
+  prod_XGB — same watchlist/config family).
+  **CORRECTION (§7 review, count 1):** an earlier revision of this file
+  claimed the served checkpoint's sha256 was "matched against its own
+  emitted `.metadata.json.artifact_sha256`". That was **FALSE** — the
+  SERVED checkpoint's metadata emits no such field (verified: see
+  `claims_verification.json` →
+  `served_artifact_digests.PatchTST_served.metadata_top_level_keys`).
+  Identity for the SERVED artifact rests on `config_fingerprint` + the
+  `strategy_config.json` wiring, NOT on a self-emitted digest cross-check.
+  The per-FOLD metadata files DO emit `artifact_sha256`, and those ARE
+  cross-checked: all 43 folds of the historical WF panel have file sha256
+  == fold metadata's emitted `artifact_sha256` (43/43) AND fold
+  `config_fingerprint` == served identity (43/43) — independently
+  re-verified across the full population by the §7 reviewer, and
+  re-measured by `tools/goal4_phase0_verify_claims.py`.
 - **certified_clf**: served artifact = `artifacts/shadow/panel-clf.top-decile.fwd60.json`,
   `config_fingerprint=sha256:1d8f167f…e41b`; content sha256 independently
   recomputed as `1e644354e0981f47…`, matching the value independently
@@ -45,7 +56,15 @@ relaxation invented for this run:
   RECIPE SOURCE SCRIPT (`scripts/train_topdecile_clf_shadow.py`,
   sha256 `04cba8a42429…` — identical between what built the WF panel and
   current `renquant-model` main) plus exact hyperparameter/label/
-  lookahead/feature-count agreement, not a per-fold digest. Disclosed as
+  lookahead/feature-count agreement, not a per-fold digest.
+  **CORRECTION (§7 review, count 2):** the manifest builder recorded that
+  hash as a hardcoded string rather than measuring it — "asserted instead
+  of measured", a named recurring failure on this programme. It is now
+  MEASURED by `tools/goal4_phase0_verify_claims.py` (result: matches, and
+  `git log <wf-corpus-pinned-commit>..HEAD -- scripts/train_topdecile_clf_shadow.py`
+  is empty, i.e. genuinely no drift — the §7 reviewer reached the same
+  conclusion independently via git archaeology). The claim holds; the
+  original mechanism for supporting it did not. Disclosed as
   the primary attack surface for adversarial review; not treated as
   grounds for exclusion, since identity IS established from emitted
   metadata, just at coarser granularity.
@@ -53,23 +72,48 @@ relaxation invented for this run:
 No member was excluded (3/3 survive the identity gate as operationalised
 above).
 
-## Label corpus selection — a real, verified discrepancy
+## Label corpus selection
 
-`data/alpha158_291_fundamental_dataset.parquet` (mtime 2026-07-29) was used
+`data/alpha158_291_fundamental_dataset.parquet` (mtime 2026-07-29) is used
 as the canonical `r_{t→t+h}` source for ALL THREE members, not each panel's
-own bundled `fwd_60d_excess` column, because a cross-check found the
-prod-XGB panel's (`data/exp/oos_pick_table_recipe_v2.parquet`, mtime
-2026-07-03) bundled label diverges from it on **58.5% of the 147,066
-overlapping (date,ticker) rows** (86,017/147,066 not bit-exact; mean abs
-diff 0.0019, max abs diff 1.87 —
-187 percentage points on realized 60-day excess return), consistent with
-the XGB panel being built against a since-superseded label vintage.
-The chosen corpus matches the certified-clf panel's bundled label EXACTLY
-on all 88,750 overlapping rows, and matches the older, narrower
-`transformer_v4_wl200_clean.parquet` watchlist panel to <1bp on
-353,406/353,548 rows — i.e. it is the current, internally-consistent
-vintage, and clf's own panel was already built against it (or an
-indistinguishable predecessor).
+own bundled `fwd_60d_excess` column.
+
+**The primary reason is §4 itself**, and it is unconditional: the estimand
+requires both ICs to be measured "against the **same** `r_{t→t+h}`, over the
+**same tickers**, on the **same rows**." Three arms cannot each carry their
+own label column and still satisfy that clause, whatever the panels happen
+to agree on. One shared label source was mandatory.
+
+**CORRECTION (§7 review, count 3):** an earlier revision of this file
+justified the choice with the headline "the prod-XGB panel's bundled label
+diverges on **58.5% of rows**", implying a wholesale vintage mismatch. That
+figure is arithmetically true at a `>1e-9` tolerance but **materially
+overstated the severity**, and the tolerance was undisclosed. Measured
+breakdown (`tools/goal4_phase0_verify_claims.py` →
+`claims_verification.json.label_divergence`), over 147,066 overlapping
+(date,ticker) rows:
+
+| abs diff bucket | rows | frac |
+|---|---|---|
+| `1e-9 … 1e-6` (float-representation noise) | 84,656 | 57.56% |
+| `1e-6 … 1e-3` | 9 | 0.006% |
+| `1e-3 … 1%` | 50 | 0.034% |
+| **`> 1%` (genuine revision)** | **1,302** | **0.885%** |
+
+Mean abs diff 0.001875, max 1.867. The genuinely-revised rows are 0.885%,
+not 58.5%, and they concentrate entirely in **2026-01-30 … 2026-02-11** —
+the final two weeks of the prod-XGB panel's own coverage window — which
+reads as late-arriving return revisions near the panel's edge, not a
+superseded vintage across its history.
+
+The corrected picture does not change the decision (§4 forces one shared
+label source regardless), but the original framing asserted more than the
+data supported and is retracted here rather than quietly edited.
+
+Supporting, unchanged: the chosen corpus matches the certified-clf panel's
+bundled label EXACTLY on all 88,750 overlapping rows, and matches the
+older, narrower `transformer_v4_wl200_clean.parquet` watchlist panel to
+<1bp on 353,406/353,548 rows.
 
 ## Why VOID (§5.1, both independently sufficient)
 

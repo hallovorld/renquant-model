@@ -1,10 +1,20 @@
 # Progress: GOAL-4 Phase-0 ensemble-gain screen — VOID
 
 STATUS:   delivered (execution of a pre-merged FREEZE, this PR). Verdict
-          WITHHELD pending adversarial review (§7) — appended below once
-          commissioned. Provisional verdict from the frozen harness: VOID,
-          on the §5.1 positive control (construction assertion fails AND
-          the control is not detected).
+          VOID, on the §5.1 positive control (construction assertion fails
+          AND the control is not detected). §7 adversarial review
+          COMMISSIONED, returned **NOT UPHELD**, appended VERBATIM to the
+          results doc with my disposition: it CONFIRMED the VOID verdict
+          (independently reproducing both failure reasons from raw data,
+          and re-verifying 43/43 folds rather than the 3 digests it was
+          asked to spot-check) while finding three real defects in my
+          supporting PROSE — a false claim about a nonexistent metadata
+          field, decision-relevant numbers hardcoded rather than measured,
+          and a "58.5% of rows diverge" headline true only at an
+          undisclosed 1e-9 tolerance (genuine revisions: 0.885%). All
+          three accepted in full and corrected in place, with the
+          retraction stated rather than silently edited. None changes the
+          verdict.
 
 WHAT:     Executes `doc/research/2026-07-30-goal4-phase0-ensemble-gain-prereg.md`
           (renquant-model#114, frozen, merged before this PR) literally.
@@ -44,9 +54,15 @@ EVIDENCE: artifact: `doc/research/2026-07-30-goal4-phase0-ensemble-gain-results.
                     `origin/main` @ `cc77ccf`. Reproduced by:
                       `python3 tools/goal4_phase0_manifest.py generate`
                       `python3 tools/goal4_phase0_run.py`
-                    (both read-only over `/Users/renhao/git/github/RenQuant`
+                      `python3 tools/goal4_phase0_verify_claims.py`
+                    (all read-only over `/Users/renhao/git/github/RenQuant`
                     and `/Users/renhao/renquant_bundles`; write only under
                     `doc/research/data/2026-07-30-goal4-phase0-ensemble-gain/`).
+                    The third script exists BECAUSE of the §7 review: it
+                    MEASURES every load-bearing narrative number that was
+                    previously a hardcoded string, and its output is
+                    committed as `claims_verification.json` so a reviewer
+                    can rerun and diff.
   prod or exp:      EXPERIMENT. All inputs opened READ-ONLY; sealed
                     manifest re-verified (refuse-on-mismatch) at the top
                     of every run; nothing written outside this branch or
@@ -58,11 +74,15 @@ EVIDENCE: artifact: `doc/research/2026-07-30-goal4-phase0-ensemble-gain-results.
                     confirmed); certified_clf has a weaker evidence trail
                     (recipe-script sha256 + hyperparameter match, no
                     per-fold digest) -- disclosed, not exclusion-triggering.
-                    Label corpus: found and fixed a real ~58.5%-of-rows
-                    mismatch between the prod-XGB panel's bundled label
-                    and the current, mutually-consistent label vintage
-                    (used the latter for ALL members per §4's
-                    "same r_{t->t+h}" requirement).
+                    Label corpus: ONE shared label source used for all
+                    three arms, as §4's "same r_{t->t+h}" clause requires
+                    unconditionally. (An earlier framing justified this by
+                    a "~58.5% of rows mismatch" headline; the §7 review
+                    correctly showed that figure holds only at an
+                    undisclosed 1e-9 tolerance and that genuine revisions
+                    are 0.885% of rows, concentrated in the panel's last
+                    two weeks. Retracted and corrected; the choice stands
+                    on §4, not on the severity.)
   best-known?:      N/A for a VOID verdict -- no GO/NO-GAIN/UNRESOLVED
                     number is licensed. The main arm's own point estimate
                     (t=-1.0025, N_eval=508, n_blocks=8) is reported per
@@ -81,6 +101,11 @@ NEXT:     GOAL-4's ensemble question remains unanswered. Before re-running
           that is a fresh freeze, not a re-run of this one (§7.4-equivalent
           discipline: a VOID verdict is not revised by changing the
           procedure after seeing the result). Separately, if a future
+          registration should ALSO carry the §7 review's process lesson:
+          every load-bearing number must be produced by committed code, not
+          narrated -- three of this PR's four review counts trace to
+          hardcoded strings in prose rather than to any defect in the
+          computation itself. Separately, if a future
           registration wants certified_clf's identity evidence at the same
           strength as the other two members, the WF corpus driver
           (`wf_clf_corpus.py`, currently only in scratch bundles, not
