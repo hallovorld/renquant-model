@@ -70,6 +70,39 @@ claim died precisely on a mistraced checkpoint. If identity cannot be establishe
 a member, that member is **excluded and the exclusion is reported** — the screen may
 still run on the remainder, but a two-member screen is reported as a two-member screen.
 
+## §2.5 SEALED SOURCE MANIFEST — an abort gate, not a bookkeeping step
+
+A served checkpoint digest identifies the *model*. It cannot reproduce the
+*panels*, so on its own it does not make this screen reproducible. Before any
+statistic is computed, a manifest is generated, committed and sealed, covering:
+
+| artifact | what is recorded |
+|---|---|
+| each member's historical score panel | path relative to a NAMED corpus root, sha256, row count, min/max score date, ticker count |
+| the forward-return / label corpus | same five, plus the label column name and horizon |
+| each member's served artifact | sha256, `trained_date`, feature-contract digest, config fingerprint (§2 abort gate) |
+| the feature/config revision each panel was produced under | revision identifier and its digest |
+| the included-member set | the exact list, after exclusions, with the reason for each exclusion |
+| manifest root | one sha256 over the sorted per-artifact digests, so a single number pins the whole input set |
+
+**Fail-closed, and the failure mode is named.** The harness recomputes every digest
+before construction and **refuses** on the first mismatch, naming the file. A
+*missing* manifest is also a refusal, not a bootstrap path — the same defect was
+just found live on the sibling momentum line, where `verify_or_abort()` printed a
+note and returned when the manifest was absent
+`[VERIFIED — prior work, renquant-model#110 codex review 2026-07-30]`. An absent
+manifest only ever occurs when something has already gone wrong (wrong working
+directory, partial checkout, renamed artifact), which is exactly when the check
+matters. A malformed manifest is likewise a refusal and is distinguished from an
+absent one, because the remedies differ.
+
+**Sealed means sealed.** The manifest is generated once and no artifact is appended
+afterwards. Appending one silently voids every prior citation of the root digest —
+that has already happened on this programme, where docs cited a root over 44 files
+while the bundle had grown to 61 `[VERIFIED — prior work, 2026-07-29 PatchTST
+closure retraction]`. If an artifact must be added, the manifest is regenerated and
+every citation restated together.
+
 ## §3 Combination rule: equal weight, unfitted
 
 The combination is the **per-date equal-weight average of members' cross-sectional
@@ -127,12 +160,44 @@ and is not repeated here.
 
 ## §5 CONTROLS — including one that proves the harness can detect a gain
 
-**5.1 Positive control — a synthetic member with a KNOWN edge.** Construct a synthetic
-score whose per-date rank correlation with the realised `r_{t→t+h}` is calibrated to
-**IC ≈ +0.05**, combine it equal-weight with the benchmark, and require the harness to
-detect a gain at `|t| ≥ T_crit`. **If the harness cannot detect a gain that was
-inserted on purpose, the screen is VOID** and its negative result means nothing about
-ensembles.
+**5.1 Positive control — a synthetic member with a KNOWN edge, constructed in
+closed form.** "IC approximately +0.05" would leave a calibration knob inside the
+control, so the construction is specified exactly and is **non-iterative**: nothing
+is tuned against a realised IC, and a future run can be checked against this text.
+
+For each admissible date `t`, over that date's ticker cross-section of size `n`:
+
+1. `u = normal_scores(rank(r_{t→t+h}))` — ranks of the realised forward return
+   mapped through `Φ⁻¹((i − 0.5)/n)`, ties broken by **ascending ticker symbol**
+   (deterministic, no random tie-breaking).
+2. `e = normal_scores(rank(v))` where `v` is drawn from
+   `numpy.random.default_rng(SEED_BASE + int(t.strftime("%Y%m%d")))`, `SEED_BASE =
+   20260730`. The seed is a pure function of the date, so the control is
+   bit-reproducible and independent of iteration order.
+3. `synthetic_t = α·u + sqrt(1 − α²)·e`.
+
+**`α` is fixed by a closed form, not searched.** For bivariate-normal scores with
+Pearson correlation `ρ`, the population Spearman correlation is
+`ρ_s = (6/π)·arcsin(ρ/2)`. Inverting for a target `ρ_s = 0.05`:
+
+> `α = 2·sin(π · 0.05 / 6) = 0.0523538966`
+> `[DERIVED — 2*math.sin(math.pi*0.05/6); check (6/math.pi)*math.asin(α/2) = 0.0500000000]`
+
+So the **population** Spearman IC of the synthetic member against the realised
+return is exactly `+0.05` by construction. Because `u` is built from the realised
+return, the synthetic member is a deliberate oracle-with-noise; it exists only to
+prove the harness can see an inserted gain and never enters any treatment arm.
+
+**Construction sanity, asserted not tuned:** the realised mean per-date Spearman IC
+of the synthetic member must satisfy `|mean − 0.05| ≤ 0.01`. If it does not, the
+**construction is broken and the screen VOIDs** — the value of `α` is not adjusted
+to bring it into range. That distinction is the whole point of registering a closed
+form: the assertion can only fail the run, never re-calibrate it.
+
+**The control's requirement:** combine the synthetic member equal-weight with the
+benchmark and require the harness to detect a gain at `|t| ≥ T_crit`. **If the
+harness cannot detect a gain that was inserted on purpose, the screen is VOID** and
+its negative result means nothing about ensembles.
 
 This control is the reason the screen is worth running at all. A design that returns
 "no gain" without ever demonstrating it *could* have said otherwise is not evidence —

@@ -13,8 +13,19 @@ WHY/DIR:   GOAL-4 has had zero work for weeks and the cause is structural — it
            undefined. This defines it.
 EVIDENCE:  n/a — this PR makes NO model or data claim. Every number it cites is
            tagged as prior work with a reference; nothing was measured for it.
-NEXT:      Establish each member's served-artifact identity (abort gate), seal the
-           bundle, run. Verdict withheld pending adversarial review.
+NEXT:      Establish each member's served-artifact identity (§2 abort gate), generate
+           and SEAL the §2.5 source manifest, then run. Verdict withheld pending
+           adversarial review.
+
+CORRECTIONS: the first frozen revision registered a served-checkpoint digest as the
+only provenance and specified the positive control as "IC approximately +0.05".
+Codex BLOCKER: a checkpoint digest cannot reproduce the score panels, row set,
+label corpus or config revisions, and an approximate target leaves a discretionary
+calibration knob inside the control. Added §2.5 (sealed source manifest, fail-closed
+on missing/malformed/mismatched) and rewrote §5.1 as a closed-form non-iterative
+construction with a date-derived seed and alpha = 2*sin(pi*0.05/6) = 0.0523538966,
+which makes the population Spearman IC exactly +0.05. No figure changed; the screen
+had not run.
 
 ## The one argument this design refuses to make
 
