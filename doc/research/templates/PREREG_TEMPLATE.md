@@ -31,6 +31,7 @@ adversarial review to fill the section.
 | T10 | confusing "the score is stale" with "the signal is long-horizon" | |
 | T11 | cross-lag statistics on a drifting sample (`Y.shift(-lag)` nulls the NEWEST rows) | |
 | T12 | paired arms drawn from different score windows (era term measured at 19–28%) | |
+| T17 | a candidate compared to a naive baseline but never orthogonalised **both ways** — on 2026-07-30 the two-sided momentum arm died against volatility while volatility *survived* orthogonalisation to it (§5c) | |
 | T18 | **contiguous blocks under an overlapping label** — blocking is treated as discharging T2, but the crossing fraction is `min(1, h/L)` and equals **1.00 whenever `L ≤ h`**; a 60-day block under a 120-day label voided a whole study on 2026-07-30. **Disclosing the residual is not a remedy**, and **a gap is not independence** — it removes label-window overlap only; §4a requires that plus an inference method whose validity covers what survives | |
 | **T13** | **the estimand named only after seeing which one gives the preferred answer — HARKing.** Cost a retracted CLOSE. | |
 | **T14** | **a control that cannot fail.** A bare sign-count control passed 37.5% of the time on signal-free input; zero-skill AR scores 50–55%. | |
@@ -232,6 +233,47 @@ cross-sectional column ordering exists.
 **Not satisfiable retroactively.** Adding baselines after seeing the subject's
 number and choosing which to report is T13 wearing a lab coat. Name them in the
 frozen text.
+
+## 5c. ORTHOGONALISATION ASYMMETRY — mandatory when a naive baseline is in play (T17)
+
+§5b asks whether a naive baseline **matches** the candidate. That is not enough: two
+correlated statistics can each look strong beside the other while only one of them carries
+the payoff. The question that settles direction is **which survives orthogonalisation to
+which**, and it must be registered before the run, in both directions.
+
+Register, for candidate `C` and naive baseline `B`:
+
+1. `C ⊥ B` — the candidate residualised on the baseline, per date, OLS with intercept.
+2. `B ⊥ C` — the baseline residualised on the candidate, the same way.
+3. `B` alone, unresidualised.
+
+and the reading, fixed in advance:
+
+| `C ⊥ B` clears | `B ⊥ C` clears | reading |
+|---|---|---|
+| yes | no | the candidate carries it; the baseline is a proxy for the candidate |
+| **no** | **yes** | **the baseline carries it; the candidate is a veneer.** Whatever `C` scores raw, the hypothesis is NOT supported |
+| yes | yes | two partly-independent effects; report both and claim neither as the other |
+| no | no | neither survives; the shared component carries it and neither is identified |
+
+**Registered as a KILL condition, not a diagnostic.** If the `no / yes` cell obtains, the
+verdict is fixed by that cell alone — the raw arm's own significance may not be cited
+against it. Making this a decision rule rather than a caveat is the whole point: a caveat
+gets narrated around.
+
+**What earned this section.** On 2026-07-30, GOAL-7 Stage 1 registered exactly this as its
+§4 and the `no / yes` cell obtained: the raw two-sided momentum arm cleared at
+`|t| = 3.270` while `C ⊥ B` reached only `1.644` against a `T_crit` of `2.110` — and the
+adversarial review then measured the other direction, where `B` (`z(vol_60_tr)`) **alone**
+paid **+0.3477 SD, `t = +4.610`**, more than the candidate, and survived orthogonalisation
+to `C`. Verdict: VOLATILITY-TILT, nothing licensed. Without the second direction the
+result would have read as "the candidate is weakened", not "the candidate is a veneer".
+
+The same axis had already accounted for a second subject: the production XGB's traded
+estimand was reproduced by a single `STD20` sort and collapsed to `−0.0554` orthogonalised
+to `STD60`. **Two of two subjects on this panel.** On this corpus the default prior for any
+new cross-sectional statistic is that it is the volatility axis again, so `B` should be a
+volatility statistic unless there is a stated reason otherwise.
 
 ## 6. Decision rule
 
