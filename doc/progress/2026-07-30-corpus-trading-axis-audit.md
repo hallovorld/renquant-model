@@ -4,7 +4,11 @@ STATUS:   delivered (one read-only tool, usable as a gate, plus committed
           tests). No production path written, no config or artifact touched.
           Adds the C5 progress doc that was missing at PR open (codex MED 1),
           then a second round addresses a follow-up CHANGES_REQUESTED review
-          (codex P1/P2, see "SECOND REVIEW ROUND" below).
+          (codex P1/P2, see "SECOND REVIEW ROUND" below), then a third round
+          commits the replay log that the PR body already claimed existed
+          (`doc/research/evidence/2026-07-30-corpus-trading-axis-audit.md`)
+          and replaces the display-truncated SPY axis hash with the full
+          64-char value.
 
 WHAT:     `tools/corpus_trading_axis_audit.py` — given a WF score corpus and a
           trading-date axis, re-derives (a) whether any row's score_date sits
@@ -55,13 +59,16 @@ WHY/DIR:  renquant-pipeline#228 AC-3. `pd.offsets.BDay(n)` and `busday_count`
 
 EVIDENCE:
   artifact:       `tools/corpus_trading_axis_audit.py` (this PR). Inputs are
-                  READ-ONLY and pinned by sha256:
+                  READ-ONLY and pinned by sha256 (full 64-char hashes, not
+                  truncated — see the replay log below for the exact command):
                     clf corpus  `clf_wf_scores.parquet`
-                                1da3fcfab06af1e5…5bc4efe4
+                                1da3fcfab06af1e597ac0eb83dff4741ed3dd027de8b8a6b4d58979f5bc4efe4
                     PatchTST    `wf-eval/scores.parquet`
-                                6eb209e2491b26b1…e2606d18
+                                6eb209e2491b26b18b7b687c7683f27f8e5cbe56592186bfbac68381e2606d18
                     SPY axis    `RenQuant/data/ohlcv/SPY/1d.parquet`
-                                0987e3b638cb9659…1b30a10f2c
+                                0987e3b638cb9659aac0d5d68e2688773ef40b5f6ec907c9176dec1b30a10f2c
+                  Replayable log with the exact command + full raw output for
+                  both corpora: `doc/research/evidence/2026-07-30-corpus-trading-axis-audit.md`.
   prod or exp:    EXPERIMENT/audit tooling. Nothing written anywhere; the tool
                   only reads and prints.
   existing data:  Yes — RE-MEASURED this session by running the committed tool,
