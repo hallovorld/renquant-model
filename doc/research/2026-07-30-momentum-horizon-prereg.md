@@ -198,12 +198,24 @@ citable as a result. A corrected study needs a **new registration** (see
 "What a corrected registration would have to fix" below) that does not reuse
 this holdout.
 
-Also: the raw run artifacts this section originally cited
-(`doc/research/data/2026-07-30-m2.log`, `…/2026-07-30-m2.json`) were never
-committed to this branch and cannot be recovered now. The numbers below are
-transcribed from the run's terminal output as captured in the result commit
-message (`ca944c2`) only, with no committed machine-readable backing file —
-unverifiable at the artifact level, independent of the control defect above.
+**Correction to this erratum (same PR, later push).** An earlier revision of
+this erratum said the raw run artifacts "cannot be recovered now". That was
+wrong — they were still in the run's scratch directory and are now committed,
+under a path that names their status:
+
+  * `doc/research/data/quarantine-invalid-control/2026-07-30-m2-INVALID-CONTROL.log`
+  * `doc/research/data/quarantine-invalid-control/2026-07-30-m2-INVALID-CONTROL.json`
+  * `doc/research/data/quarantine-invalid-control/README.md`
+
+So the numbers below are no longer unverifiable at the artifact level. **That
+changes nothing about their status.** Recovering an artifact makes an invalid run
+*auditable*; it does not make it valid. Within those files the split is:
+every `clean` / `PLACEBO-DIRTY` flag, the `ctl=` column, the Phase S selection
+and the Phase H verdict are **produced by the defective shuffle and must not be
+used**; the `E2=` / `E1_t=` point estimates never touch the shuffle, but §6
+forbade any claim from the Phase S table regardless, and the Phase H estimate
+belongs to a spent holdout under an invalidated selection. They are inputs to
+designing the successor study, not results.
 
 `[VERIFIED — this session]` matrix PIN OK; label built here, all four horizons
 `sd = 0.9963`, `mean ≈ 0` — units are SD of the cross-section, **not return**.
