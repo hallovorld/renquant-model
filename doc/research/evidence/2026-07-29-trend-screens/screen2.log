@@ -1,0 +1,39 @@
+INPUT
+  panel sha256=7defdacf97f8eb05… PIN OK
+
+0. LABEL UNITS (fwd_60d_excess) — measured, not assumed
+   rows=725547  dates=2597  tickers=292
+   mean=-0.0000  sd=0.9982  -> statistic is in SD
+
+=== ARM M1: ret(20) — NEAR-REPLICATION, a positive here is a PLUMBING red flag  (rows=319232) ===
+   E1: -0.0250  t=-1.81  CI=[-0.0449,+0.0012]  n=2553  resolves=False
+       controls max|t|=1.85  -> VOID (control not null)  (joint bar |t|>=2.99)
+   E2: -0.0460  t=-2.52  CI=[-0.0707,-0.0105]  n=2553  resolves=True
+       controls max|t|=0.95  -> not screen-interesting  (joint bar |t|>=2.99)
+
+=== ARM M2: ret(60) - ret(5) — 12-1 style  (rows=170414) ===
+   E1: +0.0004  t=+0.09  CI=[-0.0127,+0.0122]  n=2295  resolves=False
+       controls max|t|=0.87  -> VOID (control not null)  (joint bar |t|>=2.99)
+   E2: -0.0571  t=-2.66  CI=[-0.0899,-0.0293]  n=2295  resolves=True
+       controls max|t|=1.00  -> not screen-interesting  (joint bar |t|>=2.99)
+
+=== ARM M3: ret(60) / STD60 — vol-scaled  (rows=118286) ===
+   E1: +0.0016  t=+0.15  CI=[-0.0239,+0.0209]  n=1728  resolves=False
+       controls max|t|=1.12  -> VOID (control not null)  (joint bar |t|>=2.99)
+   E2: +0.0079  t=+0.20  CI=[-0.0642,+0.0701]  n=1728  resolves=False
+       controls max|t|=1.05  -> VOID (control not null)  (joint bar |t|>=2.99)
+
+=== ARM M4: ret(60) gated to above-median STD60 — vol-gated  (rows=300095) ===
+   E1: -0.0007  t=-0.04  CI=[-0.0230,+0.0208]  n=2514  resolves=False
+       controls max|t|=1.16  -> VOID (control not null)  (joint bar |t|>=2.99)
+   E2: +0.0773  t=+2.41  CI=[+0.0186,+0.1314]  n=2514  resolves=True
+       controls max|t|=1.46  -> not screen-interesting  (joint bar |t|>=2.99)
+
+=== §6 DECISION ===
+   M2: E2 -0.0571 t=-2.66 not screen-interesting
+   M3: E2 +0.0079 t=+0.20 VOID
+   M4: E2 +0.0773 t=+2.41 not screen-interesting
+   replication reference M1 E2 = -0.0460
+   OUTCOME 2 — momentum NOT supported on this corpus on either estimand. The operator's stated preference does not survive measurement here.
+
+wrote doc/research/evidence/2026-07-29-trend-screens/screen2.json

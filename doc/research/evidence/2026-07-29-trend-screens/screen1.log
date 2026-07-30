@@ -1,0 +1,47 @@
+INPUT
+  panel sha256=7defdacf97f8eb05… PIN OK
+
+0. LABEL UNITS (fwd_60d_excess) — measured, not assumed
+   rows=725547  dates=2597  tickers=292
+   mean=-0.0000  sd=0.9982  -> the statistic is in SD, not return
+
+=== ARM R1: mom60 (replication)  (rows=300095) ===
+   E1: -0.0197  t=-1.33  CI=[-0.0425,+0.0044]  n=2514  resolves=False
+       controls max|t|=1.90 (bar 2.0)  -> VOID (control not null)
+   E2: -0.0519  t=-2.59  CI=[-0.0825,-0.0188]  n=2514  resolves=True
+       controls max|t|=0.38 (bar 2.0)  -> not screen-interesting
+
+=== ARM R2: rev5 (replication)  (rows=337282) ===
+   E1: +0.0256  t=+2.37  CI=[+0.0072,+0.0410]  n=2563  resolves=True
+       controls max|t|=1.79 (bar 2.0)  -> not screen-interesting
+   E2: +0.1243  t=+3.82  CI=[+0.0662,+0.1684]  n=2563  resolves=True
+       controls max|t|=2.87 (bar 2.0)  -> VOID (control not null)
+
+=== ARM R3: rev20 (replication)  (rows=319232) ===
+   E1: +0.0250  t=+1.81  CI=[-0.0013,+0.0448]  n=2553  resolves=False
+       controls max|t|=1.85 (bar 2.0)  -> VOID (control not null)
+   E2: +0.1268  t=+2.82  CI=[+0.0451,+0.1893]  n=2553  resolves=True
+       controls max|t|=1.54 (bar 2.0)  -> resolves
+
+=== ARM N1: vol-conditional (HYPOTHESIS)  (rows=461390) ===
+   E1: -0.0227  t=-1.90  CI=[-0.0433,-0.0017]  n=2549  resolves=True
+       controls max|t|=2.55 (bar 2.0)  -> VOID (control not null)
+   E2: -0.0346  t=-1.97  CI=[-0.0681,-0.0046]  n=2597  resolves=True
+       controls max|t|=2.25 (bar 2.0)  -> VOID (control not null)
+
+=== ARM N2: unconditional blend (must be beaten)  (rows=200517) ===
+   E1: +0.0002  t=-0.16  CI=[-0.0134,+0.0166]  n=2424  resolves=False
+       controls max|t|=1.84 (bar 2.0)  -> VOID (control not null)
+   E2: -0.0297  t=-1.65  CI=[-0.0587,+0.0078]  n=2424  resolves=False
+       controls max|t|=2.42 (bar 2.0)  -> VOID (control not null)
+
+=== CORPUS FALSE-FLAG RATE — 30 clean shuffles, arm N1 under E2 (#101 §5 Amendment 1) ===
+   1/30 = 3% per arm  -> ALL-clean over 5 controls voids 16% of valid work
+   null |t|: median=0.73  p90=1.49  max=2.29
+   LIMIT: one arm's score geometry, not a per-arm rate (registered).
+
+=== §7 DECISION ===
+   N1 E2 spread -0.0346 (t=-1.97)  vs  N2 -0.0297  vs  best replication +0.1268
+   OUTCOME 2 — hypothesis NOT supported on this corpus; no factor change proposed
+
+wrote doc/research/evidence/2026-07-29-trend-screens/screen1.json
