@@ -1,0 +1,38 @@
+{
+ "digest_construction": {
+  "directories": "contribute nothing",
+  "hash": "sha256 of the utf-8 encoded joined string",
+  "join": "\\n (single newline, no trailing newline)",
+  "line_format": "{relpath}:{sha256_hex}",
+  "path_separator": "/",
+  "self_exclusion": "the index file itself is excluded when it lands inside the indexed root",
+  "sort": "python sorted() over the line strings, ascending",
+  "symlinks": "rejected"
+ },
+ "files": {
+  "candidate_scores_identity_scan.csv": {
+   "bytes": 617,
+   "sha256": "d061661f20f2671de82897a9e1162983d5a665ab34038397936d618e9116bfff"
+  },
+  "checkpoint_sha256_scan.csv": {
+   "bytes": 7965,
+   "sha256": "9d116fb1a44e4d3f1a73c6f459814ffb67aa4875eb31d0ae75285c61249406ef"
+  },
+  "identity_evidence.json": {
+   "bytes": 684,
+   "sha256": "2ca8ac6c42a0cf61e74529e37cea3fcadecee1231422706cb6ea0aa2b14e2b09"
+  },
+  "run.log": {
+   "bytes": 2133,
+   "sha256": "e6e8b0c4014e25e966d38c8cbb08775caa0037fea18abb1d3bc13077fec4e9a7"
+  },
+  "shadow_scorer_health_hf_patchtst.jsonl": {
+   "bytes": 3960,
+   "sha256": "8c621f1aa7db53dc381fffd20dbb045dd0a3e2c6832c1328f29e64dfefaef116"
+  }
+ },
+ "n_files": 5,
+ "root_digest_sha256": "9b0ab79e6b1b0bea3a7ddbcb42391b2026b8c226ce70ac1dddb3ff151b1d47cb",
+ "schema": "artifact_corpus_index.v2",
+ "total_bytes": 15359
+}
