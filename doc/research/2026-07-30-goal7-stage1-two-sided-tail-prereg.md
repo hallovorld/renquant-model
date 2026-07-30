@@ -1,0 +1,642 @@
+# PREREG — GOAL-7 Stage 1: is the payoff TWO-SIDED rather than a ranking?
+
+**FROZEN. No run has been executed against this document.** Nothing live changes on
+any outcome. This registers **one** question. It does not design a scorer, and a pass
+does not authorise building one — see §7.
+
+## §0 Why this question, and why not a ranker
+
+The operator's brief for GOAL-7 is a **standalone** momentum model, at most ten
+factors, deployed to **shadow** only, and — stated explicitly — one that considers
+**both momentum and mean reversion**.
+
+model#110 measured something that decides the shape of that model, and it is not what
+a momentum scorer is usually built as. Its decile profile of forward excess return
+against `mom_12_1_tr` (h = 120 trading days, per-date z-scored label, so units are SD
+of the cross-section) is `[VERIFIED — prior work, doc/research/2026-07-30-momentum-total-return-prereg.md:652]`:
+
+| d0 | d1 | d2 | d3 | d4 | d5 | d6 | d7 | d8 | d9 |
+|---|---|---|---|---|---|---|---|---|---|
+| **+0.135** | −0.001 | −0.071 | −0.078 | −0.091 | −0.089 | −0.036 | −0.033 | −0.049 | **+0.375** |
+
+**Both extremes pay. The middle does not.** Rank correlation of the profile with
+decile number is only **+0.27** and the full-cross-section IC is `t = +0.589` ≈ 0
+`[VERIFIED — prior work, same file:656-657]`. That is not a weak ranking; it is a
+**U-shape that a linear rank statistic cancels by construction** — the losers' tail
+and the winners' tail push the correlation in opposite directions.
+
+Read plainly: the biggest losers reverting and the biggest winners continuing are the
+*same* profile, and the operator's instinct that the model must hold both is what the
+data shows. A cross-sectional momentum **ranker** would be the wrong object; it would
+average the two ends into the flat middle.
+
+So Stage 1 asks exactly one thing: **does a two-sided transform capture what the
+linear one cancels?**
+
+## §1 THE REGISTERED TRANSFORM — fixed now, not searched
+
+> `u(t, i) = |z_t(mom_12_1_tr)|`
+
+the **absolute** cross-sectional z-score of 12−1 momentum on dividend-adjusted
+total-return prices, per date. No free parameters, no threshold, no fitted knee. It is
+the simplest function that is large at both ends and small in the middle, which is the
+shape §0 measured.
+
+**Not registered and not admissible in this stage:** any fitted breakpoint, any
+piecewise or quantile-dependent weighting, any per-side coefficient. Those are exactly
+the knobs that would let the transform be tuned to the profile that motivated it.
+
+## §2 THE HARKING PROBLEM, NAMED BEFORE THE RUN
+
+The U-shape was found **post hoc**, in a study whose own verdict was
+UNRESOLVED / TILT-NOT-EXCLUDED. Registering a transform that fits it is only honest if
+the registration precedes the run and the evaluation is not on the sample that
+suggested it. Two consequences, both binding:
+
+1. **Split by DATE, screen and holdout, with a 60-trading-day embargo between them.
+   The holdout is used ONCE.** The transform, the estimand, the estimator and the
+   critical value are all fixed in this document before either partition is touched.
+2. **The residual risk cannot be fully removed and is stated instead of hidden.** The
+   U-shape was observed on the full sample, so a holdout carved from that same sample
+   is not independent of the observation that motivated the design. Therefore **a pass
+   here is SCREEN-INTERESTING, not licensed**, and §7 says what it does and does not
+   buy. Genuinely independent confirmation would need dates outside this corpus and
+   this stage does not claim it.
+
+## §2A INPUTS, ELIGIBILITY, AND THE DATE SPLIT — pinned here, not at run time
+
+§2 claims the design is fixed before either partition is touched. That claim is only
+true if the *inputs and the partition itself* are fixed too, and the first version of
+this document left four choices to run time — corpus, eligibility, the split, and the
+§4 estimator. Each could have moved the verdict after the U-shape was known, which is
+precisely the HARKing hole §2 exists to close. They are pinned below.
+
+**Inputs — the same two immutable files as the sibling study, digests re-verified:**
+
+| input | sha256 | bytes |
+|---|---|---|
+| `momentum_factor_matrix_tr.parquet` | `85c27fc1d5a56a4c585c03db22dc8be0123badfc83ef23e46cdd358c704eb35a` | 76,310,040 |
+| `total_return_close.parquet` | `8c23496ee351757ec1f953597f9705168542f67cc16f209385091bb60d741ac9` | 4,007,937 |
+
+`[VERIFIED — shasum -a 256 on both files, this session; matches
+doc/research/2026-07-30-momentum-total-return-prereg.md §3 independently rather than
+by transcription]`. The runner re-verifies both and **REFUSES to proceed** on any
+mismatch. Both are derived, read-only, from `RenQuant/data/ohlcv/<T>/1d.parquet`
+(145 watchlist names + `SPY`), 364,736 rows × 3,161 dates, 2014-01-02 → 2026-07-29
+`[VERIFIED — pd.read_parquet(...).shape / .date.nunique(), this session]`. The
+*durable* pin is the committed raw manifest
+`doc/research/data/2026-07-30-momentum-total-return/raw_input_manifest.json`
+(`corpus_fingerprint_sha256=48728e24…`), which `raw_input_manifest.verify_or_abort()`
+checks before any raw read; the two derived parquets are reproducible from it. That
+matters because the derived files currently sit in a session scratchpad and are not
+themselves durable — the manifest, not the scratchpad, is what makes this rerunnable.
+
+**Eligibility, per `(date, ticker)`:** both `mom_12_1_tr` and `vol_60_tr` non-null
+(the latter is needed by §4, so admitting a name without it would make the treatment
+and control arms run on different samples), and the forward 120-trading-day label
+exists. **Per date:** at least `MIN_NAMES = 20` eligible names, matching the sibling
+harness. No liquidity, price or sector filter is applied — none is registered, so
+none may be added.
+
+> ⚠️ **The split table below is SUPERSEDED by AMENDMENT 3 §A3.1.** Amendment 2 burned
+> 2021-10-08 onward, which voids this partition. The live partition is
+> **evaluation 2016-12-29 → 2021-04-19 (1,082 dates, `n_blocks = 18`,
+> `t_{0.975,17} = 2.1098`), embargo 120 dates to 2021-10-07.** The inputs,
+> eligibility rules and digests above remain in force. Retained unedited because an
+> amendment chain that rewrites its own history is not auditable.
+
+**The split — chronological, 70% by admissible-date count, embargo carved from the
+boundary.** Screen is the earlier partition; the holdout is later in time, so the
+one-use test is also a genuine forward test. Resolved against the pinned corpus:
+
+| partition | dates | blocks of 60 | remainder dropped | range |
+|---|---|---|---|---|
+| screen | 1,600 | 26 | 40 | 2016-12-29 → 2023-05-09 |
+| embargo (used by neither) | 60 | — | — | 2023-05-10 → 2023-08-04 |
+| **holdout (ONE use)** | **627** | **10** | **27** | **2023-08-07 → 2026-02-04** |
+
+2,287 admissible dates in total `[VERIFIED — computed on the pinned matrix this
+session: dropna on both signals, ≥20 names, date ≤ the last date with a 120-trading-day
+forward label, which is 2026-02-04]`. The first admissible date is 2016-12-29 rather
+than 2014-01-02 because `vol_250_tr`-era warmup and the 12-1 lookback consume the
+opening years.
+
+Two consequences worth stating rather than discovering at run time. The holdout gives
+`n_blocks = 10`, so `t_{0.975,9} = 2.2622` `[DERIVED — scipy.stats.t.ppf(0.975, 9)]`,
+and it clears §7's `n_blocks < 6` VOID floor with margin. And the 60-date embargo is
+**shorter than the 120-trading-day label horizon**, so a screen date inside the last
+60 admissible dates before the boundary still has a label window overlapping early
+holdout dates. That is a real, bounded leak of the *label*, not of the design, and it
+is disclosed here rather than papered over: the embargo is registered at 60 because
+the estimator's block length is 60, and widening it to 120 would cost two holdout
+blocks. **If the verdict is TWO-SIDED-SUPPORTED, the report must state the overlap and
+re-run the holdout arm with a 120-date embargo as a robustness line** — a disclosed
+robustness obligation, not a discretionary one.
+
+## §3 ESTIMAND, ESTIMATOR, CRITICAL VALUE
+
+**Primary estimand — the tail statistic, not IC.** Top-decile spread of `u`:
+`k = round(0.10 · n)`, `k ≥ 1`; the mean forward excess return of the top-`k` names by
+`u` minus the cross-sectional mean, per date. This choice is not opportunistic: on this
+programme the tail statistic has led IC on **4 of 4** independent subjects
+`[VERIFIED — prior work, memory panel-signal-identity-capacity]`, and every house gate
+adjudicating on whole-cross-section IC has been measured as the lower-powered
+statistic (IC `t = 1.15` against top-10 spread `t = 2.92` on identical data).
+
+**Estimator, frozen.** Non-overlapping contiguous blocks of 60 trading days over the
+admissible dates; `n_blocks = floor(N_eval / 60)`; **the remainder is DROPPED, never
+equal-weighted** — model#110 formed 10 blocks where 9 was correct and equal-weighted a
+5-day trailing block, inflating its headline `t` by 15.6%
+`[VERIFIED — prior work, model#110 ERRATUM]`. One-sample two-sided `t` over block means.
+
+**Critical value, one symbol everywhere:**
+
+> `T_crit = max( P95_null , t_{0.975, n_blocks−1} )`
+
+`P95_null` = 95th percentile of `|t|` from **200** within-date permutations of `u`
+through the identical harness. The Student-t leg uses the **realised** `n_blocks` after
+the drop. **⚠️ The `n_blocks = 10` figure in this paragraph is SUPERSEDED by
+AMENDMENT 3 §A3.1 — the live values are `n_blocks = 18` and `t_{0.975,17} = 2.1098`.**
+The formula above is unchanged; only the realised leg moved. §2A pinned the holdout at
+`n_blocks = 10`, so the expected Student-t leg was
+`t_{0.975,9} = 2.2622`; the neighbouring values are `t_{0.975,8} = 2.3060`,
+`t_{0.975,7} = 2.3646`, `t_{0.975,5} = 2.5706`
+`[DERIVED — scipy.stats.t.ppf(0.975, n−1), this session]`. Frozen at 1.96 this screen
+would sit at **86.6% of the correct bar** at `n_blocks = 10` — i.e. 13.4% too low,
+on the same convention as the 17% quoted for `t_{0.975,7}`
+`[DERIVED — 1.96/2.2622 = 0.8664, this session]`; that error was caught in review on
+model#113 before any run. Note the leg **rises** as blocks are lost, so a run that
+ends up with fewer blocks than §2A predicts faces a *stricter* bar, not a looser one —
+the failure direction is safe.
+
+**Mandatory in the report:** `N_eval`, `n_blocks`, dropped remainder days, `P95_null`,
+`t_{0.975,n_blocks−1}`, which leg bound `T_crit`, `|t|` as a quantile of the null, and
+the realised evaluation/embargo date counts and dropped dates against **Amendment 3
+§A3.1's** table (a divergence means the corpus moved and the run is not the registered
+one).
+
+## §4 THE CONTROL THAT MATTERS MOST — the volatility trap
+
+**This is the clause that decides whether the result means anything.** `|z|` of
+momentum is large exactly where the cross-section is dispersed, and on this programme a
+model's apparent edge has already been shown to be a volatility ranking: the prod XGB's
+traded estimand (+0.2534 SD) was reproduced by a **single sort on STD20** (+0.2836) and
+collapsed to **−0.0554** when orthogonalised to STD60
+`[VERIFIED — prior work, memory panel-signal-identity-capacity]`.
+
+So, registered as a **kill condition, not a caveat**:
+
+> Orthogonalise `u` to `|z_t(v)|` within date. If the top-decile spread of the
+> residual fails `T_crit`, the verdict is **VOLATILITY-TILT** and the two-sided
+> hypothesis is **not** supported, whatever the raw arm says.
+
+**The volatility variable, named against this corpus.** The first version of this
+clause said `STD60`. **There is no such column in the pinned matrix**
+`[VERIFIED — column list of momentum_factor_matrix_tr.parquet, this session: the
+volatility columns are vol_60_tr, vol_250_tr, vol_60_px, vol_250_px]` — `STD60` is
+the name it carries in the *prod-XGB* study quoted above, a different corpus. Writing
+a control against a column that does not exist is how a control silently becomes a
+no-op, so it is pinned to this corpus's equivalent:
+
+> `v = vol_60_tr` = `std(simple total-return daily returns, trailing 60, ddof=1)·√252`,
+> `min_periods = 60` `[VERIFIED — tools/build_tr_factor_matrix.py:80]`.
+
+**The estimator, fully specified.** Per date `t`, over that date's eligible names:
+ordinary least squares of `u` on `|z_t(v)|` **with an intercept**, fitted on that date
+alone; the residual is `u − (â + b̂·|z_t(v)|)`. Names missing either variable are
+already excluded by §2A eligibility, so the regression drops nothing further and the
+treatment and control arms run on **the same sample by construction**. The decile is
+formed on the **residual** ranks, descending, ties broken by ascending ticker symbol
+(deterministic — the same rule §5 uses, and the reason it is stated is that a
+random tie-break would make the run irreproducible). `k = round(0.10·n)`, `k ≥ 1`, as
+in §3.
+
+Additionally, and reported alongside: pooling within volatility deciles (the residual
+statistic computed inside each `vol_60_tr` decile, then averaged) must preserve the
+sign.
+
+## §5 THE OTHER ARMS
+
+| arm | role | may it fail? |
+|---|---|---|
+| `u = \|z(mom_12_1_tr)\|` | **treatment** | yes |
+| raw `z(mom_12_1_tr)`, same estimator | **reference** — the linear arm the U-shape says should be weak. Reported, **not a bar**; the hypothesis is not "beat the linear arm", it is "clear `T_crit` after §4" | — |
+| synthetic member `u_pc` (§5.1) | **positive control** — must clear `T_crit`, else the harness cannot see a known non-zero effect and the screen is **VOID** | must pass |
+| `u` on within-date permuted momentum | **null control** — false-pass rate over the 200 permutations against a **10%** validity ceiling; above it the screen is **VOID** | must fail |
+
+### §5.1 The positive control, in closed form — and why it is NOT the prod XGB
+
+The first version named "prod XGB top-decile spread" as the positive control. **That
+is not pinnable right now.** The served checkpoint's identity is an open finding on
+this programme: its digest matches none of the 43 rescored folds and it has only two
+trading days of verified live history `[VERIFIED — prior work, memory
+panel-signal-identity-capacity]`. A positive control whose *own* identity is
+unresolved cannot certify a harness — if it failed, we could not tell whether the
+harness is blind or the artifact is the wrong one. Pinning a version string to satisfy
+the letter of the review would have been worse than the gap it closed.
+
+So the control is constructed in closed form instead, mirroring the design merged in
+model#114 §5.1 rather than inventing a second pattern:
+
+For each admissible date `t`, over that date's eligible cross-section of size `n`:
+
+1. `w = normal_scores(rank(r_{t→t+120}))` — ranks of the realised forward excess
+   return mapped through `Φ⁻¹((i − 0.5)/n)`, ties broken by **ascending ticker
+   symbol**.
+2. `e = normal_scores(rank(g))`, `g` drawn from
+   `numpy.random.default_rng(SEED_BASE + int(t.strftime("%Y%m%d")))`,
+   `SEED_BASE = 20260730`. The seed is a pure function of the date, so the control is
+   bit-reproducible and independent of iteration order.
+3. `u_pc = α·w + sqrt(1 − α²)·e`, with
+
+> `α = 2·sin(π · 0.05 / 6) = 0.0523538966`
+> `[DERIVED — 2*math.sin(math.pi*0.05/6); check (6/math.pi)*math.asin(α/2) =
+> 0.0500000000, this session]`
+
+giving a **population** Spearman IC of exactly `+0.05` against the realised return.
+
+**Asserted, never re-calibrated:** the realised mean per-date Spearman IC of `u_pc`
+must satisfy `|mean − 0.05| ≤ 0.01`. If it does not, **the construction is broken and
+the screen VOIDs** — `α` is not adjusted to bring it into range. Registering a closed
+form is what makes that assertion able to fail the run instead of tuning it.
+
+`u_pc` is monotone where the treatment `u` is two-sided, and that is deliberate: what
+this control certifies is that the **top-decile-spread estimator with the §3 blocking
+and `T_crit`** can detect a real inserted effect at all. It does not certify that the
+harness can detect a *U-shape*; no control here does, and the report must not claim it.
+`u_pc` never enters a treatment arm.
+
+**Non-tautology check** (§4.3 of the sibling preregs, and for the same reason): assert
+the permutation changes the statistic on ≥95% of dates. model#110 shipped a negative
+control that was algebraically forced to agree — 34 non-payers matched bit-for-bit
+because their adjustment factor was identically 1.0
+`[VERIFIED — prior work, model#110 negative-control correction]`.
+
+## §6 SELF-CHECKS BEFORE THE TREATMENT
+
+Each must pass or the screen VOIDs:
+- the within-date permutation is asserted to **reject** an unsorted frame — a helper
+  that leaked labels across dates on a ticker-major frame aborted model#105;
+- no undersized block exists;
+- prices are the **dividend-adjusted total-return** series (model#110), and the
+  adjustment's own validation is cited rather than re-assumed: ex-dividend-day gap
+  **−66.6bp (t=−20.6) → −4.8bp (t=−1.55)** `[VERIFIED — prior work, model#110 §4]`;
+- the screen/holdout partition is by date with a 60-trading-day embargo, and the
+  embargoed row count is reported.
+
+## §7 DECISION RULE, AND WHAT A PASS BUYS
+
+| outcome | condition |
+|---|---|
+| **TWO-SIDED-SUPPORTED** | `\|t\| ≥ T_crit` on the holdout **after** §4 orthogonalisation, controls valid |
+| **VOLATILITY-TILT** | raw arm clears but the §4 residual does not |
+| **UNRESOLVED** | `\|t\| < T_crit` |
+| **VOID** | positive control fails, its §5.1 construction assertion `\|mean IC − 0.05\| ≤ 0.01` fails, an input digest mismatches §2A, null false-pass > 10%, non-tautology check fails, or `n_blocks < 6` |
+
+**TWO-SIDED-SUPPORTED licenses exactly one thing: writing the Stage-2 design for a
+standalone scorer of at most ten factors, to be deployed to SHADOW only.** It does not
+authorise building it, does not authorise any config, artifact, state or launchd
+change, and does not authorise capital. The ten-factor budget carries forward as a
+hard constraint and is not spent here — Stage 1 tests one transform precisely so the
+factor budget is not committed before the formulation is known to have anything.
+
+**UNRESOLVED licenses nothing**, and given §2's numbers it is a plausible outcome: the
+motivating study's own robustness arms sat at `t` +1.871 / +1.964 / +1.990 against a
+bar the correct calibration puts at 2.3060
+`[VERIFIED — prior work, model#110 robustness table]` `[DERIVED — t.ppf(0.975, 8)]`.
+
+**VOLATILITY-TILT is the outcome I expect to have to report if the raw arm looks
+good**, and it is registered as a distinct verdict rather than a footnote so it cannot
+be narrated away.
+
+## §8 PUBLICATION DISCIPLINE
+
+The verdict is **withheld pending adversarial review**, appended verbatim with its
+disposition before merge. On this programme that is the only thing that has worked on
+a contested question: a CLOSE was published and retracted, a second was withheld, and
+the commissioned review destroyed it.
+
+---
+
+# AMENDMENT 2 — the chosen holdout is CONTAMINATED by the motivating observation
+
+Registered 2026-07-30, before any run. Amendment 1 pinned the corpus, the split
+arithmetic, the positive control and the residualisation estimator — all correct and all
+retained. This amendment does not reopen any of them. It corrects the one thing pinning
+the split made checkable: **which sample the hypothesis was read off.**
+
+## A2.1 The finding
+
+model#110 §4 states it verbatim: **"Mean label z by `mom_12_1_tr` decile *on the
+holdout*"** `[VERIFIED — doc/research/2026-07-30-momentum-total-return-prereg.md §4]`.
+That study's holdout is **2021-10-08 → 2026-07-29**
+`[VERIFIED — tr_matrix_metadata.json `split`, doc/research/data/2026-07-30-momentum-total-return/]`.
+
+Amendment 1's holdout is **2023-08-07 → 2026-02-04**, which lies **entirely inside** it.
+
+So the partition this screen was going to treat as its one-use holdout is a strict subset
+of the sample the U-shape was observed on. Evaluating there is not an out-of-sample test
+of the hypothesis; it is a re-analysis of the observation that generated it, with a
+holdout that is not one. §2 was written to prevent exactly this and, as published, walked
+into it — the failure was not in §2's reasoning but in never checking *where* the
+motivating profile came from.
+
+## A2.2 Registered consequence
+
+**The evaluation partition is the part of the screen that predates the contamination:**
+
+> **2016-12-29 → 2021-10-07**, used ONCE.
+
+- **2021-10-08 → 2026-07-29 is BURNED for this hypothesis** and may not be used in Stage 1
+  in any arm, including descriptive ones. That covers Amendment 1's entire holdout and the
+  tail of its screen.
+- The 60-trading-day embargo and every eligibility rule from Amendment 1 apply unchanged,
+  now at the new boundary.
+- `n_blocks` is therefore **not** Amendment 1's pinned 10. It is recomputed from the
+  realised admissible dates in this window under the frozen `floor(N_eval / 60)` rule with
+  the remainder dropped, and §7's `n_blocks < 6` clause applies to whatever that yields.
+  **If the uncontaminated window cannot supply 6 blocks, the registered answer is
+  UNRESOLVED (underpowered) and Stage 1 does not run against a contaminated one instead.**
+
+Amendment 1's disclosed embargo-vs-label-horizon leak (60 < 120) is unaffected in kind and
+still applies at the new boundary; its robustness line — re-running with a 120-date embargo
+— is retained.
+
+## A2.3 Why this is a real cost, stated rather than minimised
+
+This trades a 627-date holdout for a shorter, older window, and older data is not
+free: the 2016-2021 regime is not the one the model trades today. **That is the price of
+the hypothesis having been discovered post hoc, and it is the honest price.** The
+alternative — testing on the sample the pattern was read off — produces a number that
+cannot distinguish signal from the reason the study was written.
+
+§7's limit therefore tightens rather than relaxes: a pass on this window is
+**SCREEN-INTERESTING on a pre-2021 regime**, and licenses only writing the Stage-2 design.
+It does not license a claim about the current regime, which would need dates that do not
+exist uncontaminated in this corpus.
+
+---
+
+# AMENDMENT 3 — the post-contamination partition, computed and frozen
+
+> ⚠️ **NOT EXECUTABLE — superseded by AMENDMENT 4.** This is "A3-a", one of two
+> concurrently written sections both titled Amendment 3. Its arithmetic is correct and
+> is restated in A4.4; its **120-date embargo band is withdrawn** as a registered
+> object — the same 120 dates are excluded by A4.2's label-overlap rule instead.
+> Retained unedited for auditability. Do not cite as the specification.
+
+Registered 2026-07-30, before any run. Amendment 2 correctly burned 2021-10-08 onward
+but left `n_blocks` to be "recomputed" at run time, which reopened the freeze point
+Amendment 1 had just closed: a partition and a power condition that are still mutable
+when the run starts are not registered, whatever the prose says. This amendment closes
+it with measured values and supersedes every stale figure.
+
+## A3.1 The partition, resolved against the pinned corpus
+
+Eligibility, block rule and drop rule are Amendment 1's, unchanged. Applied to the
+uncontaminated window there are **1,202 admissible dates, 2016-12-29 → 2021-10-07**
+`[VERIFIED — computed on the §2A-pinned matrix, this session]`.
+
+| segment | dates | range |
+|---|---|---|
+| **evaluation, ONE use** | **1,082** | 2016-12-29 → 2021-04-19 |
+| — of which used (18 × 60) | 1,080 | 2016-12-29 → **2021-04-15** |
+| — dropped remainder | **2** | 2021-04-16, 2021-04-19 |
+| embargo (used by no arm) | **120** | **2021-04-20 → 2021-10-07** |
+| burned (Amendment 2) | — | 2021-10-08 → 2026-07-29 |
+
+> **`n_blocks = 18`**, so **`t_{0.975,17} = 2.1098`**
+> `[DERIVED — scipy.stats.t.ppf(0.975, 17), this session]`.
+
+`T_crit = max(P95_null, 2.1098)` under §3's unchanged formula. `n_blocks = 18` clears
+§7's `n_blocks < 6` floor, so the **UNRESOLVED (underpowered)** branch Amendment 2
+registered as a live possibility **does not fire**. The two dropped dates are the
+*trailing* remainder — blocks are contiguous from the start of the window — and they
+are named above so the drop is checkable rather than merely asserted.
+
+## A3.2 The embargo is 120, not 60 — and this is a tightening, not a re-choice
+
+Amendment 1 registered a 60-date embargo and **disclosed that it was shorter than the
+120-trading-day label horizon**, so late-evaluation labels reach into the excluded
+region. At Amendment 1's geometry, closing that leak cost 2 of 10 blocks, and the leak
+was disclosed instead. **At this geometry it costs 1 of 19** `[VERIFIED — same
+computation at both embargo widths, this session: 60 → 1,142 dates / 19 blocks /
+`t_{0.975,18}` = 2.1009; 120 → 1,082 dates / 18 blocks / `t_{0.975,17}` = 2.1098]`.
+
+A leak that reaches into the *burned* window is exactly the leak this amendment chain
+exists to stop: a label computed from returns inside the contaminated period carries
+the contamination into the evaluation statistic no matter which side of the boundary
+its date sits on. Paying one block to remove it entirely is the obvious trade, and it
+is registered **before** any arm is run, in the direction that makes the test harder.
+Amendment 1's robustness obligation is therefore **discharged, not carried**: there is
+no longer a 60/120 gap to re-run, because 120 is the registered primary. The 60-date
+figures are recorded above so the cost of the choice is auditable.
+
+## A3.3 Superseded figures
+
+These are **void** and must not be cited from this document:
+
+* §2A's split table (screen 1,600 / embargo 60 / holdout 627) — superseded by A3.1.
+  Its **inputs, eligibility rules and digests remain in force**; only the partition
+  changed.
+* §2A's and §3's `n_blocks = 10`, `t_{0.975,9} = 2.2622`, and the "86.6% of the correct
+  bar" arithmetic keyed to it. The live values are `n_blocks = 18`, `t_{0.975,17} =
+  2.1098`; at that leg a frozen 1.96 would sit at **92.9% of the correct bar**
+  `[DERIVED — 1.96/2.1098 = 0.9290, this session]`.
+* §2A's closing paragraph obliging a 120-date-embargo robustness re-run — discharged
+  by A3.2, which adopts 120 as primary.
+* Amendment 2's "`n_blocks` is recomputed from the realised admissible dates" — it is
+  computed here and frozen. Nothing about the partition is left to run time.
+
+**Mandatory in the report** (extending §3): the realised evaluation/embargo date counts
+and the two dropped dates, checked against A3.1. A divergence means the corpus moved
+and the run is not the registered one.
+
+---
+
+# AMENDMENT 3 — the window is now COMPUTED, not "recomputed later"
+
+> ⚠️ **NOT EXECUTABLE — superseded by AMENDMENT 4.** This is "A3-b", one of two
+> concurrently written sections both titled Amendment 3. **Its separation rule is the
+> one adopted** (A4.2), but its calendar is restated as the corpus index (A4.3) and its
+> §A3.3 "one quantity that can still move" is **closed** — the ≥20-name rule drops zero
+> dates in the window (A4.5). Retained unedited for auditability. Do not cite as the
+> specification.
+
+Registered 2026-07-30, before any run. Codex on #117: Amendment 2 *"correctly burns the
+contaminated 2021-10-08 onward period, but it reopens the freeze point that Amendment 1
+just closed"* — `n_blocks` was left to be "recomputed", and the embargo boundary, date
+count, dropped remainder and Student-t leg were unpinned, so **the partition and its power
+condition remained mutable at run time.** Correct. Fixing a contamination defect by
+re-opening a mutability defect is not a fix. Everything is computed here and frozen.
+
+## A3.1 The separation rule that actually binds
+
+Amendment 2 burned dates from **2021-10-08**. But a date `t` inside the surviving window
+still carries a label built from returns **after** `t`, so an evaluation date within 120
+trading days of the boundary would take its label from the burned period. The operative
+rule is therefore stronger than "stop at the boundary":
+
+> **No evaluation date's label may use a return from the burned period.** The last
+> admissible date is the latest `t` whose 120th following trading day still precedes
+> 2021-10-08.
+
+**This SUPERSEDES Amendment 1's 60-trading-day embargo for this design**, and the reason
+is stated rather than assumed: an embargo separates a *screen* partition from a *holdout*
+partition. This design has **one** once-used window and no second partition, so there is
+nothing for an embargo to separate — the label-overlap rule is what does the separating,
+and it is strictly stronger (120 trading days, not 60). Carrying both would be
+belt-and-braces with no stated purpose, at a cost in power that is already the binding
+constraint.
+
+## A3.2 The frozen partition
+
+Computed from the benchmark's own trading-day index
+`[VERIFIED — RenQuant/data/ohlcv/SPY/1d.parquet index, read-only, this session]`:
+
+| quantity | value |
+|---|---|
+| burn boundary (from Amendment 2) | 2021-10-08 |
+| trading days strictly before it | 1452 (2016-01-04 … 2021-10-07) |
+| **last admissible evaluation date** | **2021-04-19** — its 120th following trading day is the last one clear of the burn |
+| **evaluation window** | **2016-12-29 … 2021-04-19**, used ONCE |
+| **`N_eval`** | **1082** |
+| **`n_blocks`** | **`floor(1082 / 60) = 18`** |
+| **dropped remainder** | **2 days** (dropped, never equal-weighted) |
+| **`t_{0.975, 17}`** | **2.1098** `[DERIVED — scipy.stats.t.ppf(0.975, 17)]` |
+| §7 power condition `n_blocks ≥ 6` | **satisfied** |
+
+`T_crit` remains `max(P95_null, t_{0.975, n_blocks−1})`; the Student-t leg is now pinned at
+**2.1098** and only `P95_null` is measured at run time, from the 200 registered
+permutations.
+
+**Superseded and no longer applicable:** Amendment 1's §2A split table and its 10-block
+claim, and Amendment 1's 60-day embargo band. Those described a partition ending inside
+the burned period.
+
+## A3.3 The one quantity that can still move, and its pre-committed consequence
+
+`N_eval = 1082` counts **dates**. Amendment 1's rule that a date with fewer than 20
+admissible names is dropped from both arms can only **reduce** it, and cannot be evaluated
+without the corpus. So:
+
+- the realised `N_eval`, `n_blocks` and dropped remainder are recomputed under the frozen
+  rule at run time and **reported against the 1082 / 18 / 2 pinned here**, with any
+  shortfall attributed;
+- `n_blocks` would have to fall from 18 to below 6 — a loss of over two thirds of the
+  dates — for the §7 underpowered clause to bite. If it does, the verdict is
+  **UNRESOLVED (underpowered)** and the run does not proceed to a verdict on the arm.
+
+That is the only degree of freedom left, it moves in one direction only, and its
+consequence is pre-committed.
+
+## A3.4 A cost I overstated, corrected
+
+Amendment 2 said the uncontaminated window trades a 627-date holdout for "a shorter, older
+window". **Older, yes. Shorter, no.** 1082 dates and **18 blocks** against Amendment 1's
+627 dates and 10 blocks — the screen partition is longer than the holdout was, so removing
+the contamination *increases* power rather than costing it. The real cost is regime: 2016
+to early 2021 is not the regime the model trades today, and §7's limit on what a pass buys
+stands unchanged for that reason and not for a power reason.
+
+---
+
+# AMENDMENT 4 — THE SOLE AUTHORITATIVE PARTITION (supersedes both A3 sections)
+
+Registered 2026-07-30, before any run. **This is the only executable specification of
+the partition. Where it differs from anything above, this text wins.**
+
+Two sections above are both titled "AMENDMENT 3", written concurrently against the
+same review. Codex on #117: the document *"has two separate 'AMENDMENT 3' sections
+with incompatible separation descriptions"* and an executable spec *"cannot require
+readers to reconcile contradictory A3 clauses."* Correct — and the reconciliation is
+not a reader's job, so it is done here once.
+
+Referred to below as **A3-a** ("The post-contamination partition, computed and frozen",
+which registers a 120-date *embargo* band) and **A3-b** ("The window is now COMPUTED",
+which registers no embargo and derives the cutoff from a label-overlap rule).
+
+## A4.1 What the two sections actually disagreed about — and what they did not
+
+**They agree on every number.** Both land on evaluation `2016-12-29 → 2021-04-19`,
+`N_eval = 1082`, `n_blocks = 18`, remainder 2, `t_{0.975,17} = 2.1098`
+`[VERIFIED — recomputed both routes independently this session]`. The conflict is in
+the *rule*, and it is real: A3-a registers a 120-date embargo band as a separate
+object; A3-b says an embargo separates a screen partition from a holdout, this design
+has neither, and the thing doing the separating is the label-overlap rule.
+
+**A3-b's rule is adopted. A3-a's embargo framing is withdrawn.** An "embargo" with
+nothing on the far side of it is not an embargo; naming those 120 dates as one invites
+a future reader to think a second partition exists and could be used. It cannot. The
+dates are excluded because admitting them would build a label from burned returns —
+that is the whole reason, and it is sufficient.
+
+## A4.2 The sole authoritative rule
+
+> **No evaluation date's label may use a return from the burned period.**
+> The last admissible evaluation date is the latest `t` whose 120th following trading
+> day still precedes the Amendment 2 burn boundary of **2021-10-08**.
+
+Nothing else separates the window. Amendment 1's 60-trading-day embargo is **void for
+this design** (A3-b), and so is A3-a's 120-date embargo *band as a registered object* —
+the 120 dates it named are exactly the dates this rule excludes, so the partition is
+unchanged; only the justification and the name are.
+
+## A4.3 Calendar / source of truth
+
+> The trading-day index of the **pinned corpus itself** —
+> `sorted(unique(momentum_factor_matrix_tr.parquet.date))`, sha256 `85c27fc1…` per §2A.
+
+The label is built from the corpus's own price series, so the corpus's index is what
+actually determines a date's 120th following day; using any other calendar to count
+steps for a corpus-derived label would be a different guard than the one intended.
+
+A3-b derived the same cutoff from `RenQuant/data/ohlcv/SPY/1d.parquet`. **That choice
+is verifiably not load-bearing here:** over their common range the two indices are
+identical date-for-date — 1,452 dates from 2016-01-04 to 2021-10-07 in both — and both
+yield last-eval-date `2021-04-19` with its 120th following day `2021-10-07`
+`[VERIFIED — element-wise comparison of the two date indices and the 120-step on each,
+this session]`. The corpus index is named authoritative anyway, because "the two agreed
+when I checked" is not a specification.
+
+## A4.4 The frozen partition
+
+| quantity | value |
+|---|---|
+| **evaluation window (ONE use)** | **2016-12-29 → 2021-04-19** |
+| **`N_eval`** | **1,082** |
+| **`n_blocks`** | **18** (`floor(1082/60)`) |
+| **blocks span** | 2016-12-29 → **2021-04-15** |
+| **dropped remainder** | **2 dates: 2021-04-16, 2021-04-19** (trailing; dropped, never equal-weighted) |
+| **excluded — label would touch the burn** | **120 dates: 2021-04-20 → 2021-10-07** |
+| **excluded — burned (Amendment 2)** | 2021-10-08 → 2026-07-29 |
+| **`t_{0.975,17}`** | **2.1098** `[DERIVED — scipy.stats.t.ppf(0.975, 17), this session]` |
+| `T_crit` | `max(P95_null, 2.1098)`; only `P95_null` is measured at run time |
+
+All of it `[VERIFIED — computed on the §2A-pinned matrix under §2A eligibility, this
+session]`. The excluded band is listed as a *consequence* of A4.2, not as a registered
+embargo.
+
+## A4.5 A3-b's remaining degree of freedom is closed, not carried
+
+A3-b §A3.3 held that `N_eval = 1082` could still fall at run time, because Amendment 1
+drops any date with fewer than 20 admissible names and that "cannot be evaluated
+without the corpus". **It has been evaluated.** In the evaluation window every date
+carries at least **126** eligible names against a bar of 20 — median 128 — so the rule
+drops **zero** dates `[VERIFIED — per-date eligible-name counts over 2016-12-29 →
+2021-04-19, this session]`.
+
+`N_eval = 1082` is therefore the **realised** count, not a pre-filter upper bound, and
+`n_blocks = 18` is not provisional. The run-time recomputation and reporting obligation
+stands as a *check* — a divergence means the corpus moved and the run is not the
+registered one — but it is no longer a live source of variation, and the §7
+`n_blocks < 6` branch cannot fire on this partition.
+
+## A4.6 Status of prior text
+
+A3-a and A3-b are **retained unedited** for auditability and are **not executable**;
+neither may be cited as the specification. Their shared arithmetic is correct and is
+restated in A4.4. Superseded: Amendment 1's §2A split table and its `n_blocks = 10` /
+`t_{0.975,9} = 2.2622` figures, Amendment 1's 60-date embargo, Amendment 1's
+120-embargo robustness obligation (discharged — 120-day separation is the primary rule,
+so there is no second variant to re-run), and A3-a's embargo band as a named object.
