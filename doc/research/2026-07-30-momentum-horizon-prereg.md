@@ -176,15 +176,41 @@ rather than a dividend-yield tilt.
 
 ---
 
-# RESULT (appended after design commit `5a46041`)
+# RESULT (appended after design commit `5a46041`) — ABORTED / INVALID CONTROL, see ERRATUM
 
-Verbatim: `doc/research/data/2026-07-30-m2.log`. JSON: `…/2026-07-30-m2.json`.
+**ERRATUM (2026-07-30, PR #105 review round 2).** This run is **ABORTED —
+INVALID CONTROL**, not the valid `UNRESOLVED` verdict first reported below.
+Fix commit `265ca98` (PR #105) proved `shuffle_within_date` — the function
+implementing every placebo in this section — leaked labels across dates on
+the interleaved frame it is actually called on (reproducer: dates
+`[d1,d2,d1,d2]`, labels `[10,20,11,21]` → old code returned `[11,10,21,20]`).
+Both the Phase S selection rule ("largest E2 block `t` among pairs whose 5
+placebos are all `|t| < 2.0`") and the Phase H "placebos clean" gate depend on
+that shuffle being a true within-date permutation. It was not, so neither the
+selection of **A2 `mom_6_1` @ h=20** nor the holdout's "placebos clean, max
+`|t|` = 1.97" claim below can be certified as an output of the frozen
+procedure — the holdout cleared its own control bar by only 0.03 (1.97 vs.
+2.0), precisely the margin a broken shuffle could move. Per §8, this
+registration's verdict is not revised by re-running under a fixed control —
+that is a new test, not this one — so everything below is retained **only as
+quarantined diagnostic material**: not evidence, not a licensed verdict, not
+citable as a result. A corrected study needs a **new registration** (see
+"What a corrected registration would have to fix" below) that does not reuse
+this holdout.
+
+Also: the raw run artifacts this section originally cited
+(`doc/research/data/2026-07-30-m2.log`, `…/2026-07-30-m2.json`) were never
+committed to this branch and cannot be recovered now. The numbers below are
+transcribed from the run's terminal output as captured in the result commit
+message (`ca944c2`) only, with no committed machine-readable backing file —
+unverifiable at the artifact level, independent of the control defect above.
+
 `[VERIFIED — this session]` matrix PIN OK; label built here, all four horizons
 `sd = 0.9963`, `mean ≈ 0` — units are SD of the cross-section, **not return**.
 Screen 183,532 rows / 1,896 dates; holdout 172,592 rows / 1,205 dates; embargo
 8,580 rows discarded.
 
-## §8 VERDICT: UNRESOLVED. Nothing is licensed.
+## [QUARANTINED, INVALID — see ERRATUM] §8 verdict as first reported: UNRESOLVED. Nothing is licensed.
 
 Selection by the frozen §6 rule: **A2 `mom_6_1` @ h=20** (screen E2 `t = +3.16`,
 placebos clean). Holdout, used once:
@@ -202,10 +228,16 @@ placebos clean). Holdout, used once:
 statement about **power**, never about momentum. No shadow model is built. The
 result is reported exactly as the frozen rule dictates.
 
-## The real finding: MY SELECTION RULE WAS STRUCTURALLY BIASED, and I have to own it
+## [QUARANTINED DIAGNOSTIC — see ERRATUM] The real finding: MY SELECTION RULE WAS STRUCTURALLY BIASED, and I have to own it
+
+The block-count argument below (block count falling ~12× with horizon) is a
+corpus-geometry fact independent of the shuffle bug and stands. The specific
+per-arm spread figures and the "PLACEBO-DIRTY" counts were computed with the
+broken shuffle and are **not re-verified** — read this whole section as
+diagnostic motivation for a future registration, not as a measured result.
 
 The screen table shows the traded spread rising **monotonically with holding
-horizon** in 4 of 7 arms `[VERIFIED — this session]`:
+horizon** in 4 of 7 arms `[VERIFIED — this session, PRE-FIX SHUFFLE, see caveat above]`:
 
 | arm | h=20 | h=60 | h=120 | h=250 |
 |---|---:|---:|---:|---:|
@@ -265,4 +297,7 @@ follow-up must say so rather than present the holdout as untouched.
 Not that momentum works. Not that the screen table is evidence — §6 forbids it
 and the table's monotone pattern has an unexcluded dividend explanation. Not that
 `mom_6_1` at a long horizon would pass; it was never tested on the holdout. No
-P&L: units are SD. No model built, nothing deployed, not even to shadow.
+P&L: units are SD. No model built, nothing deployed, not even to shadow. **Not,
+per the ERRATUM above, that this run reached a valid `UNRESOLVED` verdict at
+all** — it is `ABORTED — INVALID CONTROL`; the `UNRESOLVED` framing above is
+quarantined, not licensed.

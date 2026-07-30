@@ -2,9 +2,70 @@
 
 (PR #105 — `prereg/momentum-horizon-screen`, fixed by claude)
 
-STATUS:   delivered (fix, this push). Codex review requested changes on two
-          points; both addressed here. No re-run of the frozen prereg was
-          performed — see NEXT for why that is deliberately out of scope.
+STATUS:   delivered (round 2, this push). Round 1 fixed the shuffle bug and
+          added this doc but left the main research doc's RESULT section
+          asserting a valid `UNRESOLVED` verdict. Codex correctly flagged
+          (two follow-up CHANGES_REQUESTED reviews) that a broken placebo
+          control invalidates the verdict itself, not just its numbers, and
+          that the doc cited `doc/research/data/2026-07-30-m2.log`/`.json`
+          artifacts that were never committed. Round 2 (this push) recasts
+          the result as `ABORTED — INVALID CONTROL` in both the research doc
+          and the PR body, and corrects the artifact citation. No re-run of
+          the frozen prereg was performed — see NEXT for why that stays out
+          of scope.
+
+## Round 2 (this push): recast the verdict, fix the dangling artifact citation
+
+WHAT:     `doc/research/2026-07-30-momentum-horizon-prereg.md` — added an
+          ERRATUM block at the top of the RESULT section stating the run is
+          `ABORTED — INVALID CONTROL`, not the `UNRESOLVED` verdict as first
+          reported: Phase S selection and the Phase H "placebos clean" gate
+          both depend on `shuffle_within_date` being a true within-date
+          permutation, which round 1 proved it was not. Relabelled the
+          verdict heading and the "real finding" diagnostic section as
+          `[QUARANTINED ...]`, and added a closing note to "What is NOT
+          claimed". Also corrected the dangling citation to
+          `doc/research/data/2026-07-30-m2.log`/`.json` — neither file was
+          ever committed to this branch or found in any local working copy;
+          the citation now says so instead of pointing at files that do not
+          exist.
+
+WHY/DIR:  §8 of the frozen prereg forbids revising a verdict by re-running
+          under a corrected procedure, but it does not forbid correcting the
+          record on what the *first* run actually established. Presenting a
+          verdict computed with a proven-broken control as a valid
+          `UNRESOLVED` is the kind of "X works/fails" claim CLAUDE.md §7.2
+          requires an evidence trail for, and here the trail shows the
+          claim does not hold. `ABORTED — INVALID CONTROL` is a distinct,
+          more accurate epistemic status than `UNRESOLVED` (a statement
+          about the frozen procedure's power), because we can no longer
+          certify the procedure ran as designed.
+
+EVIDENCE: artifact: `doc/research/2026-07-30-momentum-horizon-prereg.md`
+                    (this push).
+  prod or exp:      EXPERIMENT/doc only. No code changed this round; no
+                    production data, config, model, or artifact touched.
+  existing data:    `[VERIFIED — this session]` `find . -iname
+                    "*2026-07-30-m2*"` and `git log --all -- "doc/research/
+                    data/2026-07-30-m2*"` both return nothing — the cited
+                    log/json artifacts were never committed to this repo at
+                    any point in its history.
+  best-known?:      N/A — no IC/Sharpe/effect-size number is newly asserted;
+                    this round only corrects the epistemic status of
+                    already-reported (now-quarantined) numbers.
+  scope:            `renquant-model` docs only. No change to code, no new
+                    experiment run, no claim about momentum.
+
+NEXT (round 2): PR body updated to match (title + bottom line now say
+          `ABORTED — INVALID CONTROL`, per Codex's ask to recast in "the main
+          research doc and PR body"). A corrected registration — fixing the
+          horizon-biased selection rule, the horizon-aware control bar, and
+          the dividend-adjustment gap — is still a new prereg, not a patch to
+          this one, and is not started here.
+
+---
+
+## Round 1 (original push)
 
 WHAT:     `tools/momentum_horizon_run.py::shuffle_within_date` rewritten to
           permute `ycol` within each `_dcode` group directly (via
