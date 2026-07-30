@@ -139,8 +139,8 @@ is why M1 is in the design.
 
 # RESULTS (appended 2026-07-29, after the design commit `192f1b1`)
 
-Verbatim output: `doc/research/data/2026-07-29-screen2.log`. JSON:
-`doc/research/data/2026-07-29-screen2.json`. `[VERIFIED — this session]`, corpus
+Verbatim output: `doc/research/evidence/2026-07-29-trend-screens/screen2.log`. JSON:
+`doc/research/evidence/2026-07-29-trend-screens/screen2.json`. `[VERIFIED — this session]`, corpus
 PIN OK, 725,547 rows / 2,597 dates / 292 tickers, label `mean = −0.0000`,
 `sd = 0.9982` — units are **standard deviations, not return.**
 

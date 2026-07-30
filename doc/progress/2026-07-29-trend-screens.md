@@ -11,7 +11,13 @@ WHAT:     `doc/research/2026-07-29-vol-conditioned-momentum-reversion-screen.md`
           `tools/vol_conditioned_trend_screen.py`,
           `tools/momentum_family_screen.py` (imports screen 1's estimator so the
           two cannot silently diverge), `tests/test_trend_screens.py`.
-          Verbatim runner output + JSON under `doc/research/data/`.
+          Verbatim runner output + JSON under
+          `doc/research/evidence/2026-07-29-trend-screens/` (fixed by claude:
+          the original `doc/research/data/` path is caught by this repo's
+          blanket `.gitignore` `data/` rule and can never be committed;
+          re-ran both pinned runners — identical numbers — and committed
+          the output under the existing `doc/research/evidence/<slug>/`
+          convention instead).
 
 WHY/DIR:  The operator's reading of the live scorer was that it should combine
           momentum and mean-reversion, then that they lean towards momentum.

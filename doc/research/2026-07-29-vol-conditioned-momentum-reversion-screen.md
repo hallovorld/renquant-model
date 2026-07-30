@@ -160,8 +160,8 @@ this branch.
 
 # RESULTS (appended 2026-07-29, after the design commit `ff91d67`)
 
-Verbatim runner output: `doc/research/data/2026-07-29-screen1.log`.
-Machine-readable: `doc/research/data/2026-07-29-screen1.json`.
+Verbatim runner output: `doc/research/evidence/2026-07-29-trend-screens/screen1.log`.
+Machine-readable: `doc/research/evidence/2026-07-29-trend-screens/screen1.json`.
 
 `[VERIFIED — this session]` corpus PIN OK (`7defdacf…`), 725,547 rows,
 **2,597 dates, 292 tickers**. §0 label moments measured: `mean = −0.0000`,
