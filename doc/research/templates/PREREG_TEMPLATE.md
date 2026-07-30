@@ -31,7 +31,7 @@ adversarial review to fill the section.
 | T10 | confusing "the score is stale" with "the signal is long-horizon" | |
 | T11 | cross-lag statistics on a drifting sample (`Y.shift(-lag)` nulls the NEWEST rows) | |
 | T12 | paired arms drawn from different score windows (era term measured at 19–28%) | |
-| T18 | **contiguous blocks under an overlapping label** — blocking is treated as discharging T2, but the crossing fraction is `min(1, h/L)` and equals **1.00 whenever `L ≤ h`**; a 60-day block under a 120-day label voided a whole study on 2026-07-30 (§4a) | |
+| T18 | **contiguous blocks under an overlapping label** — blocking is treated as discharging T2, but the crossing fraction is `min(1, h/L)` and equals **1.00 whenever `L ≤ h`**; a 60-day block under a 120-day label voided a whole study on 2026-07-30. **Disclosing the residual is not a remedy** — §4a requires gaps, non-overlapping labels, or a preregistered dependence-valid estimator | |
 | **T13** | **the estimand named only after seeing which one gives the preferred answer — HARKing.** Cost a retracted CLOSE. | |
 | **T14** | **a control that cannot fail.** A bare sign-count control passed 37.5% of the time on signal-free input; zero-skill AR scores 50–55%. | |
 | **T15** | **a digest cited against a bundle that was later appended to.** Cited `f6b6ef6d…`/44 files; the bundle was `901f0add…`/61. | |
@@ -79,7 +79,13 @@ long relative to the label horizon, and "long" is arithmetic, not a feeling.**
 A date at position `p` in a block ending at `L` has its label window reach `p + h`, so it
 crosses the block end whenever `p + h > L`. Therefore:
 
-> **crossing fraction = `min(1, h / L)`**  ·  **subsequent blocks touched = `ceil(h / L)`**
+> **crossing fraction = `min(1, h / L)`**  ·  **subsequent blocks touched ≤ `ceil(h / L)`**
+
+`ceil(h/L)` is a **maximum span, not a count every label achieves.** How many subsequent
+blocks a given label reaches into depends on the date's position within its block: only
+dates near the block end span the full `ceil(h/L)`, and dates near the start span one
+fewer `[VERIFIED — enumerated over all positions, this session: at L=60, h=120 the
+per-date span is {1, 2}, not a constant 2]`. Report it as a bound.
 
 | `L` | `h` | crossing fraction | blocks touched |
 |---:|---:|---:|---:|
@@ -91,18 +97,51 @@ crosses the block end whenever `p + h > L`. Therefore:
 
 **`L = h` is not a fix.** It still crosses on **every** date; it only reduces the span from
 two adjacent blocks to one. Stating `L ≥ h` as the requirement — which I did, in the first
-correction of the study that failed on this — frames a reduction as a solution.
+correction of the study that failed on this — frames a reduction as a solution. The same
+instinct produced the "`L ≫ h` plus a disclosed number" option below, which a second
+review had to remove: **shrinking a dependence and reporting it are both easy to mistake
+for eliminating it.**
+
+### Disclosure is NOT a remedy
+
+The first version of this section offered "`L ≫ h`, with the crossing fraction stated as
+a number" as a sufficient option. **It is not, and that error is the same one the section
+exists to prevent, one level up.** Writing down a nonzero crossing fraction does not make
+ordinary block-`t`, permutation calibration, or their nominal degrees of freedom valid —
+it only records that they are invalid. A large arbitrary `L` plus a disclosed number
+leaves exactly the study that failed on 2026-07-30, with a bigger `L` and a footnote.
+
+An honest number attached to an invalid statistic is still an invalid statistic. Stating
+the residual dependence is **necessary and not sufficient**.
 
 **Register one of these, explicitly:**
 
 1. a **gap of at least `h` between retained blocks**, so no label window reaches the next
    retained block — the only construction that removes the dependence rather than
    shrinking it; or
-2. **`L ≫ h`**, with the residual crossing fraction `h/L` **stated as a number** in the
-   registration and carried into the report.
+2. **non-overlapping labels** (sample dates at least `h` apart), which removes it at
+   source; or
+3. `L ≫ h` **together with both**: (a) a **preregistered justification** for why the
+   residual dependence at that `h/L` is tolerable for this estimand, and (b) a **named
+   inference method whose stated validity conditions cover that dependence** — e.g. a
+   block/circular bootstrap on the date axis, or a HAC estimator with its bandwidth and
+   the assumptions it needs — registered **before** the run, with its own failure
+   condition. A null that permutes the dependence away does not qualify: it calibrates a
+   different estimator than the one it certifies.
 
-Either way, **state `L`, `h`, the crossing fraction and the blocks touched in the frozen
-text**, so a reader can check the relation without re-deriving it.
+Options 1 and 2 are preferred because their validity is structural. Option 3 is a
+promise about an estimator, and promises get checked.
+
+Whichever is chosen, **state `L`, `h`, the crossing fraction and the maximum blocks
+touched in the frozen text**, so a reader can check the relation without re-deriving it —
+and state the resulting inferential unit and its degrees of freedom, since under options
+1–3 that number is generally **not** `n_blocks − 1`.
+
+**Budget the power before freezing.** Options 1 and 2 cost blocks, often severely: on a
+1,082-date window with `h = 120`, contiguous `L = 120` gives 9 blocks while `L = 120`
+with a `120`-day gap gives **4** `[VERIFIED — computed 2026-07-30]`. If the valid design
+cannot clear the power floor, that is the finding, and it belongs in the registration
+rather than being discovered after a run has spent the window.
 
 **What earned this.** On 2026-07-30 a screen registered 60-trading-day blocks under a
 120-trading-day label, reported `n_blocks = 18` and used `t_{0.975,17}`, and was **VOIDED**:
