@@ -177,11 +177,62 @@ remainder days, and the per-arm row counts. A result without these is incomplete
 
 ---
 
+## §3.5 CRITICAL VALUE — one finite-sample calibration, applied everywhere
+
+**This section exists because the first frozen revision of this document was
+wrong.** It set every threshold at `|t| ≥ 1.96` while §3 defines a one-sample `t`
+over a deliberately single-digit number of blocks. At the expected `n_blocks = 8`
+the two-sided 5% Student-t critical value is **2.3646**, not 1.96
+`[VERIFIED — scipy.stats.t.ppf(0.975, 7)]`, so the **destructive** KILL rule was
+materially too permissive, as were the control and robustness gates. Caught by
+codex review on PR #113 before any run. Corrected here; see the CORRECTIONS block
+in the progress doc.
+
+There is now exactly **one** threshold symbol, `T_crit`, and it is used for the
+treatment, both controls and every §6 gate. No gate carries its own number.
+
+**Definition, frozen:**
+
+> `T_crit = max( P95_null , t_{0.975, n_blocks−1} )`
+
+where
+
+- `P95_null` = the **95th percentile of `|t|`** from the null permutation
+  distribution: **200** independent within-date permutations of the subject's
+  scores pushed through the identical §3 harness. This is an exact,
+  harness-specific calibration — it assumes no distribution, and it absorbs the
+  realised block count and any serial dependence the block scheme leaves behind;
+- `t_{0.975, n_blocks−1}` = the Student-t two-sided 5% critical value at the
+  **realised** degrees of freedom, computed from `n_blocks` after §3 step 3, not
+  from an expected value. For reference `[DERIVED — scipy.stats.t.ppf(0.975, n−1)]`:
+  `n=6 → 2.5706`, `n=7 → 2.4469`, `n=8 → 2.3646`, `n=9 → 2.3060`,
+  `n=10 → 2.2622`, `n=12 → 2.2010`.
+
+**Why the max and not one or the other.** Each covers the other's blind spot: the
+permutation percentile is exact for this harness but is itself estimated from 200
+draws, and the Student-t value assumes normality of block means which single-digit
+`n` cannot verify. Taking the larger is conservative in the direction that matters —
+a destructive verdict. It is registered before any number exists, so it cannot be
+selected after the fact; and it is deliberately **not** relaxed for RETAIN, so the
+asymmetry of §5 comes from the §6 gates alone and never from the threshold.
+
+**Permutation count.** 200, not the 40 used for the harness-validity check in §4.2.
+40 draws locate a 95th percentile only between the 38th and 39th order statistic,
+which is too coarse to be a threshold. §4.2's 40 remain a separate *validity* check
+with their own separate purpose, stated there.
+
+**Reported, mandatory:** `n_blocks`, `t_{0.975, n_blocks−1}`, `P95_null`, which of
+the two bound `T_crit`, and the treatment's `|t|` as a quantile of the null
+distribution. A verdict quoting `T_crit` without those five numbers is incomplete.
+
+
+---
+
 ## §4 CONTROLS — and the proof that they can fail
 
 ### 4.1 Positive control
 Prod XGB, unpermuted, same harness, same dates. **Must produce `t > 0` with
-`|t| ≥ 1.96`.** A design in which the control cannot be shown to pass is not
+`|t| ≥ T_crit` (§3.5).** A design in which the control cannot be shown to pass is not
 evidence about the treatment.
 
 ### 4.2 Null control, with a MEASURED false-pass rate
@@ -196,7 +247,7 @@ Registered fix, in two parts:
   `t` at L = 60 (§1, §3), so lag sign-counting cannot occur;
 - the false-pass rate is **measured, not assumed**. Run **40** independent
   within-date permutations of each subject's scores through the identical harness
-  and record the fraction reaching `|t| ≥ 1.96`. **Registered ceiling: 10%.** If
+  and record the fraction reaching `|t| ≥ T_crit` (§3.5). **Registered ceiling: 10%.** If
   the observed rate exceeds 10%, the harness is **VOID** and no verdict is drawn
   from it — the treatment's own number is not reported as a finding.
 - report `mean|t|`, `p95|t|` and `max|t|` of the permutation distribution, and the
@@ -223,16 +274,16 @@ Evaluated **only** at L = 60, **only** with the §3 estimator, **only** if §0 a
 
 | outcome | condition |
 |---|---|
-| **KILL** | `t ≤ −1.96` **and** every §6 robustness gate holds |
-| **RETAIN-INFORMATIVE** | `t ≥ +1.96` |
-| **UNRESOLVED** | `|t| < 1.96` |
+| **KILL** | `t ≤ −T_crit` **and** every §6 robustness gate holds |
+| **RETAIN-INFORMATIVE** | `t ≥ +T_crit` |
+| **UNRESOLVED** | `|t| < T_crit` |
 | **VOID** | any §0 abort gate, or positive control fails, or measured null-control false-pass rate > 10%, or §4.3 tautology check fails |
 
 **A KILL requires the robustness gates; a RETAIN does not.** That asymmetry is
 deliberate and is registered with its reason: this study can only *remove* a
 scorer, and removing one that is genuinely informative is the costlier error, so
 the destructive verdict carries the heavier burden. It is not a licence to soften
-the bar in the other direction — `|t| < 1.96` is UNRESOLVED and stays UNRESOLVED.
+the bar in the other direction — `|t| < T_crit` is UNRESOLVED and stays UNRESOLVED.
 
 **UNRESOLVED is a statement about power, never about PatchTST.** The retraction
 already records that on the registered basis the point estimates stay negative at
@@ -254,11 +305,11 @@ spread instead of a mean gave +1.964; winsorizing the label to ±1 gave +1.990
 all in one dimension is not robust, it is narrow.
 
 - **6.1 Name dimension.** Leave-one-ticker-out over all tickers: sign of `d`
-  preserved in **≥ 95%** of refits and `|t| ≥ 1.96` in **≥ 90%**.
+  preserved in **≥ 95%** of refits and `|t| ≥ T_crit` in **≥ 90%**.
 - **6.2 Robust location.** Replace the per-block mean with the per-block **median**
-  of `d(t)`: sign preserved, `|t| ≥ 1.96`.
+  of `d(t)`: sign preserved, `|t| ≥ T_crit`.
 - **6.3 Outlier insensitivity.** Winsorize the label cross-section to ±1 SD: sign
-  preserved, `|t| ≥ 1.96`.
+  preserved, `|t| ≥ T_crit`.
 - **6.4 Block dimension.** Leave-one-block-out: sign preserved in **all**
   `n_blocks` refits.
 - **6.5 Era.** Split admissible dates into chronological halves: sign preserved in
@@ -276,10 +327,21 @@ all in one dimension is not robust, it is narrow.
 ## §7 POWER, STATED BEFORE THE RUN
 
 `n_blocks` is expected to be **single-digit** on this corpus; model#90's comparable
-harness had `n_eff = 8` `[VERIFIED — prior work, model#90]`. At `n_blocks = 8` a
-two-sided 1.96 bar needs `|d| / se(d) ≥ 1.96` on 7 degrees of freedom, which is a
-**thin** basis for a destructive verdict, and the positive control's own margin on
-that harness was 0.23 of a t.
+harness had `n_eff = 8` `[VERIFIED — prior work, model#90]`. At `n_blocks = 8` the
+Student-t floor under `T_crit` is **2.3646** `[VERIFIED — scipy.stats.t.ppf(0.975, 7)]`,
+and the positive control's own margin on that harness was 0.23 of a t.
+
+**The consequence has to be stated before the run, because it is unflattering to the
+premise of this study.** The measurement that makes PatchTST look decisively
+persistence-driven is `d = −0.0556, t = −2.31` on `n_eff = 8`
+`[VERIFIED — prior work, model#90]`. **`|−2.31| < 2.3646`, so that number does not
+clear the correctly calibrated bar** — it cleared only the 1.96 approximation. The
+honest prior expectation is therefore **UNRESOLVED unless the §1 paired estimand
+raises power** by removing the era variance that the old slicing carried. That is a
+real possibility, not a rationalisation: pairing on identical evaluation rows
+removes a variance component, and the whole reason for the redesign is that the old
+arms differed in era. But it is a hypothesis about power, and if it does not hold,
+the verdict is UNRESOLVED and this document does not permit anything else.
 
 Pre-committed consequences, so no discretion exists at reporting time:
 
@@ -287,7 +349,7 @@ Pre-committed consequences, so no discretion exists at reporting time:
    the point estimate, and the deliverable becomes what would raise `n_blocks`.
 2. If the positive control passes with `|t| < 2.5`, the treatment's verdict is
    reported **with the control's own thinness in the same sentence**, and a KILL
-   additionally requires §6.4 leave-one-block-out to hold with **`|t| ≥ 1.96` in
+   additionally requires §6.4 leave-one-block-out to hold with **`|t| ≥ T_crit` in
    every refit**, not merely sign preservation.
 3. The exact `n_blocks`, `N_eval` and dropped-remainder count appear in the
    headline, not in an appendix.

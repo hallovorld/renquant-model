@@ -20,6 +20,27 @@ EVIDENCE:  n/a — this PR makes NO model or data claim. It registers the rule t
 NEXT:      Seal the evidence bundle (§0.2), run the §0 abort gates, and only then
            execute. The verdict is withheld pending adversarial review (§9).
 
+CORRECTIONS: the first frozen revision set every threshold at `|t| >= 1.96` while
+§3 defines a one-sample `t` over a deliberately single-digit number of blocks. At the
+expected `n_blocks = 8` the two-sided 5% Student-t critical value is **2.3646**
+`[VERIFIED — scipy.stats.t.ppf(0.975, 7)]`, so the **destructive** KILL rule was
+materially too permissive, and so were the positive-control, null-false-pass and §6
+robustness gates. Caught by codex on PR #113 before any run. Replaced by a single
+registered symbol `T_crit = max(P95_null, t_{0.975, n_blocks-1})` (new §3.5), used
+identically for treatment, both controls and every robustness gate; no gate now
+carries its own number. The permutation leg uses **200** draws, because the 40 in
+§4.2 locate a 95th percentile only between the 38th and 39th order statistic and are
+too coarse to serve as a threshold — those 40 remain a separate validity check.
+
+**This correction changes the study's own prior expectation, and that is recorded
+rather than smoothed over.** The measurement that made PatchTST look decisively
+persistence-driven is `d = −0.0556, t = −2.31` on `n_eff = 8`
+`[VERIFIED — prior work, model#90]`. `|−2.31| < 2.3646`, so **it does not clear the
+correctly calibrated bar** — it cleared only the 1.96 approximation. The honest prior
+expectation is UNRESOLVED unless the §1 paired estimand raises power by removing the
+era variance the old slicing carried. That is a testable hypothesis about power, not
+a rationalisation, and §5 does not permit any other verdict if it fails.
+
 ## What the retraction demanded, and where each demand is discharged
 
 The 2026-07-29 retraction withdrew the CLOSE on six counts and ended with an
