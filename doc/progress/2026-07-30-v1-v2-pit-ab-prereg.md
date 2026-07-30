@@ -1,7 +1,35 @@
 # Progress: v1-vs-v2 PIT fundamentals A/B prereg (frozen)   (PR #107)
 
-STATUS:   prereg FROZEN (amended twice pre-execution — see AMENDMENT 1/2 in
-          the research doc), no arm computed. This revision carries no result.
+STATUS:   prereg FROZEN, amended three times. AMENDMENT 1/2 are in the research
+          doc; AMENDMENT 2c is added here.
+
+          Correction to an earlier version of this line, which said "no arm
+          computed. This revision carries no result." The research doc DOES
+          contain a STAGE A RESULT section. It is now explicitly SUPERSEDED
+          AND VOID, retained for audit only, on three independent grounds:
+            1. it used the +60d synthetic `B_v1_lag` that Amendment 2a
+               RETIRED and replaced with v2's real per-fact `filed` date, so
+               the arms do not implement the current design;
+            2. it reads its verdict against `|t| >= 3.24`, which Amendment 2b
+               superseded upward to `3.29` after counting the gate contrast
+               into the multiplicity family;
+            3. it applied a `max |t| <= 2.0` placebo bar that did NOT exist in
+               the frozen text when the arms ran — an unregistered decision
+               rule that decided a VOID which fed the Stage-B gate check.
+
+          AMENDMENT 2c (this push) closes (3) for the future by registering
+          the placebo rule NUMERICALLY before the re-execution Amendment 2a
+          forces: a control cell is CLEAN iff max |t| over the registered
+          placebo seeds < 2.0, on the same statistic, aggregation unit and
+          common support as the real arms. Deliberately NOT family-corrected —
+          a control bar must be EASY to fail, since its job is to catch
+          contamination; widening it would make a broken control harder to
+          detect. Registered now, so it governs only the re-execution and does
+          not retroactively legitimise the void numbers.
+
+          NET: the Stage-B gate is UNDETERMINED, not closed. No capability
+          claim in either direction is licensed. Unaffected and still standing:
+          v2 is preferred on CORRECTNESS grounds, registered in advance by SS5.
 
 WHAT:     Adds `doc/research/2026-07-30-v1-v2-pit-ab-prereg.md`, freezing a
           two-stage design that decomposes "v2 (as-filed PIT fundamentals) vs

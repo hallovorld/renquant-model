@@ -299,10 +299,64 @@ the family costs a stricter bar (3.24 → 3.29) rather than a cheaper one.
 
 ---
 
-# STAGE A RESULT (appended after design `c0ecf0d` and Amendment 1 `3a88551`)
+### 2c. "Clean placebos" was never defined numerically
 
-Verbatim: `doc/research/data/2026-07-30-v1-v2-ab-stageA.log`. JSON alongside.
-`[VERIFIED — this session]`
+SS4, SS5, Amendment 1 and the gate rule all require **clean placebos**, and
+SS5's outcome table makes `any arm's placebos dirty` a **VOID** — a decision.
+But the frozen text never states what `clean` means as a number. The Stage-A
+execution below then applied `max |t| <= 2.0` at RESULT time to void
+`B_v2 | asset_growth`, and that bar appears nowhere in SS1-SS7 or Amendment 1
+(the only earlier `2.0` in this document is the unrelated "`book_to_price`
+carries 2.0% of its gain"). An undefined gate term filled in after seeing the
+arms is an unregistered decision rule, and it decided a VOID that fed the
+Stage-B gate check. Whether 2.0 is a sensible number is irrelevant to that.
+
+**Resolution — registered here, BEFORE the re-execution Amendment 2a forces.**
+A control arm is CLEAN for a (feature, estimand) cell iff
+
+    max |t| over the registered placebo seeds  <  2.0
+
+where `t` is the same block-`t` statistic, on the same aggregation unit and the
+same common support as the real arms. `>= 2.0` is DIRTY and VOIDs that cell.
+
+The bar is deliberately fixed at the conventional two-sided ~5% z-value and is
+deliberately **NOT** family-corrected. A control bar must be EASY to fail,
+because its job is to catch contamination; Bonferroni-widening it would make a
+broken control harder to detect, which is backwards. Same asymmetry
+`control_calibration` registers (renquant-model#96): wrongly trusting a broken
+control costs a published-then-retracted verdict, wrongly rejecting a usable one
+costs one more control run.
+
+Recorded plainly: this rule is registered NOW and governs only the
+re-execution. It does **not** retroactively legitimise the Stage-A numbers
+below, which applied it before it existed.
+
+---
+
+# STAGE A RESULT — **SUPERSEDED AND VOID. DO NOT CITE.**
+
+> Amendment 2 invalidated this execution on its own terms, and Amendment 2c
+> adds a third reason. Retained for audit only.
+>
+> 1. **It used the RETIRED `B_v1_lag`.** These arms were computed with the
+>    +60d synthetic constant. Amendment 2a retired that constant entirely and
+>    redefined `B_v1_lag` to use v2's real per-fact `filed` date. The arms below
+>    do not implement the current design.
+> 2. **It cites a superseded bar.** The verdict below reads against
+>    `|t| >= 3.24`; Amendment 2b counted the gate contrast into the family and
+>    raised the bar to `|t| >= 3.29`.
+> 3. **It applied an unregistered placebo rule.** The `max |t| <= 2.0` bar used
+>    to void `B_v2 | asset_growth` did not exist in the frozen text when these
+>    arms ran (Amendment 2c).
+>
+> **The Stage-B gate is therefore UNDETERMINED — not closed.** No capability
+> claim in either direction is licensed by this execution. What does NOT depend
+> on these numbers and still stands: v2 remains the preferred input on
+> **correctness** grounds, which SS5 registered in advance.
+
+`[VOID — computed under the retired +60d `B_v1_lag`, against a superseded
+threshold, using an unregistered placebo rule; retained for audit, not
+inference]`
 
 **§4 pre-flight PASSED before any arm ran:** the shuffle is a true within-date
 permutation on a deliberately *interleaved* frame, and the self-check was itself
@@ -314,10 +368,14 @@ ABORTED for exactly this defect.
 **3,158** common dates; per-arm per-date observations **n = 2,597**. Label
 `sd = 0.9984` ⇒ units are SD of the cross-section, **not return**.
 
-## §6 verdict: STAGE B GATE CLOSED. The retrain A/B is NOT run.
+## ~~SS6 verdict: STAGE B GATE CLOSED~~ — WITHDRAWN. The gate is UNDETERMINED.
 
-No feature shows a resolvable source difference. Largest is `asset_growth` at
-`|t| = 1.37`, against the registered bar of **3.24**.
+`[VOID]` No feature showed a resolvable source difference as executed. Largest
+was `asset_growth` at `|t| = 1.37`, read against the then-current bar of
+**3.24** (now **3.29** per Amendment 2b). This does not close the gate: the
+contrast was computed on the retired +60d `B_v1_lag`, so an unresolvable
+difference there is equally consistent with "no source difference" and with
+"the residual contamination masked it".
 
 | feature | look-ahead `B_v1 − B_v1_lag` | value/source `B_v1_lag − B_v2` |
 |---|---:|---:|
