@@ -158,3 +158,42 @@ contamination was worth; it cannot license shipping it.
 ---
 
 **Nothing in this revision is a result.**
+
+---
+
+## AMENDMENT 1 (2026-07-30, BEFORE any arm was computed)
+
+**A hole in the frozen design, found while implementing the runner and closed
+before any number exists.**
+
+§4 counted "3 arms × 2 estimands = 6 tests". That arithmetic silently assumes
+**one score per arm** — but §2 fixes **three features**, and the document never
+said how three features become one score. Any combination rule chosen after
+seeing results would be a HARK, and even choosing one now carries a trap: the
+asset-growth anomaly is classically **negatively** signed while profitability is
+positively signed, so an equal-weight blend with no sign alignment would partly
+cancel by construction — and registering a sign per feature is itself a choice
+that could be tuned.
+
+**Registered resolution: no combination rule. The estimand is PER FEATURE.**
+
+- Arms become `(arm, feature)` pairs: 3 arms × **3 features** × 2 estimands =
+  **18 tests**.
+- Joint family with the 25 already registered = **43** ⇒ Bonferroni α=0.05
+  two-sided ⇒ **`|t| ≥ 3.24`**. This supersedes `3.16` **upward**.
+- The two decomposition contrasts of §3 are computed **per feature** and remain
+  **descriptive, not counted** — they are deterministic functions of arms already
+  counted.
+
+**Why this direction.** Inventing a blend would have kept the bar at 3.16 and made
+the result cheaper to claim. Per-feature costs a stricter bar and more work, and it
+buys two things worth more than that: no unregistered rule enters the chain, and a
+per-feature contrast is *interpretable* — "the look-ahead was worth X on `roe`" is
+a statement; "the look-ahead was worth X on an equal-weight blend of three
+features with unaligned signs" is not.
+
+§6's decision table applies unchanged, read per feature. Stage B's gate now
+requires a resolvable `B_v1_lag − B_v2` contrast on **at least one** feature at
+`|t| ≥ 3.24` with clean placebos on both contributing arms.
+
+**Nothing in this amendment is a result.**
