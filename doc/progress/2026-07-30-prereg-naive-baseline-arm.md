@@ -1,7 +1,10 @@
 # Progress: prereg template — §5b naive-baseline arm made testable, decoupled from an unpinned result   (PR #108)
 
-STATUS:    delivered — fix applied to this head in response to codex's two
-           CHANGES_REQUESTED reviews (both submitted 2026-07-30).
+STATUS:    delivered — fix applied to this head across three CHANGES_REQUESTED
+           review rounds from codex (all submitted 2026-07-30): the original
+           two P1/BLOCKER findings, then a follow-up BLOCKER (PR body still
+           carried the unpinned numbers) and MED (an overbroad reproducibility
+           claim in this doc, corrected below).
 
 WHAT:      Adds trap **T16** and **§5b NAIVE-BASELINE ARM** to
            `doc/research/templates/PREREG_TEMPLATE.md`: any confirmatory
@@ -15,11 +18,20 @@ WHAT:      Adds trap **T16** and **§5b NAIVE-BASELINE ARM** to
            1. Removed the unpinned `+0.2534 sd` / block `t +3.25` / `STD20
               +0.2836 sd` / `-0.0554` narrative from both the T16 trap row
               and the §5b prose, replacing it with the general
-              methodological rationale it was illustrating. No artifact in
-              this repo pins those numbers (grepped `doc/research/` and
-              full git history for `0.2534`/`0.2836`/`STD20` — the only hit
-              is this PR's own commit), so template-governing text is not
-              the place to carry them (codex BLOCKER).
+              methodological rationale it was illustrating. No committed,
+              reviewed artifact ties this study's traded-estimand-vs-STD20
+              comparison to these figures — no live/gate result in this repo
+              reports them. (Correction, codex MED: the literal strings
+              `STD20`/`0.2534`/`0.2836` do appear elsewhere in the repo —
+              `STD20` in `origin/main:doc/research/2026-07-29-scorer-
+              attribution-volatility-and-profitability.md` with unrelated
+              values, and `0.2534`/`0.2836` as coincidental substrings in
+              unrelated GBDT blend-confirmation commits `52f3a401`/
+              `88809c97`. None of those hits documents this PR's specific
+              traded-estimand-vs-baseline result; the earlier "only hit is
+              this PR's own commit" phrasing overstated what the grep
+              showed.) Template-governing text is not the place to carry an
+              unpinned specific-number claim either way (codex BLOCKER).
            2. Bullet 1 now requires the baseline to be frozen and
               fingerprinted BEFORE execution: attribution method, frozen
               artifact/checkpoint path + sha256, transform, missing-value
