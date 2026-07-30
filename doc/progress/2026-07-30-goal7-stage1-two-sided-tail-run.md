@@ -1,14 +1,23 @@
-# GOAL-7 Stage 1 — executed: VOLATILITY-TILT (adversarial review appended; verdict unchanged)
+# GOAL-7 Stage 1 — executed, then WITHDRAWN: the registered inferential unit is invalid
 
-STATUS:    done (run executed; §8 adversarial review COMMISSIONED, appended VERBATIM
-           with a per-finding disposition, verdict UNCHANGED after review). The
-           evaluation window is now SPENT — §2 registered it as used ONCE.
+STATUS:    done (run executed) — but the VERDICT IS WITHDRAWN. Round-2 adversarial
+           review found the frozen estimator averages 60-day blocks while every label
+           is a 120-day forward return, so adjacent block means share half of each
+           label horizon and `df = 17` is not a valid inferential unit. Reclassified
+           **UNRESOLVED — invalid inferential unit**; VOLATILITY-TILT is withdrawn and
+           this run licenses NOTHING and may not be cited as a preregistered result.
+           See CORRECTION 1 in the results doc.
+           The evaluation window is still SPENT — §2 registered it as used ONCE, and a
+           design defect does not un-spend it.
 WHAT:      Executed the frozen prereg doc/research/2026-07-30-goal7-stage1-two-sided-tail-prereg.md
            (model#117) exactly as written, under AMENDMENT 4 — the sole authoritative
            partition (A4.6 makes both sections titled "AMENDMENT 3" non-executable).
            Nothing was designed: transform, estimand, estimator, partition, critical
            value, controls and decision rule were all fixed before the run.
-           VERDICT: VOLATILITY-TILT. The raw two-sided arm u = |z_t(mom_12_1_tr)|
+           VERDICT AS RUN (**WITHDRAWN** — see STATUS and CORRECTION 1; retained
+           here because what the run produced is still a fact worth recording, it
+           just is not a preregistered result):
+           VOLATILITY-TILT. The raw two-sided arm u = |z_t(mom_12_1_tr)|
            clears (+0.2381 SD, |t| = 3.270 >= T_crit = 2.1098); orthogonalised per §4
            to |z_t(vol_60_tr)| it does not (+0.1161 SD, |t| = 1.644). §4 registers that
            as a KILL CONDITION, not a caveat, so the two-sided hypothesis is NOT
@@ -98,3 +107,52 @@ NEXT:      1. No Stage-2 work. GOAL-7 does not have a formulation that survives 
            4. A re-test of the two-sided hypothesis needs dates OUTSIDE this corpus:
               2021-10-08 onward is burned (it is where the U-shape was observed) and
               2016-12-29 -> 2021-04-19 is now spent.
+
+## Round-2 review: the verdict is withdrawn, and the defect is mine
+
+The reviewer found that the frozen estimator treats 60-trading-day blocks as
+independent while every label is a **120-trading-day** forward return. Adjacent blocks
+share 60 days of each label horizon, so `n_blocks = 18` is not 18 independent
+observations, `t_{0.975,17} = 2.1098` is not the right bar, and the registered
+within-date permutation null destroys the temporal dependence the treatment arm carries
+— it calibrates a different estimator than the one it certifies. Accepted.
+
+**I wrote the amendments that should have caught it.** Amendments 3 and 4 pinned the
+partition, the calendar and the critical value to four decimals, and argued at length
+about whether a 60- or 120-date embargo was right — while the *estimator* underneath
+was averaging 60-day blocks against a 120-day label the whole time. Both amendments
+made the wrong quantity more precise. Pinning a bar harder does not help when the bar
+sits on the wrong unit, and I was the one writing the guards.
+
+**One correction to the review, recorded because scope depends on it.** It cites the
+lag-1 autocorrelation of **0.94**; that is the *per-date statistic*, not the block
+means. The governing quantity is the block-mean lag-1 autocorrelation: **+0.2311** raw,
+**+0.2592** residual [VERIFIED — recomputed from results.json block_means, this
+session], matching the +0.224 already in the results doc. Real and disqualifying for
+`df = 17`; not 0.94-severe. Citing a per-date autocorrelation as a block-mean one is
+the same class of error as the defect being fixed.
+
+**What survives, and why it does not rescue the verdict.** Dependence understates
+variance, so it inflates `|t|` — every `t` here is optimistic, and correcting can only
+shrink them. First-order corrected: raw +3.2702 → **+2.5843** (still clears), residual
++1.6437 → **+1.2607** (still fails), consistent with the HAC and re-blocking checks
+already in the doc. The direction is stable and the kill leg fails harder once
+dependence is honoured.
+
+But a conclusion that survives corrections chosen *after* seeing the data is not a
+preregistered finding. The entire value of this document was a bar fixed before the
+run; recomputing the bar afterwards returns it to an ordinary post-hoc analysis. So
+VOLATILITY-TILT is withdrawn rather than defended, and the dependence-adjusted numbers
+are recorded as diagnostics carrying no licence.
+
+**The likely real finding.** At the pinned 1,082-date window, genuinely disjoint label
+windows (120d blocks + 120d gaps) give **4 blocks** — below §7's own `n_blocks < 6`
+VOID floor; contiguous 120d gives 9, and only by tolerating the same overlap in weaker
+form [VERIFIED — computed this session]. A dependence-valid Stage 1 on this window is
+probably **underpowered by construction**. That is a fact about the corpus, not about
+momentum, and it belongs in a design that says so up front — the third consecutive line
+here where the correctly-specified test turns out to lack the power to run.
+
+## Live-surface impact
+
+None. Documents and analysis only. No config, artifact, state or launchd change.

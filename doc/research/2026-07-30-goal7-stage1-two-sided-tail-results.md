@@ -1,6 +1,22 @@
 # RESULTS — GOAL-7 Stage 1: is the payoff TWO-SIDED rather than a ranking?
 
-> **VERDICT: VOLATILITY-TILT.** The raw two-sided arm clears its bar
+> # ⚠️ VERDICT WITHDRAWN AS A PREREGISTERED RESULT — see CORRECTION 1 at the end
+>
+> The registered estimator treats 60-trading-day blocks as independent while every
+> label is a **120-trading-day** forward return, so adjacent block means share half of
+> each label horizon. `df = 17` and the registered permutation null are **not valid
+> inferential units** for this estimand. The defect is in the frozen design — mine —
+> not in the execution.
+>
+> **This run may NOT be cited as a preregistered result, and VOLATILITY-TILT may not be
+> reported as an established verdict.** What survives is stated in Correction 1: under
+> dependence-aware corrections the same *direction* holds, but a conclusion that
+> survives an unregistered correction is not a preregistered finding. A
+> dependence-valid Stage 1 must be separately preregistered.
+>
+> The original verdict block is retained verbatim below for auditability.
+
+> **VERDICT (WITHDRAWN — see above): VOLATILITY-TILT.** The raw two-sided arm clears its bar
 > (`|t| = 3.270 ≥ T_crit = 2.1098`); orthogonalised to `|z_t(vol_60_tr)|` per §4
 > it does not (`|t| = 1.644`). §4 registers that as a **kill condition, not a
 > caveat**, so the two-sided hypothesis is **NOT supported** whatever the raw arm
@@ -654,3 +670,110 @@ guarantee than any hash of mine would have been.
 **Verdict after review: VOLATILITY-TILT, unchanged. Nothing licensed.** The
 review's own disposition is "NOT UPHELD as a challenge to the verdict", and the
 four changes it required before merge are all made.
+
+---
+
+# CORRECTION 1 — the registered inferential unit is invalid (adversarial review, 2026-07-30)
+
+**Accepted.** The reviewer's core finding is correct and it lands on the frozen design,
+not the execution: every label is a **120-trading-day** forward return while the
+estimator averages **60-trading-day** blocks and treats them as independent. Adjacent
+blocks therefore share 60 days of each label horizon, so `n_blocks = 18` is not 18
+independent observations, `t_{0.975,17} = 2.1098` is not the right bar, and the
+registered within-date permutation null destroys the very temporal dependence the
+treatment arm carries — it calibrates a different estimator than the one it certifies.
+
+**This is my defect.** I amended this design twice (Amendments 3 and 4), pinning the
+partition, the calendar and the critical value to four decimal places, and did not
+notice that a 60-day block against a 120-day label makes the inferential unit invalid.
+Both amendments made the *wrong* quantity more precise. Pinning the bar harder does not
+help when the bar is computed on the wrong unit — the same guard-validates-the-wrong-
+object shape this programme keeps hitting, committed here by the person writing the
+guards.
+
+## C1.1 One number in the review is the wrong statistic, and it matters for scope
+
+The review cites *"the reported lag-1 autocorrelation of 0.94"* as confirming the
+severity. **0.94 is the autocorrelation of the per-date statistic**, not of the block
+means. The quantity that governs whether block means may be treated as independent is
+the **block-mean** lag-1 autocorrelation, which is
+
+| arm | block-mean lag-1 autocorrelation |
+|---|---:|
+| raw `u` | **+0.2311** |
+| §4 residual | **+0.2592** |
+
+`[VERIFIED — recomputed from results.json arms.z.*.block_means, this session]`,
+consistent with the **+0.224** the results document already reported at L525. The
+dependence is real and disqualifying for `df = 17`; it is not 0.94-severe. Recording
+this because the correct scope of the remedy depends on it — and because citing a
+per-date autocorrelation as if it were a block-mean one is the same class of error as
+the defect being corrected.
+
+## C1.2 The direction of the bias, and what survives
+
+Ignoring positive dependence **understates** the variance of the mean, so it
+**inflates** `|t|`. Every arm's `t` in this document is therefore optimistic. Applying
+a first-order correction, `Var_eff = Var_iid · (1+ρ₁)/(1−ρ₁)`:
+
+| arm | `t` as registered | `ρ₁` (blocks) | `t` dependence-adjusted | vs `T_crit = 2.1098` |
+|---|---:|---:|---:|---|
+| raw `u` | +3.2702 | +0.2311 | **+2.5843** | still clears |
+| §4 residual | +1.6437 | +0.2592 | **+1.2607** | still fails |
+
+`[VERIFIED — computed from results.json block_means, this session]`, and consistent
+with the Newey-White/HAC and alternative-block-length checks already reported at L525
+(`B=90 → 2.714`, `B=120 → 3.380`, `B=180 → 4.087`; Newey-West `t = +3.22` at lag 60,
+`+2.92` at lag 120).
+
+So the *direction* is stable: the kill leg fails under every correction tried, and it
+fails **more** once dependence is honoured, because the correction can only shrink
+`|t|`. The two-sided hypothesis being unsupported is the robust half.
+
+## C1.3 Why that does NOT rescue the verdict
+
+**A conclusion that survives an unregistered correction is not a preregistered
+finding.** The whole value of this document was that its bar was fixed before the run;
+if the bar has to be recomputed afterwards — by HAC, by a variance inflation factor, by
+re-blocking — then the protection §2 was written to provide is gone, and what remains
+is an ordinary post-hoc analysis with the usual degrees of freedom. Reporting
+"VOLATILITY-TILT, and it survives corrections I chose after seeing the data" would
+claim exactly the credibility the design failed to earn.
+
+**Registered disposition, replacing §7's outcome for this execution:**
+
+> **UNRESOLVED — invalid inferential unit.** VOLATILITY-TILT is **withdrawn** as a
+> verdict. This execution licenses **nothing**, may not be cited as a preregistered
+> result, and may not be used to support or reject the two-sided hypothesis, the
+> volatility-tilt reading, or any Stage-2 work. The dependence-adjusted numbers in
+> C1.2 are recorded as diagnostics only and carry no licence of their own.
+
+## C1.4 What a valid Stage 1 requires
+
+Not attempted here, and deliberately not designed on the fly against results already
+seen — that is the HARKing failure this line has been fighting since §2:
+
+* blocks whose **label windows** are disjoint (block length ≥ the 120-day horizon, or a
+  ≥120-day gap between blocks), costing power that must be budgeted before freezing;
+* a null that preserves temporal dependence rather than permuting it away — a
+  block/circular bootstrap on the date axis, not a within-date permutation;
+* the power calculation redone on whatever inferential unit results, since the current
+  one inherits `n = 18` and is void with it.
+
+At the pinned 1,082-date window the arithmetic is unforgiving
+`[VERIFIED — computed this session]`:
+
+| rule | `n_blocks` |
+|---|---:|
+| current: contiguous 60d (labels overlap 2 blocks) | 18 |
+| contiguous 120d (labels still reach into the next block) | **9** |
+| 120d blocks + 120d gap (label windows genuinely disjoint) | **4** |
+| 180d + 120d gap | 3 |
+
+So a genuinely dependence-free design on this window gives **4 blocks**, below §7's
+`n_blocks < 6` VOID floor — and 9 only by tolerating the same overlap in weaker form.
+The honest expectation is that a valid Stage 1 here is **underpowered by construction**,
+which is a finding about the corpus rather than about momentum, and it should be
+established at design time rather than discovered as another retraction. This is the
+third consecutive line on this programme where the correctly-specified test turns out
+not to have the power to run.
