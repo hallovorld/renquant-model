@@ -48,11 +48,23 @@ def load_axis(path: Path) -> pd.DatetimeIndex:
 
 
 def nth_trading_day_after(axis: pd.DatetimeIndex, dates, n: int):
-    """Exact: index the axis and step ``n`` positions. NaT where it runs off."""
-    pos = axis.searchsorted(pd.DatetimeIndex(dates))
+    """Exact: index the axis and step ``n`` positions. NaT where it runs off.
+
+    Raises ``ValueError`` if any ``date`` is not itself on the axis.
+    ``searchsorted`` returns an insertion point for an off-axis date (e.g. a
+    weekend or holiday), which would silently treat it as the next trading
+    session instead of failing on a malformed corpus.
+    """
+    idx = pd.DatetimeIndex(dates)
+    off_axis = idx[~idx.isin(axis)]
+    if len(off_axis):
+        raise ValueError(
+            f"{len(off_axis)} date(s) not on the trading axis (e.g. a weekend "
+            f"or holiday): {sorted(off_axis.unique())[:5]}")
+    pos = axis.searchsorted(idx)
     return pd.Series(
         [axis[p + n] if 0 <= p + n < len(axis) else pd.NaT for p in pos],
-        index=pd.DatetimeIndex(dates))
+        index=idx)
 
 
 def audit(corpus: pd.DataFrame, axis: pd.DatetimeIndex, lookahead: int) -> dict:

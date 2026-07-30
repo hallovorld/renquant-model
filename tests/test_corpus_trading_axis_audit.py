@@ -37,6 +37,22 @@ def test_nth_trading_day_after_returns_nat_when_it_runs_off_the_axis():
     assert pd.isna(out.iloc[0])
 
 
+def test_nth_trading_day_after_rejects_an_off_axis_weekend_date():
+    # searchsorted would otherwise silently snap this Saturday to the
+    # following Monday's position instead of failing on the malformed input.
+    axis = pd.bdate_range("2024-01-01", "2024-02-09")
+    saturday = pd.Timestamp("2024-01-06")
+    with pytest.raises(ValueError):
+        ctaa.nth_trading_day_after(axis, [saturday], 1)
+
+
+def test_audit_rejects_a_corpus_with_an_off_axis_score_date():
+    axis = pd.bdate_range("2024-01-01", "2024-06-01")
+    corpus = pd.DataFrame({"date": [pd.Timestamp("2024-01-06")]})  # Saturday
+    with pytest.raises(ValueError):
+        ctaa.audit(corpus, axis, lookahead=5)
+
+
 def test_audit_flags_rows_at_or_before_their_own_cutoff():
     axis = pd.bdate_range("2024-01-01", "2024-06-01")
     corpus = pd.DataFrame({

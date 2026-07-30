@@ -8,7 +8,8 @@ STATUS:   delivered (one read-only tool, usable as a gate, plus committed
           commits the replay log that the PR body already claimed existed
           (`doc/research/evidence/2026-07-30-corpus-trading-axis-audit.md`)
           and replaces the display-truncated SPY axis hash with the full
-          64-char value.
+          64-char value, then a fourth round closes a silent-coercion bug on
+          off-axis dates (codex MED, see "FOURTH REVIEW ROUND" below).
 
 WHAT:     `tools/corpus_trading_axis_audit.py` — given a WF score corpus and a
           trading-date axis, re-derives (a) whether any row's score_date sits
@@ -17,11 +18,11 @@ WHAT:     `tools/corpus_trading_axis_audit.py` — given a WF score corpus and a
           corpus's own last date. Indexes the axis directly rather than doing
           calendar arithmetic. Exits NON-ZERO on failure, so it is usable as a
           gate rather than only as a script. `tests/test_corpus_trading_axis_audit.py`
-          (8 tests) pins the axis-stepping-vs-BDay behaviour on a synthetic
+          (10 tests) pins the axis-stepping-vs-BDay behaviour on a synthetic
           holiday, the cutoff check, the label-maturity fraction (including
           the invariant that the trailing `lookahead` dates are always
-          unverifiable), fail-loud on a corpus missing `date`, and the CLI's
-          exit codes.
+          unverifiable), fail-loud on a corpus missing `date`, fail-loud on an
+          off-axis (weekend/holiday) score date, and the CLI's exit codes.
 
 SECOND REVIEW ROUND: a follow-up review (submitted against the pre-fix
           commit, before the first C5/evidence fix landed) raised two more
@@ -46,6 +47,27 @@ SECOND REVIEW ROUND: a follow-up review (submitted against the pre-fix
           checks the tool actually performs (axis stepping vs. a holiday,
           cutoff sanity, label maturity, CLI exit codes) rather than a
           fold-level margin calculation that isn't implemented.
+
+FOURTH REVIEW ROUND: a follow-up review against the third-round head found
+          that `nth_trading_day_after` (`tools/corpus_trading_axis_audit.py`,
+          the `axis.searchsorted(...)` step) silently coerces an off-axis
+          corpus date (a weekend or holiday) to the insertion point instead
+          of failing — `searchsorted` doesn't distinguish "found" from
+          "would insert here", so a malformed Saturday score-date got treated
+          as if it were the following Monday, changing both the forward-end
+          date and the reported unverifiable fraction without any error.
+          Reviewer verified this locally with a synthetic `2024-01-06`
+          (Saturday) corpus date against a business-day axis.
+
+          Fix: `nth_trading_day_after` now checks `idx.isin(axis)` before
+          calling `searchsorted` and raises `ValueError` naming the off-axis
+          date(s) if any are found, so a malformed corpus fails loud instead
+          of silently mis-reporting. `cutoff` is unaffected — the existing
+          cutoff check is a plain calendar `<=` comparison, not axis
+          arithmetic, so it never went through `searchsorted`. Added two
+          fixture tests: `nth_trading_day_after` rejecting the exact
+          off-axis-Saturday repro, and `audit()` rejecting a corpus built
+          from it end-to-end. Test count: 8 -> 10.
 
 WHY/DIR:  renquant-pipeline#228 AC-3. `pd.offsets.BDay(n)` and `busday_count`
           count BUSINESS days and do not skip market holidays, so both purge
@@ -114,7 +136,11 @@ VALIDATION:
           since a pipe masks the tool's own status).
 
           `python3 -m pytest tests/test_corpus_trading_axis_audit.py -v`
-          8 passed, 0 failed, this session.
+          10 passed, 0 failed, this session (was 8; +2 for the fourth-round
+          off-axis-date fix). Re-ran the fourth-round repro directly
+          (`nth_trading_day_after(axis, [Timestamp("2024-01-06")], 1)` on a
+          business-day axis) and confirmed it now raises `ValueError` instead
+          of silently returning `2024-01-09`.
 
 NEXT:     Wire it as an actual gate wherever a corpus is stamped
           label-verified, so the check runs instead of being available. A tool
