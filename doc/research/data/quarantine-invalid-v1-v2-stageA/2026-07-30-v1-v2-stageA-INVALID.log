@@ -1,0 +1,39 @@
+§4 PRE-FLIGHT
+  §4 shuffle self-check PASSED (sorted frame is a true within-date permutation; the check demonstrably rejects an unsorted one)
+
+v1 rows=2621140 tickers=830 2014-01-02->2026-07-24
+v2 rows=1380434 tickers=830 2014-01-02->2026-07-29
+
+§2 COMMON SUPPORT: tickers v1=592 v2=515 INTERSECTION=507  common dates=3158
+label rows=815475 (fwd_60d excess vs SPY, per-date z; sd=0.9984 => units are SD, not return)
+  arm B_v1       rows=1601106
+  arm B_v2       rows=846233
+  arm B_v1_lag   rows=1601106
+  B_v1       roe                  E2=+0.0376 t=+1.33 ctl=1.46 n=2597  E1_t=-0.17 clean
+  B_v1       gross_profitability  E2=-0.0603 t=-1.50 ctl=1.06 n=2597  E1_t=+1.95 clean
+  B_v1       asset_growth         E2=+0.1308 t=+2.33 ctl=1.79 n=2597  E1_t=+1.93 clean
+  B_v2       roe                  E2=+0.0049 t=+0.35 ctl=1.22 n=2597  E1_t=-1.13 clean
+  B_v2       gross_profitability  E2=-0.0249 t=-0.69 ctl=0.88 n=2597  E1_t=+1.93 clean
+  B_v2       asset_growth         E2=+0.0981 t=+1.84 ctl=2.29 n=2597  E1_t=+1.78 PLACEBO-DIRTY
+  B_v1_lag   roe                  E2=+0.0373 t=+1.30 ctl=1.46 n=2597  E1_t=-0.30 clean
+  B_v1_lag   gross_profitability  E2=-0.0415 t=-1.00 ctl=1.98 n=2597  E1_t=+2.19 clean
+  B_v1_lag   asset_growth         E2=+0.1303 t=+2.34 ctl=1.29 n=2597  E1_t=+1.81 clean
+
+=== §3 DECOMPOSITION (descriptive, NOT counted as tests) ===
+  look-ahead    roe                  B_v1 - B_v1_lag = +0.0002 t=+0.22 n=2597
+  value/source  roe                  B_v1_lag - B_v2 = +0.0324 t=+1.18 n=2597
+  look-ahead    gross_profitability  B_v1 - B_v1_lag = -0.0188 t=-2.08 n=2597
+  value/source  gross_profitability  B_v1_lag - B_v2 = -0.0166 t=-0.27 n=2597
+  look-ahead    asset_growth         B_v1 - B_v1_lag = +0.0005 t=-0.11 n=2597
+  value/source  asset_growth         B_v1_lag - B_v2 = +0.0323 t=+1.37 n=2597
+
+=== §6 READING (per feature) ===
+  roe: B_v1 scores ABOVE B_v1_lag by +0.0002 (t=+0.22) — §3 registered this as the EXPECTED SIGNATURE OF CONTAMINATION, not evidence for v1
+  roe: no measurable source difference (|t|=1.18 < 3.24)
+  gross_profitability: no measurable source difference (|t|=0.27 < 3.24)
+  asset_growth: B_v1 scores ABOVE B_v1_lag by +0.0005 (t=-0.11) — §3 registered this as the EXPECTED SIGNATURE OF CONTAMINATION, not evidence for v1
+  asset_growth: no measurable source difference (|t|=1.37 < 3.24)
+
+  STAGE B GATE: CLOSED — Stage B is NOT run. v2 is still preferred on CORRECTNESS grounds; look-ahead is a defect, not a horse race.
+
+wrote /private/tmp/claude-502/-Users-renhao-git-github-renquant-orchestrator/428feb92-8ee7-4b4f-afed-1e4fa82ef367/scratchpad/ab.json

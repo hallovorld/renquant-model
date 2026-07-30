@@ -1,9 +1,28 @@
 #!/usr/bin/env python3
-"""Run Stage A of the FROZEN prereg doc/research/2026-07-30-v1-v2-pit-ab-prereg.md.
+"""Run Stage A of doc/research/2026-07-30-v1-v2-pit-ab-prereg.md.
+
+VOID as of `6c992fd`: the STAGE A RESULT section is marked "SUPERSEDED AND
+VOID. DO NOT CITE." This script still implements the arms/gate that produced
+that voided execution. It ABORTS at startup (NOT_YET_IMPLEMENTED below) until
+three amendments are reflected in code, not just in the doc:
+  Amendment 2a  restamp_v1() must join v1's values to v2's real `filed` date
+                per fact instead of the retired +60d synthetic constant
+                (column name TBD against v2's actual schema — not guessed
+                here to avoid shipping a second silently-wrong
+                implementation)
+  Amendment 2b  the §6 READING gate must use E1 as the sole primary estimand,
+                require E2 sign-corroboration, and label a resolved-but-
+                uncorroborated feature PRIMARY-ONLY, NOT CORROBORATED instead
+                of opening the gate; JOINT_BONFERRONI_T is updated 3.24 ->
+                3.29 below to match, but the gate LOGIC itself is unchanged
+                pending this reimplementation
+  Amendment 2c  the placebo VOID rule (max |t| < 2.0 over 5 within-date
+                shuffles, already CONTROL_BAR below) is now preregistered —
+                no code change needed here, listed for completeness
 
 Three arms on an identical support, per feature (Amendment 1):
   B_v1      v1 values at v1's shipped availability stamps
-  B_v1_lag  v1 VALUES re-stamped to fiscal-period-end + 60d
+  B_v1_lag  v1 VALUES re-stamped to v2's real filed date per fact (2a)
   B_v2      v2 as-filed values at real filed availability
 
 B_v1 - B_v1_lag isolates the look-ahead contribution (values held identical);
@@ -26,13 +45,24 @@ sys.path.append(str(Path(__file__).resolve().parent.parent / "src"))
 from renquant_model_common.lag_alignment import dependence_aware_mean  # noqa: E402
 
 FEATURES = ("roe", "gross_profitability", "asset_growth")
-LAG_DAYS = 60                 # measured 10-K p95
+LAG_DAYS = 60                 # RETIRED (Amendment 2a): p95, not a verified
+                               # upper bound. Kept only so restamp_v1's body
+                               # still parses; Amendment 2a requires replacing
+                               # this constant with a join against v2's real
+                               # filed date before use.
 HORIZON = 60
 BLOCK, N_BOOT_REAL, N_BOOT_CTRL = 60, 2000, 600
 TOP_FRACTION, MIN_NAMES, N_CONTROLS, CONTROL_BAR = 0.10, 20, 5, 2.0
-JOINT_BONFERRONI_T = 3.24     # 43 joint tests (Amendment 1)
+JOINT_BONFERRONI_T = 3.29     # 49 joint tests (Amendment 2b)
 MIN_NONNULL_DAYS = 250
 BENCH = "SPY"
+NOT_YET_IMPLEMENTED = (
+    "ABORT: this runner still implements the design that produced the VOID "
+    "`6c992fd` execution (research doc: 'STAGE A RESULT -- SUPERSEDED AND "
+    "VOID. DO NOT CITE.'). restamp_v1() (Amendment 2a: v2 real filed-date "
+    "join) and the §6 READING gate (Amendment 2b: E1-primary + "
+    "E2-corroboration) must be reimplemented before this script may run "
+    "again -- see the module docstring.")
 
 
 # --------------------------------------------------------------------------
@@ -179,6 +209,8 @@ def main(argv=None) -> int:
     ap.add_argument("--ohlcv-dir", required=True, type=Path)
     ap.add_argument("--json-out", default=None)
     a = ap.parse_args(argv)
+
+    raise SystemExit(NOT_YET_IMPLEMENTED)
 
     print("§4 PRE-FLIGHT")
     assert_shuffle_is_a_within_date_permutation()

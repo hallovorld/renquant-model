@@ -200,9 +200,21 @@ requires a resolvable `B_v1_lag − B_v2` contrast on **at least one** feature a
 
 ---
 
-## AMENDMENT 2 (2026-07-30, review findings, BEFORE any arm was computed)
+## AMENDMENT 2 (2026-07-30, review findings) — provenance correction
 
-Two review defects, closed before any number exists.
+**This heading originally read "... BEFORE any arm was computed", matching
+Amendment 1's framing. That claim is false as a statement about git history:
+this section's commit (`ea40e20`) landed AFTER the Stage A execution
+(`6c992fd`) already existed on this shared-worktree branch — a concurrent
+process committed `6c992fd` before this section was drafted, unnoticed until
+after `ea40e20` was pushed. "The git order is the evidence" is this
+document's own standard, so the claim is corrected rather than left standing:
+the two fixes below were motivated by review findings on the pre-result
+design, not by having read `6c992fd`'s numbers, but they were *committed*
+after a result existed. `STAGE A RESULT` below states, independently, why
+that execution is VOID regardless of this section's provenance.**
+
+Two review defects, closed without having read any Stage A number.
 
 ### 2a. `B_v1_lag`'s +60d stamp does not isolate value/source ALONE
 

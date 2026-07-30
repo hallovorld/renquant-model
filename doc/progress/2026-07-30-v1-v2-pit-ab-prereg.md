@@ -67,9 +67,16 @@ EVIDENCE: artifact:      no committed script; the 90.37% / 77.6% / 515 / 100
                          and committed the v1-side 90.37%/77.6% figures (its
                          own `[VERIFIED-now]`-tagged evidence block), which
                          corroborates but does not replace this artifact gap.
-                         `tools/v1_v2_pit_ab_run.py` (uncommitted, this
-                         worktree) is the Stage-A runner that will recompute
-                         all figures mechanically once it executes.
+                         `tools/v1_v2_pit_ab_run.py` (tracked as of `6c992fd`)
+                         is the Stage-A runner; it currently ABORTS at startup
+                         (added this push) until Amendment 2a/2b are
+                         reimplemented in code, not just in the doc, so it
+                         cannot silently reproduce the VOID execution.
+                         `6c992fd`'s own raw log/JSON were originally cited at
+                         a `.gitignore`d path and never actually committed —
+                         copied to a tracked, VOID-labeled quarantine
+                         directory (`doc/research/data/quarantine-invalid-v1-v2-stageA/`)
+                         instead, found via this agent's own audit, not codex.
           prod or exp:   experiment — a research-only design comparison; v2's
                          own provenance is independently flagged UNVERIFIED
                          (§7), so nothing here is a production claim.
@@ -88,9 +95,13 @@ EVIDENCE: artifact:      no committed script; the 90.37% / 77.6% / 515 / 100
                          `tools/v1_v2_pit_ab_run.py` before trusting them
                          further.
 
-NEXT:     Execute Stage A (`B_v1`, `B_v1_lag`, `B_v2`, common 515-name /
-          3-feature support, 18 arm-tests + 6 counted gate-tests + 2
-          descriptive contrasts, per AMENDMENT 1/2) against the frozen
-          design. Report a separate results PR against these immutable
-          inputs. Stage B (model-level retrain) is registered separately and
-          only if Stage A resolves the AMENDMENT 2 gate rule.
+NEXT:     Reimplement `tools/v1_v2_pit_ab_run.py`'s `restamp_v1()` (Amendment
+          2a: v2 real filed-date join) and §6 READING gate (Amendment 2b:
+          E1-primary + E2-corroboration) — it currently aborts rather than
+          re-running the VOID design — then execute a REPLACEMENT Stage A
+          (`B_v1`, `B_v1_lag`, `B_v2`, common 515-name / 3-feature support,
+          18 arm-tests + 6 counted gate-tests + 2 descriptive contrasts) that
+          explicitly supersedes `6c992fd` rather than silently revising it.
+          Report a separate results PR. Stage B (model-level retrain) is
+          registered separately and only if that replacement execution
+          resolves the AMENDMENT 2 gate rule.
