@@ -130,7 +130,7 @@ runs really used `[VERIFIED — same run, --executed]`:
 |---|---:|---:|---:|---:|---:|---:|---:|
 | GOAL-7 Stage 1 as executed | 120 | 60 | 0 | 1.000 | 18 | 2.1098 | **0.2162** |
 | momentum total-return as executed | 120 | 120 | 0 | 1.000 | 9 | 2.3060 | **0.1034** |
-| GOAL-4 Phase-0 ensemble screen | 60 | 60 | 0 | 1.000 | 18 | 2.1098 | **0.1070** |
+| GOAL-4 Phase-0 ensemble screen | 60 | 60 | 0 | 1.000 | 18 | 2.1098 | ~~0.1070~~ **WITHDRAWN — see below** |
 | C row rejected at review | 20 | 60 | 0 | 0.333 | 18 | 2.1098 | **0.0615** |
 | repaired: A / C′ / C″ | — | — | ≥ `h` | 0.000 | 4 / 13 / 18 | own | **0.047 / 0.051 / 0.050** |
 
@@ -143,6 +143,23 @@ Two things follow that were previously only argued:
    right to reject it, *and* the erratum's three-study table must not be read as three
    equally damaged studies: Stage 1 is far the worst, because it combined full crossing
    with the **largest** block count.
+
+**The GOAL-4 row is withdrawn.** Every row in this table is computed at `ρ₁ = 0.94`,
+which was measured on **GOAL-7's** per-date series. Carrying it to another programme was
+an assumption I did not flag as one. GOAL-4's own per-date statistic series was
+persisted (`per_date_g_real.csv`, 508 dates) and its measured `ρ₁` is **+0.7317**, not
+0.94 — materially weaker than pure 60-day overlap would give (`1 − 1/60 = 0.9833`). A
+dependence-preserving bootstrap of that real series puts the excess false-positive rate
+at **+0.0003 to +0.0383 over the instrument's own i.i.d. baseline**, depending on
+bootstrap block length, i.e. the bar there is not identified at all rather than inflated
+to a knowable 0.1070 `[VERIFIED — renquant-model design/goal4-power-wall 0b313e9,
+tools/goal4_null_calibration.py]`. The GOAL-7 and momentum-TR rows stand: `ρ₁ = 0.94`
+was measured on those series.
+
+**The general lesson, since this is the second time tonight the same shape bit:** a
+geometry-only calibration answers "what would this geometry cost *if* the dependence were
+what I assumed", and that conditional is load-bearing. Where the real per-date series
+exists, bootstrap it; only fall back to a parametric `ρ₁` when it does not.
 
 Note that `crossing = min(1, h/L)` as published is the `gap = 0` special case. With a gap
 it is `min(1, max(0, h − gap)/L)` — which is why the repaired rows read 0.000 and not the
