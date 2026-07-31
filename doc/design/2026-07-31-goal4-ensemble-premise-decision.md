@@ -20,18 +20,28 @@ Three independent subjects, three different reasons, the same answer.
 
 ## What tonight's two measurements add
 
-1. **The power wall was mis-scaled, and the correction cuts both ways.** Phase-0's
-   *"MDE is 47× a plausible gain"* divided by a **failing retrain candidate's** residual.
-   Against the **deployed** recipe's `genuine_ic` of **+0.04153** the ratio is
-   **0.0376 / 0.04153 = 0.91×** — the screen is **marginally powered, not hopeless**
-   `[VERIFIED — 本次实测 2026-07-31, model#132]`.
+1. **BOTH power ratios are WITHDRAWN — 47× and 0.91× alike.** Phase-0's *"MDE is 47× a
+   plausible gain"* divided by a failing retrain candidate's residual, and I "corrected"
+   it to **0.91×** against the deployed recipe's `genuine_ic`. Codex on model#132: the
+   numerator is not a valid detection floor — model#129's null is a
+   **dependence-sensitivity diagnostic** whose MDE is explicitly **non-decisional** — and
+   the denominator is **the wrong estimand**: a deployed *single-recipe* `genuine_ic` is
+   not an *ensemble increment*. **Accepted in full.** What survives is only the provenance
+   correction: the prereg named `+0.00079` "the production recipe's `genuine_ic`", which
+   is the wrong subject; the deployed recipe reads **+0.04153**
+   `[VERIFIED — model#132]`.
+
+   **The uncomfortable part:** I flagged the category error in this very document —
+   *"neither number is an ensemble gain"* — and then used the ratio as a headline anyway.
+   Naming a defect does not license using the thing that has it. **GOAL-4's power is
+   unmeasured; it is not 47×-short and it is not marginal.**
 2. **The one screen that showed a blend advantage does not survive a correct bar.**
    Naive `t = +6.19` → block `t` **1.47 / 1.51 / 1.46 / 1.35** at `L = 60/90/120/250`;
    **84.7%** of the advantage is in the tails; the two arms correlate **ρ = 0.831** day
    to day `[VERIFIED — 本次实测 2026-07-31, model#134]`.
 
-So the design *can* detect an effect of the size the deployed recipe carries, and the
-evidence it has does not contain one.
+So what the design can detect is **unknown**, and the evidence it has contains no
+demonstrated blend advantage. Those are two separate gaps, and neither is a power claim.
 
 ## The redundancy ceiling, stated conditionally
 
