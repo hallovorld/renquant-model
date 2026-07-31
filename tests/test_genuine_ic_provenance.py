@@ -11,6 +11,7 @@ an operator's disk and re-measure a moving target.
 from __future__ import annotations
 
 import csv
+import pathlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -45,12 +46,37 @@ def test_exactly_one_vintage_is_deployed_and_it_is_the_ONLY_one_that_passes():
     assert abs(_f(deployed[0], "genuine_ic") - 0.04153) < 5e-6
 
 
-def test_the_ratio_that_reverses_the_goal4_reading():
-    """0.0376/0.00079 = 47x (withdrawn) vs 0.0376/0.04153 = 0.91x (correct)."""
+def test_the_mde_vs_genuine_ic_comparison_is_NON_DECISIONAL():
+    """Both 47x and 0.91x are withdrawn, and this test says why rather than pinning a
+    replacement ratio.
+
+    The first version asserted `0.0376 / 0.04153 == 0.91` and read it as "marginally
+    powered". Neither side supports that:
+
+      * the NUMERATOR is not a valid detection floor -- 0.0376 comes from model#129's
+        calibration, which is itself unresolved (its null is a dependence-sensitivity
+        diagnostic and its MDE is explicitly non-decisional). A ratio inherits the
+        standing of its inputs.
+      * the DENOMINATOR is the wrong estimand -- a deployed SINGLE-RECIPE genuine_ic
+        is not an ENSEMBLE INCREMENT. The screen asks what combining members ADDS over
+        the incumbent; one recipe's own IC is not that quantity, so the two are not
+        commensurable whatever their ratio.
+
+    Pinning 0.91 would have re-committed the original error -- pairing the MDE with
+    whichever genuine_ic was to hand -- one number later. So this asserts the
+    provenance fact the evidence DOES support, and that no power conclusion is drawn.
+    """
     dep = next(r for r in _rows() if r["deployed"] == "True")
-    mde = 0.0376                       # model#129 lower bound, carried as prior work
-    assert mde / _f(dep, "genuine_ic") < 1.0          # BELOW, i.e. marginally powered
-    assert round(mde / _f(dep, "genuine_ic"), 2) == 0.91
+    assert abs(_f(dep, "genuine_ic") - 0.04153) < 5e-6, (
+        "the provenance correction itself: the deployed recipe reads +0.04153, not "
+        "the +0.00079 the prereg cited")
+
+    src = (pathlib.Path(__file__).resolve().parents[1]
+           / "doc" / "research"
+           / "2026-07-30-goal4-phase0-ensemble-gain-prereg.md").read_text()
+    assert "Both 47× and 0.91× are withdrawn" in src
+    assert "remains UNRESOLVED" in src or "remain UNRESOLVED" in src, (
+        "the prereg must not carry a power conclusion from this comparison")
 
 
 def test_the_collapse_is_placebo_RISING_not_real_ic_falling():

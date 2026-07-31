@@ -366,11 +366,30 @@ The control's failure is a measurement of the whole screen, not of the control:
 The clause that followed — *"an order of magnitude above any plausible ensemble member on
 this panel, where the production recipe's `genuine_ic` above the placebo floor is
 **+0.00079**"* — is **WITHDRAWN 2026-07-31**. It compared the design's MDE against a number
-that is neither the production recipe's nor an ensemble gain. Against the **deployed**
-recipe's `genuine_ic` of **+0.04153** the MDE lower bound 0.0376 is **0.91×**, not 47× —
-the same order of magnitude. The screen is **marginally powered, not hopeless**, and the
-achievable ensemble increment remains **unmeasured**
+that is neither the production recipe's nor an ensemble gain — the **deployed** recipe's
+`genuine_ic` is **+0.04153**, not `+0.00079`
 `[VERIFIED — 本次实测 2026-07-31, evidence/2026-07-31-genuine-ic-provenance/]`.
+
+**The replacement ratio is withdrawn too, and so is the conclusion drawn from it.** A
+first version of this correction reported `0.0376 / 0.04153 = 0.91×` and concluded the
+screen is *"marginally powered, not hopeless"*. Neither side of that ratio can carry it:
+
+* **the numerator is not a valid detection floor.** `0.0376` comes from model#129's
+  calibration, which is itself UNRESOLVED — its null is a dependence-sensitivity
+  diagnostic, not a calibration, and its MDE is explicitly non-decisional. A ratio
+  inherits the standing of its inputs.
+* **the denominator is the wrong estimand.** A deployed **single-recipe** `genuine_ic`
+  is not an **ensemble increment**. The screen's question is what combining members
+  ADDS over the incumbent; one recipe's own IC is not that quantity, so comparing them
+  cannot establish power for the ensemble estimand at all — the two numbers are not
+  commensurable, whatever their ratio.
+
+So the fix corrected a real citation error and then reached a conclusion by the same
+route that produced the error: pairing the MDE with whichever `genuine_ic` was to hand.
+**Both 47× and 0.91× are withdrawn.** What survives is the provenance correction: the
+`+0.00079` citation named the wrong subject, and the deployed recipe reads `+0.04153`.
+The screen's power **remains UNRESOLVED**, and it stays that way until there is a valid
+ensemble-specific inference design.
 
 Registered, replacing A1.2's step 3:
 

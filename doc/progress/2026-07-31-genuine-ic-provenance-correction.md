@@ -2,7 +2,8 @@
 
 **Bottom line.** `+0.00079` exists and I have now traced it to the byte. But the sentence I
 published around it was wrong in **three** ways at once, and correcting it **reverses the
-GOAL-4 conclusion I drew from it**: the Phase-0 screen is *marginally powered*, not short by
+GOAL-4 conclusion I drew from it** — though that conclusion is itself now withdrawn
+(see "Review round 1" below). The original claim was: the Phase-0 screen is *marginally powered*, not short by
 a factor of 47.
 
 ## What I published, and what is actually true
@@ -81,3 +82,41 @@ This **weakens my own earlier negative claim.** Recording it that way is the poi
 `model#129` carries `assert m / 0.00079 > 20`, which encodes the withdrawn yardstick. That
 PR is **awaiting review and is frozen** — the assertion is flagged on the PR, not amended in
 place.
+
+---
+
+## Review round 1 — the correction reached its conclusion by the route that caused the error
+
+Codex: *"the claimed reversal to marginally powered is not supportable. The 0.0376 MDE
+comes from model#129 calibration whose null and MDE are unresolved … a deployed
+single-recipe `genuine_ic` is not an ensemble increment."* Accepted.
+
+**What survives: the provenance correction.** The prereg cited `+0.00079` as "the
+production recipe's `genuine_ic`". That named the wrong subject; the deployed recipe
+reads **+0.04153** `[VERIFIED — 本次实测, evidence/2026-07-31-genuine-ic-provenance/]`.
+Source, subject and wording are corrected and stay corrected.
+
+**What is withdrawn: the 0.91× and everything read off it.** Neither side of that ratio
+can carry a power conclusion:
+
+* the **numerator** is not a valid detection floor — `0.0376` comes from model#129's
+  calibration, which is itself unresolved: its null is a *dependence-sensitivity
+  diagnostic*, not a calibration, and its MDE is marked non-decisional in the emitted
+  artifact. **A ratio inherits the standing of its inputs.**
+* the **denominator** is the wrong estimand — a deployed **single-recipe** `genuine_ic`
+  is not an **ensemble increment**. The screen asks what combining members *adds* over
+  the incumbent; one recipe's own IC is not that quantity, so the two are not
+  commensurable whatever their ratio.
+
+**The uncomfortable part.** This PR corrected a citation that paired the MDE with the
+wrong `genuine_ic` — and then reached its headline by pairing the MDE with a different
+`genuine_ic`. Same move, one number later. Finding a wrong denominator is not the same
+as having found the right one, and "the corrected version of my error" is the easiest
+conclusion to believe.
+
+The test no longer pins a replacement ratio. It asserts the provenance fact the evidence
+does support and that the prereg carries **no** power conclusion from this comparison —
+pinning `0.91` would have re-committed the error in the artifact meant to prevent it.
+
+`[VERIFIED — this session]` 5 tests pass. Screen power **remains UNRESOLVED** pending a
+valid ensemble-specific inference design.
