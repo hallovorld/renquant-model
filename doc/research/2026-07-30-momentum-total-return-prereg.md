@@ -397,7 +397,7 @@ it: for A1 at each `h ∈ {20,60,120,250}`, the **paired** per-date difference
 `E2(mom_12_1_tr on fwd_h_tr) − E2(mom_12_1_px on fwd_h_px)` on identical rows,
 with block `t`. A large positive delta ⇒ the price-only series understated
 momentum; a delta ≈ 0 ⇒ the dividend adjustment does not change the momentum
-conclusion either way. **D1 is a statement about the DATA, not about momentum.
+conclusion either way. **D1 is a statement about the DATA, not about momentum.  <!-- ERRATA-2026-08-01: see the errata block at the end of this file; this clause is NARROWED. The registered text above is unchanged. -->
 It cannot license any action and does not enter the momentum multiplicity.**
 
 ## 6. Decision rule
@@ -588,7 +588,7 @@ is not "momentum is a dividend-yield tilt":**
   conservative branch here. That is the right direction to fail in, but it is
   still a design error, not a finding about momentum.
 
-## 3. D1 — the dividend confound is REFUTED (a statement about the DATA)
+## 3. D1 — the dividend confound is REFUTED (a statement about the DATA)  <!-- ERRATA-2026-08-01: see the errata block at the end of this file; this clause is NARROWED. The registered text above is unchanged. -->
 
 The aborted run reported the spread rising monotonically with holding horizon and
 named the missing dividend adjustment as "the single most likely alternative
@@ -1053,3 +1053,47 @@ to the two §3 pins recorded when this prereg was frozen
 `[VERIFIED — re-ran both builders this session, diffed sha256 against §3, this file]`.
 This is a provenance addition, not a re-analysis: no number in §§0–7 changes,
 and the verdict remains `UNRESOLVED / TILT-NOT-EXCLUDED`.
+
+
+---
+
+# ERRATA 2026-08-01 — the "statement about the DATA" clause is NARROWED
+
+**The registered text above is unchanged and nothing in it has been edited.** This block
+is appended after the fact and marked as such; the sites it applies to carry an
+`ERRATA-2026-08-01` pointer.
+
+## What is narrowed
+
+This document says, in several places, that the dividend confound is **REFUTED** and
+that D1 is **"a statement about the DATA, not about momentum."** The first half stands
+as an internal result. **The second half does not.**
+
+Codex on **model#133** raised it and the code settles it: `exdiv_gap()` identifies
+ex-dividend days as `s["dividend"] > 0` — **the same `dividend` column the total-return
+construction consumes to build the series**
+(`tools/build_total_return_series.py:250`).
+
+> **So if the dividend feed itself is wrong — a missing event, a wrong amount, a wrong
+> date — the construction will not adjust for it AND D1 will not look for it**, because
+> it reads the event calendar off that same column. D1 tests *"did we remove what our own
+> data says was there."* **It cannot fail on a bad feed, so it cannot be a statement
+> about the data.**
+
+The same holds for the other surviving validations: `V3` is the identity
+`TR[k]/TR[k-1] == (P[k]+D[k])/P[k-1]` over that same `D`; `V2` compares non-payers to
+themselves; `V7` reconciles CAGR against a yield computed from that column. **Every
+surviving check is self-referential.** `V5` — the vendor's independently built
+`adj close` — is the only one that could contradict the feed, and it produced nothing
+(column present, **0** non-null rows over 2 658 rows × 6 tickers).
+
+## The corrected status
+
+| claim | status |
+|---|---|
+| the TR construction is internally correct | **supported** — −66.6 → −4.8 bp, V2 exact 0.0, V3 4.4e-16 |
+| the dividend confound is removed **from the source data** | **NOT established** |
+| a momentum result on this series is free of a dividend-yield tilt | **NOT established** |
+
+**Unaffected:** §6's verdict `UNRESOLVED / TILT-NOT-EXCLUDED — nothing licensed`. That
+was never resting on the data claim, and it is unchanged.
