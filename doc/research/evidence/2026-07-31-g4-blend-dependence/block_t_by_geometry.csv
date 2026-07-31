@@ -1,0 +1,11 @@
+series,block_length,n_blocks,block_t,t_crit_student,resolves,label_horizon_days,gap,crossing_fraction
+diff,20,108,2.0829,1.9824,True,60,0,1.0000
+diff,60,36,1.4693,2.0301,False,60,0,1.0000
+diff,90,24,1.5076,2.0687,False,60,0,0.6667
+diff,120,18,1.4588,2.1098,False,60,0,0.5000
+diff,250,8,1.3461,2.3646,False,60,0,0.2400
+winsorized_diff,20,108,1.3086,1.9824,False,60,0,1.0000
+winsorized_diff,60,36,0.9315,2.0301,False,60,0,1.0000
+winsorized_diff,90,24,0.9257,2.0687,False,60,0,0.6667
+winsorized_diff,120,18,0.9602,2.1098,False,60,0,0.5000
+winsorized_diff,250,8,1.1861,2.3646,False,60,0,0.2400

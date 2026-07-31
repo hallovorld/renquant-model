@@ -1,0 +1,11 @@
+{
+  "n_dates": 2161,
+  "rho1_diff": 0.5799204777806153,
+  "naive_t_diff": 6.1920277768767,
+  "arm_correlation_blend_vs_rank60": 0.8311677954551356,
+  "diff_mean": 0.06265043750603898,
+  "winsorized_diff_mean": 0.009572855724679278,
+  "tail_share_of_diff": 0.8472020929820876,
+  "label_horizon_days": 60,
+  "published_verdict": "INCONCLUSIVE"
+}
