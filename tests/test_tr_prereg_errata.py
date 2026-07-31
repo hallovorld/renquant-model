@@ -11,7 +11,7 @@ import pathlib
 
 DOC = (pathlib.Path(__file__).resolve().parent.parent
        / "doc/research/2026-07-30-momentum-total-return-prereg.md").read_text(encoding="utf-8")
-BODY, _, ERRATA = DOC.partition("# ERRATA 2026-08-01")
+BODY, _, ERRATA = DOC.partition("# ERRATA 2026-07-31")
 
 
 def test_the_registered_claim_is_still_there_unedited():
@@ -22,7 +22,7 @@ def test_the_registered_claim_is_still_there_unedited():
 
 
 def test_the_affected_sites_carry_a_pointer():
-    assert BODY.count("ERRATA-2026-08-01") >= 2
+    assert BODY.count("ERRATA-2026-07-31") >= 2
 
 
 def test_the_errata_states_the_code_level_reason():

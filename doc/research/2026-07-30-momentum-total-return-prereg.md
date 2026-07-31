@@ -397,7 +397,7 @@ it: for A1 at each `h ∈ {20,60,120,250}`, the **paired** per-date difference
 `E2(mom_12_1_tr on fwd_h_tr) − E2(mom_12_1_px on fwd_h_px)` on identical rows,
 with block `t`. A large positive delta ⇒ the price-only series understated
 momentum; a delta ≈ 0 ⇒ the dividend adjustment does not change the momentum
-conclusion either way. **D1 is a statement about the DATA, not about momentum.  <!-- ERRATA-2026-08-01: see the errata block at the end of this file; this clause is NARROWED. The registered text above is unchanged. -->
+conclusion either way. **D1 is a statement about the DATA, not about momentum.  <!-- ERRATA-2026-07-31: see the errata block at the end of this file; this clause is NARROWED. The registered text above is unchanged. -->
 It cannot license any action and does not enter the momentum multiplicity.**
 
 ## 6. Decision rule
@@ -588,7 +588,7 @@ is not "momentum is a dividend-yield tilt":**
   conservative branch here. That is the right direction to fail in, but it is
   still a design error, not a finding about momentum.
 
-## 3. D1 — the dividend confound is REFUTED (a statement about the DATA)  <!-- ERRATA-2026-08-01: see the errata block at the end of this file; this clause is NARROWED. The registered text above is unchanged. -->
+## 3. D1 — the dividend confound is REFUTED (a statement about the DATA)  <!-- ERRATA-2026-07-31: see the errata block at the end of this file; this clause is NARROWED. The registered text above is unchanged. -->
 
 The aborted run reported the spread rising monotonically with holding horizon and
 named the missing dividend adjustment as "the single most likely alternative
@@ -1057,11 +1057,11 @@ and the verdict remains `UNRESOLVED / TILT-NOT-EXCLUDED`.
 
 ---
 
-# ERRATA 2026-08-01 — the "statement about the DATA" clause is NARROWED
+# ERRATA 2026-07-31 — the "statement about the DATA" clause is NARROWED
 
 **The registered text above is unchanged and nothing in it has been edited.** This block
 is appended after the fact and marked as such; the sites it applies to carry an
-`ERRATA-2026-08-01` pointer.
+`ERRATA-2026-07-31` pointer.
 
 ## What is narrowed
 
@@ -1097,3 +1097,11 @@ surviving check is self-referential.** `V5` — the vendor's independently built
 
 **Unaffected:** §6's verdict `UNRESOLVED / TILT-NOT-EXCLUDED — nothing licensed`. That
 was never resting on the data claim, and it is unchanged.
+
+### Note on this errata's own date
+
+First written with the header `ERRATA-2026-08-01`. The machine clock at the time of the
+commit read **2026-07-31 06:39 PDT** — the errata was dated **one day in the future**, and
+it was corrected before any reviewer saw it. Recorded rather than silently rewritten,
+because the entire point of this block is that the record shows what was claimed and when.
+An errata whose own date is asserted rather than read is the defect it exists to fix.
