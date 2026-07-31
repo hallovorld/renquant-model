@@ -27,6 +27,8 @@ import numpy as np
 import pandas as pd
 
 sys.path.append(str(Path(__file__).resolve().parent.parent / "src"))
+sys.path.append(str(Path(__file__).resolve().parent))   # tools/ — shared writers
+from per_date_series_io import write_per_date_series  # noqa: E402
 from renquant_model_common.lag_alignment import dependence_aware_mean  # noqa: E402
 
 # ------------------------------------------------------------------ §3 pins --
@@ -334,6 +336,11 @@ def main(argv=None) -> int:
     ap.add_argument("--matrix", required=True, type=Path)
     ap.add_argument("--tr", required=True, type=Path)
     ap.add_argument("--json-out", default=None)
+    ap.add_argument("--per-date-out", default=None,
+                    help="CSV path for the per-date statistic series (GOAL-7 "
+                         "redesign §7). Computes nothing new — persists what the "
+                         "run already produced, so a later dependence-preserving "
+                         "calibration needs no assumed rho1.")
     ap.add_argument("--allow-input-mismatch", action="store_true")
     ap.add_argument("--smoke", action="store_true",
                     help="exercise every code path on SCREEN dates with tiny "
@@ -450,6 +457,24 @@ def main(argv=None) -> int:
     base = per_date_e2(hold, "B1_div_yield_252", ycol)
     common = subj.index.intersection(base.index)
     dpair = (subj.reindex(common) - base.reindex(common)).dropna()
+    # Written AFTER dpair exists, so the file can carry the series actually tested
+    # rather than the ingredients of one. The previous version wrote here, before
+    # the intersection was formed.
+    if a.per_date_out:
+        R["per_date_series"] = write_per_date_series(
+            {"subject": subj, "baseline": base}, a.per_date_out, paired=dpair,
+            provenance={
+                "subject_arm": ARM_PRIMARY,
+                "baseline_arm": "B1_div_yield_252",
+                "label_column": ycol,
+                "label_horizon_trading_days": H_PRIMARY,
+                "statistic": "per-date E2 (top-decile spread)",
+                "matrix_sha256": R["pins"]["matrix"],
+                "tr_sha256": R["pins"]["tr"],
+            })
+        print(f"  per-date series written: {R['per_date_series']['n_rows']} rows, "
+              f"{R['per_date_series']['n_paired']} paired "
+              f"-> {R['per_date_series']['path']}")
     pc = agg(dpair, H_PRIMARY, N_BOOT_REAL)
     print(f"  PAIRED contrast subject - baseline, same dates/blocks: "
           f"delta={pc['mean']:+.4f} t={pc['t']:+.3f} "
