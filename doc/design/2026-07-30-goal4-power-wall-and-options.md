@@ -355,3 +355,201 @@ taking them pays.** Reading it as the latter would be the same error as the with
 **This settles the §5 gate in favour of C.** It does **not** say the ensemble is
 better — it reports no performance and cannot. It says the decision-boundary
 estimand has units to measure, which is the one thing D assumed it might not.
+
+---
+
+## §5 Prerequisite 1, half discharged — the empirical calibration, measured
+
+Prerequisite 1 asked for a dependence-preserving null **plus** either a documented
+exchangeability argument or an **empirical false-positive calibration at the realised
+geometry**. This section supplies the calibration. It does **not** discharge the
+exchangeability half, and it does **not** revive the screen: the Phase-0 result stays
+UNRESOLVED and `t = -1.0025` remains uncitable under any bar below.
+
+No model of the dependence was needed. The screen persisted its own per-date statistic
+series (`per_date_g_real.csv`, 508 dates), so the null is a **circular block bootstrap**
+of that series recentred to mean zero — which carries the observed serial dependence
+into every replicate, the exact property the within-date permutation lacks.
+
+### §5.1 The measured dependence
+
+`ρ₁ = +0.7317`, `ρ₅ = +0.5728`, `ρ₁₀ = +0.4460`, `ρ₂₀ = +0.2021`, `ρ₄₀ = −0.0531`,
+`ρ₆₀ = −0.2019` `[VERIFIED — tools/goal4_null_calibration.py, this branch]`.
+
+Real and strong, and **materially weaker than pure label overlap implies**. A statistic
+driven only by 60-day overlapping labels would carry `ρ₁ = 1 − 1/60 = 0.9833`. Measured
+is 0.7317, and it is essentially spent by lag 40.
+
+**This corrects a number I published earlier the same night.** A geometry-only harness
+(`renquant-model` GOAL-7 branch, `tools/goal7_design_mde.py --executed`) reported the
+GOAL-4 Phase-0 geometry's realised size as **0.1070**. That number assumed the per-date
+statistic's dependence was almost entirely overlap-driven. On this series it is not, so
+**0.1070 overstated the damage for GOAL-4** and is withdrawn in favour of the
+measurement below. The GOAL-7 figures in that same table were computed at `ρ₁ = 0.94`,
+which *was* measured on that programme's own series, and are unaffected.
+
+### §5.2 The instrument is not exact, and says so
+
+A circular block bootstrap at `b = 60` on `n = 508` leaves ~9 resampling units; repeated
+blocks widen the null **even on i.i.d. input**. So every row carries an i.i.d. Gaussian
+baseline pushed through the identical path, and the interpretable quantity is the
+**excess over that baseline**, never the raw size against a nominal 0.05.
+
+### §5.3 The executed geometry — `L = 60`, `gap = 0`, 8 blocks, bar 2.3646
+
+| bootstrap `b` | size | i.i.d. baseline | **excess** | `P95` bootstrap |
+|---:|---:|---:|---:|---:|
+| 20 | 0.0563 | 0.0560 | **+0.0003** | 2.4348 |
+| 40 | 0.0720 | 0.0483 | **+0.0237** | 2.6542 |
+| 60 | 0.0848 | 0.0520 | **+0.0328** | 2.9922 |
+| 90 | 0.0653 | 0.0397 | **+0.0257** | 2.6485 |
+| 120 | 0.0500 | 0.0117 | **+0.0383** | 2.3639 |
+
+`[VERIFIED — same run; doc/research/data/2026-07-31-goal4-null-calibration/]`
+
+**The calibration does not converge.** The excess ranges `+0.0003` to `+0.0383` and the
+instrument's own baseline swings `0.0117`–`0.0560` across the sweep. At 8 blocks on 508
+dates, **the bar is not identified** — not by the withdrawn permutation, and not by a
+block bootstrap either.
+
+That is a stronger statement than the one this document already carried. It was not only
+that `P95_null = 1.9131` was unvalidated; **no null available at this geometry pins the
+bar**, so no `T_crit` here supports an inference in either direction. Prerequisite 1
+cannot be discharged by producing a better null on this window.
+
+### §5.4 Gap-separated repairs do not rescue it
+
+Same series, `b = 60`, `gap = 60 ≥ h`:
+
+| design | blocks | crossing | Student bar | size | i.i.d. baseline | excess |
+|---|---:|---:|---:|---:|---:|---:|
+| `L=60 gap=60` | 4 | 0.000 | 3.1824 | 0.0720 | 0.0527 | +0.0193 |
+| `L=40 gap=60` | 5 | 0.000 | 2.7764 | 0.0613 | 0.0560 | +0.0053 |
+| `L=30 gap=60` | 5 | 0.000 | 2.7764 | 0.0657 | 0.0613 | +0.0043 |
+
+Removing the crossing entirely leaves 4–5 blocks, where the instrument's own baseline
+dominates. **On this window there is no geometry that is both dependence-valid and
+well-calibrated.**
+
+### §5.5 What survives: an MDE in the screen's own units
+
+The MDE does **not** depend on pinning the bar, because it can be bounded from below by
+the **most generous bar in the entire sweep** — the executed Student bar 2.3646. Any
+dependence-valid bar is at least that, so any dependence-valid MDE is at least:
+
+| design | bar | **MDE (IC gain units)** |
+|---|---:|---:|
+| executed `L=60 gap=0` | 2.3646 (most generous) | **0.0376** |
+| repaired `L=60 gap=60` | 3.1824 | **0.0712** |
+
+`[VERIFIED — same tool, 4000 reps]`
+
+Against a plausible ensemble gain of **+0.00079** on the production recipe
+`[早前实测 — genuine_ic, GOAL-6 evaluation]`, the lower bound is **≈ 48×** the effect.
+
+**This is a power statement, not a verdict.** It says the Phase-0 window cannot resolve a
+gain of that size no matter which valid bar is eventually justified. It says nothing
+about whether such a gain exists. The screen's result remains UNRESOLVED, and this
+document still recommends no option.
+
+### §5.6 What prerequisite 1 still needs
+
+Unchanged, minus the calibration: a documented **exchangeability argument**, or a null
+whose validity does not rest on a window this short. Given §5.3, the honest reading is
+that **any option scored on the 508-date window inherits an unidentified bar**, which
+promotes option D (wait for data) from "a fallback, not a design" to the only route that
+changes the binding constraint. That is an argument for review to accept or reject — it
+is not a recommendation this document makes.
+
+---
+
+## §6 Prerequisite 2 — the materiality threshold, derived
+
+Prerequisite 2 said: *"a materiality threshold: the smallest gain worth deploying. Every
+cost comparison hangs on it and it has never been stated."* It is stated here, derived
+from measured quantities plus two labelled assumptions. **It is not frozen** — it is a
+number for review to accept, replace, or reject.
+
+### §6.1 The derivation
+
+Grinold's fundamental law, `IR = IC · √BR`. Breadth from the measured panel geometry:
+
+```
+BR = N · (252 / h) = 142 · (252/60) = 596.4      →  √BR = 24.42
+```
+
+`[N = 142 早前实测 — results.json .data.n_tickers; h = 60 早前实测 — frozen prereg]`
+
+The annual return contribution of an IC gain `δ`, at portfolio volatility `σ`, is
+`δ · √BR · σ`. On equity `E`, the dollar contribution is `δ · √BR · σ · E`, so the gain
+that just pays an annual running cost `C` is
+
+```
+δ* = C / (√BR · σ · E)
+```
+
+**Assumptions, both labelled:** `σ = 15%` `[假设 — swept 10–20% below]` and
+`C = $100/yr` for a second model's retrain compute and maintenance
+`[假设 — swept $50–500 below]`. `E = $10,552` `[早前实测 — live account 2026-07-29]`.
+
+| annual cost | σ=10% | σ=15% | σ=20% |
+|---:|---:|---:|---:|
+| $50 | 0.0019 | 0.0013 | 0.0010 |
+| **$100** | 0.0039 | **0.0026** | 0.0019 |
+| $200 | 0.0078 | 0.0052 | 0.0039 |
+| $500 | 0.0194 | 0.0129 | 0.0097 |
+
+**δ\* ≈ 0.0026 IC** at the centre of the sweep `[DERIVED — this document]`.
+
+### §6.2 Two conclusions, and the second one is the surprise
+
+**(1) The Phase-0 window cannot see a gain worth deploying.** The measured MDE lower
+bound is **0.0376 IC** (§5.5) against δ\* = 0.0026 — **14.5×**. No choice of threshold
+inside the swept range closes that: even at `$500/yr` and `σ=10%`, δ\* = 0.0194 is still
+below the MDE. So prerequisite 2 does **not** rescue the window, and this is now a
+measured statement rather than an intuition.
+
+**(2) At today's book, the plausible gain does not clear materiality at all.**
+The production recipe's `genuine_ic = +0.00079` `[早前实测]` is **0.31×** δ\*. So even a
+*successful* ensemble delivering exactly that gain would **not pay for its own running
+cost** on $10,552.
+
+That second one is not a statement about the model. It is a statement about **book
+size**, and it inverts cleanly:
+
+```
+E_breakeven = C / (√BR · σ · δ_plausible)
+```
+
+| annual cost | σ=10% | σ=15% | σ=20% |
+|---:|---:|---:|---:|
+| $50 | $25,916 | $17,278 | $12,958 |
+| **$100** | $51,833 | **$34,555** | $25,916 |
+| $200 | $103,665 | $69,110 | $51,833 |
+| $500 | $259,164 | $172,776 | $129,582 |
+
+**At $100/yr and σ=15%, the book must reach ≈ $34,555 before a +0.00079 IC ensemble pays
+for itself.** Today's $10,552 is **3.3× short** `[DERIVED]`.
+
+### §6.3 Both approximations err in the same direction
+
+- `BR = N · 252/h` treats every name-period as an **independent** bet. Cross-sectional
+  correlation makes real breadth **lower**, so real δ\* is **higher**.
+- Grinold's law assumes **unconstrained** implementation. This book has integer-share
+  flooring, wash-sale blocks and concentration caps, so realised IR is **lower** than
+  `IC·√BR`, which again makes real δ\* **higher**.
+
+So `0.0026` is a **floor** on the threshold. Every conclusion above strengthens under
+correction; none reverses.
+
+### §6.4 What this settles, and what it does not
+
+**Settles:** prerequisite 2 now has a number and a derivation, and both prerequisites
+point the same way. Option **D** (wait) is the only one that moves a binding constraint —
+and §6.2 shows *which* constraint: not only the evaluation window, but **the book size
+that decides whether the answer would matter**.
+
+**Does not settle:** the Phase-0 screen's result stays **UNRESOLVED**. This document
+still recommends no option. And §6 changes nothing about whether an ensemble gain
+*exists* — it prices what such a gain would be worth, which is a different question and
+the one nobody had answered.
