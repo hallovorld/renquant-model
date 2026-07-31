@@ -1,16 +1,31 @@
-# GOAL-4: the blend screen's advantage does not survive a dependence-aware bar
+# GOAL-4: the blend screen's naive t is inflated by dependence — and my bar was NOT dependence-aware
 
-**Bottom line.** The 2026-07-25 blend construction screen reports `diff_mean = +0.0627`
-over 2 161 dates. A naive t on that series is **+6.19**. Under every gap-honest block
-geometry it is **~1.5**, and after winsorization **~0.95**. Its published verdict —
-**INCONCLUSIVE** — is **upheld**, and this says precisely why.
+**Bottom line — CORRECTED 2026-08-01.** The 2026-07-25 blend construction screen reports
+`diff_mean = +0.0627` over 2 161 dates with a naive `t` of **+6.19**. Block means at
+L = 60…250 give **~1.5**. That ratio is a real statement about the **naive t**: it counts
+2 161 overlapping-label dates as independent observations and is inflated roughly **4×**.
+
+**What I claimed and must withdraw:** that the advantage *"does not survive a
+dependence-aware bar"*. **No geometry in this analysis is dependence-aware.** My own
+frozen CSV records `gap = 0` on **every row**, and a non-zero `crossing_fraction` on
+every row — **1.00, 1.00, 0.67, 0.50, 0.24**. Block length is not an embargo; adjacent
+blocks still share labels, so the Student bars in `t_crit_student` are **uncalibrated for
+every row**, including the ones I read as "does not resolve."
+
+> I stated the rule — *"independence needs a **gap ≥ h**, not a block…"* — **four lines
+> below** calling the same geometries "gap-honest". The rule and its violation are in one
+> document. `[VERIFIED — 本次实测 2026-08-01 against this PR's own frozen CSV]`
+
+**Correct status:** this is a **sensitivity diagnostic**, not a verdict. The effect is
+**un-adjudicated**: I cannot say it survives a correct bar, and I cannot say it fails one,
+because no correct bar was computed.
 
 ## The bar, by geometry `[本次实测 2026-07-31]`
 
-Label horizon **h = 60d** (the bundle quotes both spreads "/60d" and the prereg fixes a
+**Every row below has `gap = 0`.** Label horizon **h = 60d** (the bundle quotes both spreads "/60d" and the prereg fixes a
 60d embargo), so crossing is `min(1, h/L)`.
 
-| series | L | blocks | block t | Student bar | crossing | resolves |
+| series | L | blocks | block t | Student bar (UNCALIBRATED) | gap | crossing | resolves? |
 |---|---:|---:|---:|---:|---:|:--|
 | diff | 20 | 108 | **2.08** | 1.982 | **1.00** | *"yes"* |
 | diff | 60 | 36 | 1.47 | 2.030 | 1.00 | no |

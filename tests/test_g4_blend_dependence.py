@@ -29,18 +29,23 @@ def test_the_naive_t_is_inflated_by_serial_dependence():
     assert SUM["naive_t_diff"] > 6.0               # measured 6.192
 
 
-def test_no_gap_honest_geometry_resolves():
-    """The one row that DOES resolve is L=20, and it is the least trustworthy:
-    crossing = min(1, h/L) = 1.00 at h=60, and it has the most blocks. Independence
-    needs a GAP >= h, not a block shorter than h."""
+def test_NOT_ONE_geometry_here_is_gap_honest():
+    """CORRECTED 2026-08-01, codex on #134. I described L=60..250 as "gap-honest".
+    The frozen CSV records gap=0 on EVERY row and a NON-ZERO crossing on every row.
+    Block length is not an embargo: adjacent blocks still share labels, so every
+    Student bar in this table is uncalibrated and no row adjudicates anything."""
+    for r in _rows():
+        assert int(r["gap"]) == 0, r
+        assert float(r["crossing_fraction"]) > 0.0, r
+
+
+def test_the_block_t_values_are_recorded_as_a_DIAGNOSTIC_not_a_verdict():
+    """What survives calibration-independently: the naive-to-block RATIO. It says the
+    naive t counts overlapping-label dates as independent, not that the effect is
+    absent."""
     rows = [r for r in _rows() if r["series"] == "diff"]
-    resolving = [r for r in rows if r["resolves"] == "True"]
-    assert [r["block_length"] for r in resolving] == ["20"]
-    assert resolving[0]["crossing_fraction"] == "1.0000"
-    for r in rows:
-        if r["block_length"] in ("60", "90", "120", "250"):
-            assert r["resolves"] == "False", r
-            assert abs(float(r["block_t"])) < 1.6, r
+    at60 = next(r for r in rows if r["block_length"] == "60")
+    assert abs(SUM["naive_t_diff"] / float(at60["block_t"]) - 4.2) < 0.2
 
 
 def test_the_winsorized_arm_resolves_nowhere():
