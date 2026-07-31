@@ -301,6 +301,42 @@ def per_date_e2(sub: pd.DataFrame, arm: str, ycol: str) -> pd.Series:
     return per_date_stats(s, arm, ycol)[1] if not s.empty else pd.Series(dtype=float)
 
 
+def write_per_date_series(series_by_name: "dict[str, pd.Series]",
+                          out_path: "str | Path") -> dict:
+    """Persist the per-date statistic series this run already computed.
+
+    WHY (GOAL-7 redesign §7, 2026-07-31). This runner COMPUTES per-date E2 via
+    ``per_date_e2`` and then throws it away, keeping only summary JSON plus 10
+    block means. That single omission is why the programme's own dependence
+    assumption cannot be checked against its own data:
+
+      * GOAL-4's Phase-0 screen persisted ``per_date_g_real.csv`` (508 rows), and
+        that one file made a model-free, assumption-free dependence-preserving
+        calibration possible — bootstrap the real series, no rho1 assumed.
+      * Here the only handle is 10 block means, whose lag-1 autocorrelation has a
+        standard error of 1/sqrt(10) = 0.316 — it cannot separate rho1 = 0 from
+        rho1 = +0.5, i.e. it is underpowered by an order of magnitude against the
+        effect it would need to detect.
+
+    Costs one CSV (~16 KB at GOAL-4's size). Computes NOTHING new: every value
+    written here is already produced by the run, so this cannot move a verdict.
+    """
+    import pandas as _pd
+    frame = _pd.DataFrame({k: v for k, v in series_by_name.items() if v is not None})
+    frame = frame.sort_index()
+    frame.index.name = "date"
+    out = Path(out_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    frame.to_csv(out)
+    return {
+        "path": str(out),
+        "columns": list(frame.columns),
+        "n_rows": int(len(frame)),
+        "first_date": str(frame.index.min()) if len(frame) else None,
+        "last_date": str(frame.index.max()) if len(frame) else None,
+    }
+
+
 def holm(pairs: list[tuple[str, float]]) -> dict:
     """Holm-Bonferroni step-down over (name, |t|), normal approximation.
 
@@ -334,6 +370,11 @@ def main(argv=None) -> int:
     ap.add_argument("--matrix", required=True, type=Path)
     ap.add_argument("--tr", required=True, type=Path)
     ap.add_argument("--json-out", default=None)
+    ap.add_argument("--per-date-out", default=None,
+                    help="CSV path for the per-date statistic series (GOAL-7 "
+                         "redesign §7). Computes nothing new — persists what the "
+                         "run already produced, so a later dependence-preserving "
+                         "calibration needs no assumed rho1.")
     ap.add_argument("--allow-input-mismatch", action="store_true")
     ap.add_argument("--smoke", action="store_true",
                     help="exercise every code path on SCREEN dates with tiny "
@@ -448,6 +489,12 @@ def main(argv=None) -> int:
 
     subj = per_date_e2(hold, ARM_PRIMARY, ycol)
     base = per_date_e2(hold, "B1_div_yield_252", ycol)
+    if a.per_date_out:
+        R["per_date_series"] = write_per_date_series(
+            {"subject": subj, "baseline": base}, a.per_date_out)
+        print(f"  per-date series written: {R['per_date_series']['n_rows']} rows "
+              f"-> {R['per_date_series']['path']}")
+
     common = subj.index.intersection(base.index)
     dpair = (subj.reindex(common) - base.reindex(common)).dropna()
     pc = agg(dpair, H_PRIMARY, N_BOOT_REAL)
