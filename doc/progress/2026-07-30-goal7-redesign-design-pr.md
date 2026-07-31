@@ -34,3 +34,47 @@ dressed up as a rescue of the first.
 I recommended **parking GOAL-7** on the grounds that a redesign would probably return
 "cannot tell". That was letting my own design error set the research agenda, and it is
 withdrawn. A goal is not disproven by my having measured it badly.
+
+## Review round N — `gap >= h` does not establish independence, and I claimed it did
+
+Codex: *"`gap >= h` removes direct label-window overlap, but it does not make the
+separated block statistics independent. Predictor persistence, market regimes, and
+dependence beyond the label horizon can still correlate blocks."* Accepted.
+
+**What the arithmetic buys, precisely.** A gap of `h` removes *label-window overlap* —
+the exact mechanism that made adjacent 60-day blocks share half of every 120-day label.
+That is real and checkable. It does **not** remove dependence: momentum is persistent
+and regimes span quarters, either of which can correlate blocks separated by a gap sized
+only to the label horizon. **Removing one known dependence channel is not removing
+dependence**, and I wrote it as though it were.
+
+That error is not confined to this PR. The **T18 template row** I wrote calls a gap
+*"the only construction that removes the dependence rather than shrinking it"*. Same
+overstatement, in the artifact meant to stop the next study making it. Flagged here; it
+needs the same correction on that PR.
+
+**The simulation was labelled a measurement.** §3.1a called the 0.0473 / 0.0508 / 0.0495
+false-positive rates *"the first measured confirmation that `gap >= h` does what §3.1
+claims"*. They are simulation outputs conditional on an assumed `ρ`/`c²` — and the
+Sensitivity paragraph two lines below **already conceded that `c²` is an assumption**, so
+the document contradicted itself within one section. Relabelled as conditional
+sensitivity analysis. §3.1b had the same shape with real geometries feeding simulated
+sizes; real inputs on one axis do not make the output a measurement.
+
+**Every critical value in §3 is now UNRESOLVED**, with a banner over the table saying
+so, and the `dependence-valid?` column reads NOT ESTABLISHED for A / C′ / C″ instead of
+**valid**.
+
+**The recommendation survives, on a different footing.** Review is right that the MDE
+ranking cannot prefer B over C while the bars are unestablished — `0.995 vs 0.447 σ_x`
+decides nothing today. But the argument for B never needed it: **B asks the question the
+U-shape actually posed** and C asks a different one, which §4 already refuses as a
+horizon-search rescue. So B is recommended on *legitimacy of the question*, and the
+recommendation does not move if a valid calibration later reverses the power ordering.
+
+**Nothing is runnable.** Before execution the design owes a dependence-preserving,
+preregistered null calibration on the real pre-2021 series — not a simulation under an
+assumed DGP — or an argued case that the required block independence holds.
+
+`[VERIFIED — this session]` 30 tests pass; the MDE tool and block arithmetic are
+untouched, only what the document claims about them.

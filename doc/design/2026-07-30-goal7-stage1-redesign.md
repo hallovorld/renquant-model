@@ -76,12 +76,19 @@ Two columns replace "independent-equivalent obs" and "`t` bar": what makes the d
 below is `N // (L + gap)` at `N = 1082`, remainder dropped
 `[DERIVED — integer arithmetic, this document]`.
 
+> ⚠️ **Every critical value in this table is UNRESOLVED.** The
+> `dependence-valid?` column previously read **valid** for A / C′ / C″ on the
+> strength of `gap >= h`. Per §3.1a that establishes only the removal of
+> label-window overlap, not block independence, so no bar here is established
+> and none may be used to size a run. They stay in the table because the
+> ARITHMETIC is what is being compared; the validity claim is what was
+> withdrawn.
 | | approach | dependence validity | blocks / dropped | critical value | MDE (`σ_x`) |
 |---|---|---|---:|---|---:|
-| **A** | gap-separated blocks, `L = 120`, `gap = 120` | **valid** — `gap >= h`, so no block's label window reaches the next | **4** / 122d | `max(P95_null, t(.975, 3) = 3.1824)` → **3.2004** | **1.714** |
-| **B** | HAC / Newey–West on the per-date series | **valid only once specified** — see §3.2 | n/a (uses all 1 082 dates) | **`P95` of `\|t_HAC\|` under within-date permutation** → **3.0173**. No Student bar. | **0.995** |
-| **C′** | `h = 20`, gap-separated, `L = 60`, `gap = 20` | **valid** — `gap >= h` | **13** / 42d | `max(P95_null, t(.975, 12) = 2.1788)` → **2.1801** | **0.447** |
-| **C″** | `h = 20`, gap-separated, `L = 40`, `gap = 20` | **valid** — `gap >= h` | **18** / 2d | `max(P95_null, t(.975, 17) = 2.1098)` → **2.1564** | **0.447** |
+| **A** | gap-separated blocks, `L = 120`, `gap = 120` | **NOT ESTABLISHED** — `gap >= h` removes label-window overlap only (§3.1a) | **4** / 122d | `max(P95_null, t(.975, 3) = 3.1824)` → **3.2004** | **1.714** |
+| **B** | HAC / Newey–West on the per-date series | **NOT ESTABLISHED** — and its bar is calibrated under an assumed DGP (§3.1a) | n/a (uses all 1 082 dates) | **`P95` of `\|t_HAC\|` under within-date permutation** → **3.0173**. No Student bar. | **0.995** |
+| **C′** | `h = 20`, gap-separated, `L = 60`, `gap = 20` | **NOT ESTABLISHED** — see §3.1a | **13** / 42d | `max(P95_null, t(.975, 12) = 2.1788)` → **2.1801** | **0.447** |
+| **C″** | `h = 20`, gap-separated, `L = 40`, `gap = 20` | **NOT ESTABLISHED** — see §3.1a | **18** / 2d | `max(P95_null, t(.975, 17) = 2.1098)` → **2.1564** | **0.447** |
 | **D** | wait for post-2021 data to leave the burned region | n/a | grows | — | zero today |
 
 `[VERIFIED — python3 tools/goal7_design_mde.py --reps-null 8000 --reps-power 4000
@@ -97,15 +104,40 @@ asked for is exact and leans on nothing that has been retracted.
 **different question** from the 120-day hypothesis (§4), and that objection is
 unaffected by fixing their arithmetic.
 
-### §3.1a Two measured facts that change the decision
+### §3.1a CONDITIONAL SENSITIVITY — not measured confirmation
 
-**1 — the gap-separated designs need no rescue.** Their plain Student bars are already
-correctly sized: realised false-positive rate **0.0473 / 0.0508 / 0.0495** for A / C′ / C″
-against a nominal 0.05. That is the first *measured* confirmation that `gap >= h` does
-what §3.1 claims of it. Until now that was an assertion.
+**Relabelled after review. The heading here read "Two measured facts that change the
+decision"; neither is a measured fact about the real series, and no critical value below
+is established.**
 
-**2 — B is the design that genuinely needed its permutation bar, and it is still NOT the
-most powerful.** A naive `|t_HAC| > 1.96` rejects **17.9%** of the time under the null —
+Codex: *"`gap >= h` removes direct label-window overlap, but it does not make the
+separated block statistics independent. Predictor persistence, market regimes, and
+dependence beyond the label horizon can still correlate blocks … the simulated 0.05
+false-positive rates are only conditional on the chosen `ρ`/`c²` data-generating
+model."* Correct, and the document contradicted itself on this: the Sensitivity
+paragraph below already concedes the `c²` carry-over is **an assumption**, while the
+text above called the resulting false-positive rate a *measured confirmation*. A number
+computed from an assumed input is a sensitivity reading, whatever its precision.
+
+**What `gap >= h` actually buys.** It removes *label-window overlap* — the specific
+mechanism that made adjacent 60-day blocks share half of every 120-day label. That is a
+real and checkable property, and it is the one thing the arithmetic establishes. It does
+**not** establish independence: momentum is persistent, regimes span quarters, and
+either can correlate blocks separated by a gap that only covers the label horizon.
+Removing one known dependence channel is not the same as removing dependence, and I had
+written it as though it were — including in the T18 template row, which calls a gap
+*"the only construction that removes the dependence rather than shrinking it"*. **That
+sentence is wrong in the same way and needs the same correction.**
+
+**1 — the gap-separated designs' realised false-positive rates under the simulation are
+0.0473 / 0.0508 / 0.0495** for A / C′ / C″ against a nominal 0.05. Read as: *under a
+data-generating model with the assumed `ρ`/`c²`, the plain Student bars are correctly
+sized.* That is evidence the arithmetic is self-consistent. It is **not** evidence that
+the bars are correctly sized on the real pre-2021 series, because the simulation cannot
+contain a dependence channel it was not given.
+
+**2 — under the same simulation, B needs its permutation bar and is still not the most
+powerful.** A naive `|t_HAC| > 1.96` rejects **17.9%** of the time under the null —
 3.6× nominal — so §3.2 item 3 was right and now has a number. The calibrated bar
 (**3.0173**) restores size to 0.050. But using all 1 082 dates buys **less** power than 18
 gap-separated 40-day blocks: **0.995 vs 0.447 `σ_x`**. The information the overlap
@@ -118,13 +150,23 @@ asking the 120-day question is now measured rather than argued.
 the measured `h = 120` value (`ρ₁ = 0.94 ⇒ c² = 0.9479`); there is no measured `ρ₁` at
 `h = 20`, and that carry-over is an **assumption**. Across `c² ∈ {0.80, 0.9479, 0.99}` the
 MDEs move A `1.617 → 1.813`, B `0.932 → 1.019`, C′ `0.416 → 0.454`, C″ `0.407 → 0.461`
-`[VERIFIED — same run, --sensitivity]`. **The ordering A ≫ B ≫ C holds across the whole
-band**, so the assumption does not drive the comparison it feeds.
+`[VERIFIED — same run, --sensitivity]`. The ordering A ≫ B ≫ C holds across the whole
+swept band, so **within this data-generating model** the `c²` choice does not drive the
+comparison. That is robustness to one assumption, not evidence the model is right — and
+per the recommendation in §4 the ordering is no longer load-bearing anyway.
 
-### §3.1b What the executed designs actually cost, measured
+### §3.1b What the executed designs cost UNDER THE SAME SIMULATION
 
-The same harness pointed at the geometries this programme really ran, at the bars those
-runs really used `[VERIFIED — same run, --executed]`:
+The heading here read "what the executed designs actually cost, measured". The
+**geometries** are real — these are the block/gap/bar combinations this programme
+actually ran — but the **realised sizes** come from the same simulation as §3.1a and
+inherit the same assumed `ρ`/`c²`. Real inputs on one axis do not make the output a
+measurement.
+
+Read the column as: *under a data-generating model with the assumed dependence, a design
+of this geometry rejects at this rate.* That is enough to compare geometries against one
+another, which is what the table is for. It is not a measurement of what those studies'
+false-positive rates were on the real series `[VERIFIED — same run, --executed]`:
 
 | study | `h` | `L` | gap | crossing | blocks | bar used | **realised size** |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -226,8 +268,28 @@ quantifies what refusing `C` costs. My recommendation below is unchanged.
   question with its own justification for why 20 days is interesting on its own terms —
   **not** as a rescue of the 120-day result.
 
-**My recommendation: B, and if B returns "cannot tell", say so and stop.** Then C becomes
-available later as a genuinely separate question rather than a consolation prize.
+**My recommendation: B — but NOT on the MDE ranking, which is withdrawn.** Review is
+explicit that the same correction applies before using the MDE comparison to prefer B
+over C: those MDEs are computed at bars that §3.1a leaves unestablished, so a ranking
+between them is not established either. `0.995 vs 0.447 σ_x` cannot decide anything
+today.
+
+What survives is the argument that never depended on the numbers: **B asks the question
+the U-shape actually posed** (120 days), and C asks a different one. §4 already refuses
+C as a *rescue* of the 120-day result on horizon-search grounds, and that refusal stands
+whatever the relative power turns out to be. So the recommendation rests on **which
+question is legitimate**, not on which is more powerful — and if the eventual
+dependence-valid calibration reverses the power ordering, the recommendation does not
+move.
+
+If B returns "cannot tell", say so and stop. Then C becomes available later as a
+genuinely separate question rather than a consolation prize.
+
+**Nothing here is runnable yet.** Before any option is executed the design owes a
+**dependence-preserving, preregistered null calibration on the real pre-2021 series** —
+not a simulation under an assumed `ρ`/`c²` — or an argued case that the block
+independence its Student bars require actually holds. Until then every bar in §3 is
+UNRESOLVED and no MDE may be cited as a power statement.
 
 But I am putting both on the table because **C is the option that could actually produce a
 usable model**, and I do not think I should quietly discard it because it is harder to
