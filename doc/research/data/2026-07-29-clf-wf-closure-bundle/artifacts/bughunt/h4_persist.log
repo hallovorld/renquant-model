@@ -1,0 +1,41 @@
+====================================================================================================
+H4 — SIGNAL-FREE, PERSISTENCE-MATCHED NULL (global ticker-identity permutation)
+====================================================================================================
+  corpus: 625 dates, 142 tickers, 400 permutation seeds
+  score NaN fraction in corpus matrix: 0.0000
+  dates surviving ALL lags: 484
+
+    lag   REAL full   REAL common
+      0     +0.0278       +0.0409
+     20     +0.0359       +0.0485
+     40     +0.0525       +0.0522
+     60     +0.0705       +0.0637
+     80     +0.0724       +0.0590
+    100     +0.0783       +0.0613
+    120     +0.0715       +0.0629
+    140     +0.0518       +0.0508
+    160     +0.0453       +0.0453
+  observed rise lag0->lag100: full=+0.0505  common=+0.0203
+    ...100/400 seeds
+    ...200/400 seeds
+    ...300/400 seeds
+    ...400/400 seeds
+
+  NULL profile (mean over seeds; must be ~0 at every lag) and its SD:
+    lag   null mean   null SD   REAL full  null mean(c)  null SD(c)   REAL com
+      0     -0.0010    0.0170     +0.0278       -0.0013      0.0179    +0.0409
+     20     -0.0006    0.0168     +0.0359       -0.0012      0.0179    +0.0485
+     40     -0.0000    0.0166     +0.0525       -0.0005      0.0173    +0.0522
+     60     +0.0002    0.0169     +0.0705       +0.0001      0.0174    +0.0637
+     80     +0.0002    0.0180     +0.0724       +0.0002      0.0179    +0.0590
+    100     +0.0000    0.0186     +0.0783       -0.0002      0.0187    +0.0613
+    120     -0.0005    0.0182     +0.0715       -0.0006      0.0181    +0.0629
+    140     -0.0015    0.0179     +0.0518       -0.0015      0.0180    +0.0508
+    160     -0.0014    0.0182     +0.0453       -0.0014      0.0182    +0.0453
+
+  DISTRIBUTION OF THE RISE (lag100 - lag0) UNDER THE SIGNAL-FREE PERSISTENT NULL
+    full-sample : null mean=+0.0010 SD=0.0149   observed=+0.0505  ->  P(null >= observed) = 0.0000
+    COMMON set  : null mean=+0.0012 SD=0.0174   observed=+0.0203  ->  P(null >= observed) = 0.1450
+    max_lag - lag0, full : null mean=+0.0121 SD=0.0099  observed=+0.0505  P(null>=obs)=0.0000
+    max_lag - lag0, com  : null mean=+0.0137 SD=0.0116  observed=+0.0228  P(null>=obs)=0.2300
+    fraction of signal-free seeds with IC(lag100) > IC(lag0), full = 0.565

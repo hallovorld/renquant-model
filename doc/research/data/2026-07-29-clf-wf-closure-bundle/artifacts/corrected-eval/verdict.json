@@ -1,0 +1,16 @@
+{
+  "q1": {
+    "prod_XGB": "FRESH-INFORMATIVE",
+    "certified_clf": "FRESH-INFORMATIVE",
+    "PatchTST": "PERSISTENCE-DRIVEN"
+  },
+  "q2": "PROFILE-WITHDRAWN",
+  "q3": {
+    "prod_XGB": "INCONCLUSIVE",
+    "certified_clf": "INCONCLUSIVE",
+    "PatchTST": "INCONCLUSIVE"
+  },
+  "q3_overall": "INCONCLUSIVE",
+  "control": "FRESH-INFORMATIVE",
+  "control_ok": true
+}

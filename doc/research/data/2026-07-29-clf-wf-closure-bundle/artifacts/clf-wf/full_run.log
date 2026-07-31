@@ -1,0 +1,57 @@
+[panel] labeled=(725115, 178) raw=(725115, 178) feats=172 dates 2016-01-04..2026-04-28
+[fold 00] cut=2023-10-02 etc=2023-07-07 oos=2023-10-03..2023-10-23 n_dates=15 n_rows=4380 train=526,515 4.1s (elapsed 5s)
+[fold 01] cut=2023-10-23 etc=2023-07-28 oos=2023-10-24..2023-11-13 n_dates=15 n_rows=4380 train=530,895 4.0s (elapsed 9s)
+[fold 02] cut=2023-11-13 etc=2023-08-18 oos=2023-11-14..2023-12-04 n_dates=14 n_rows=4088 train=535,275 4.1s (elapsed 13s)
+[fold 03] cut=2023-12-04 etc=2023-09-08 oos=2023-12-05..2023-12-22 n_dates=14 n_rows=4088 train=539,363 4.1s (elapsed 17s)
+[fold 04] cut=2023-12-25 etc=2023-09-29 oos=2023-12-26..2024-01-12 n_dates=13 n_rows=3796 train=543,743 4.3s (elapsed 22s)
+[fold 05] cut=2024-01-15 etc=2023-10-20 oos=2024-01-16..2024-02-05 n_dates=15 n_rows=4380 train=548,123 4.4s (elapsed 26s)
+[fold 06] cut=2024-02-05 etc=2023-11-10 oos=2024-02-06..2024-02-26 n_dates=14 n_rows=4088 train=552,503 4.4s (elapsed 31s)
+[fold 07] cut=2024-02-26 etc=2023-12-01 oos=2024-02-27..2024-03-18 n_dates=15 n_rows=4380 train=556,591 4.4s (elapsed 35s)
+[fold 08] cut=2024-03-18 etc=2023-12-22 oos=2024-03-19..2024-04-08 n_dates=14 n_rows=4088 train=560,971 4.5s (elapsed 39s)
+[fold 09] cut=2024-04-08 etc=2024-01-12 oos=2024-04-09..2024-04-29 n_dates=15 n_rows=4380 train=564,767 4.5s (elapsed 44s)
+[fold 10] cut=2024-04-29 etc=2024-02-02 oos=2024-04-30..2024-05-20 n_dates=15 n_rows=4380 train=568,855 4.8s (elapsed 49s)
+[fold 11] cut=2024-05-20 etc=2024-02-23 oos=2024-05-21..2024-06-10 n_dates=14 n_rows=4088 train=572,943 4.6s (elapsed 53s)
+[fold 12] cut=2024-06-10 etc=2024-03-15 oos=2024-06-11..2024-07-01 n_dates=14 n_rows=4088 train=577,323 4.6s (elapsed 58s)
+[fold 13] cut=2024-07-01 etc=2024-04-05 oos=2024-07-02..2024-07-22 n_dates=14 n_rows=4088 train=581,411 4.6s (elapsed 63s)
+[fold 14] cut=2024-07-22 etc=2024-04-26 oos=2024-07-23..2024-08-12 n_dates=15 n_rows=4380 train=585,791 4.6s (elapsed 67s)
+[fold 15] cut=2024-08-12 etc=2024-05-17 oos=2024-08-13..2024-08-30 n_dates=14 n_rows=4088 train=590,171 4.6s (elapsed 72s)
+[fold 16] cut=2024-09-02 etc=2024-06-07 oos=2024-09-03..2024-09-23 n_dates=15 n_rows=4380 train=594,259 4.7s (elapsed 76s)
+[fold 17] cut=2024-09-23 etc=2024-06-28 oos=2024-09-24..2024-10-14 n_dates=15 n_rows=4380 train=598,347 4.7s (elapsed 81s)
+[fold 18] cut=2024-10-14 etc=2024-07-19 oos=2024-10-15..2024-11-04 n_dates=15 n_rows=4380 train=602,435 4.9s (elapsed 86s)
+[fold 19] cut=2024-11-04 etc=2024-08-09 oos=2024-11-05..2024-11-25 n_dates=15 n_rows=4380 train=606,815 4.9s (elapsed 91s)
+[fold 20] cut=2024-11-25 etc=2024-08-30 oos=2024-11-26..2024-12-16 n_dates=14 n_rows=4088 train=611,195 5.0s (elapsed 96s)
+[fold 21] cut=2024-12-16 etc=2024-09-20 oos=2024-12-17..2025-01-06 n_dates=13 n_rows=3796 train=615,283 5.0s (elapsed 101s)
+[fold 22] cut=2025-01-06 etc=2024-10-11 oos=2025-01-07..2025-01-27 n_dates=13 n_rows=3796 train=619,663 5.3s (elapsed 106s)
+[fold 23] cut=2025-01-27 etc=2024-11-01 oos=2025-01-28..2025-02-14 n_dates=14 n_rows=4088 train=624,043 5.3s (elapsed 112s)
+[fold 24] cut=2025-02-17 etc=2024-11-22 oos=2025-02-18..2025-03-10 n_dates=15 n_rows=4380 train=628,423 5.2s (elapsed 117s)
+[fold 25] cut=2025-03-10 etc=2024-12-13 oos=2025-03-11..2025-03-31 n_dates=15 n_rows=4380 train=632,511 5.2s (elapsed 122s)
+[fold 26] cut=2025-03-31 etc=2025-01-03 oos=2025-04-01..2025-04-21 n_dates=14 n_rows=4088 train=636,307 5.2s (elapsed 127s)
+[fold 27] cut=2025-04-21 etc=2025-01-24 oos=2025-04-22..2025-05-12 n_dates=15 n_rows=4380 train=640,103 5.2s (elapsed 132s)
+[fold 28] cut=2025-05-12 etc=2025-02-14 oos=2025-05-13..2025-06-02 n_dates=14 n_rows=4088 train=644,483 5.4s (elapsed 138s)
+[fold 29] cut=2025-06-02 etc=2025-03-07 oos=2025-06-03..2025-06-23 n_dates=14 n_rows=4088 train=648,571 5.4s (elapsed 143s)
+[fold 30] cut=2025-06-23 etc=2025-03-28 oos=2025-06-24..2025-07-14 n_dates=14 n_rows=4088 train=652,951 5.2s (elapsed 148s)
+[fold 31] cut=2025-07-14 etc=2025-04-17 oos=2025-07-15..2025-08-04 n_dates=15 n_rows=4380 train=657,039 5.3s (elapsed 154s)
+[fold 32] cut=2025-08-04 etc=2025-05-09 oos=2025-08-05..2025-08-25 n_dates=15 n_rows=4380 train=661,419 5.3s (elapsed 159s)
+[fold 33] cut=2025-08-25 etc=2025-05-30 oos=2025-08-26..2025-09-15 n_dates=14 n_rows=4088 train=665,507 5.4s (elapsed 164s)
+[fold 34] cut=2025-09-15 etc=2025-06-20 oos=2025-09-16..2025-10-06 n_dates=15 n_rows=4380 train=669,595 5.4s (elapsed 170s)
+[fold 35] cut=2025-10-06 etc=2025-07-11 oos=2025-10-07..2025-10-27 n_dates=15 n_rows=4380 train=673,683 5.5s (elapsed 175s)
+[fold 36] cut=2025-10-27 etc=2025-08-01 oos=2025-10-28..2025-11-17 n_dates=15 n_rows=4380 train=678,063 5.5s (elapsed 181s)
+[fold 37] cut=2025-11-17 etc=2025-08-22 oos=2025-11-18..2025-12-08 n_dates=14 n_rows=4088 train=682,443 5.5s (elapsed 186s)
+[fold 38] cut=2025-12-08 etc=2025-09-12 oos=2025-12-09..2025-12-29 n_dates=14 n_rows=4088 train=686,531 5.5s (elapsed 192s)
+[fold 39] cut=2025-12-29 etc=2025-10-03 oos=2025-12-30..2026-01-16 n_dates=13 n_rows=3796 train=690,911 5.6s (elapsed 197s)
+[fold 40] cut=2026-01-19 etc=2025-10-24 oos=2026-01-20..2026-02-09 n_dates=15 n_rows=4380 train=695,291 5.9s (elapsed 203s)
+[fold 41] cut=2026-02-09 etc=2025-11-14 oos=2026-02-10..2026-03-02 n_dates=14 n_rows=2698 train=699,671 6.5s (elapsed 210s)
+[fold 42] cut=2026-03-02 etc=2025-12-05 oos=2026-03-03..2026-03-31 n_dates=21 n_rows=3213 train=703,759 7.4s (elapsed 217s)
+{
+  "counts": {
+    "n_folds": 43,
+    "n_rows": 178191,
+    "n_dates": 625,
+    "n_tickers": 292,
+    "date_min": "2023-10-03",
+    "date_max": "2026-03-31",
+    "n_rows_with_label": 178191
+  },
+  "wall_seconds": 217.7
+}
+[OK] disjoint windows; wrote /private/tmp/claude-502/-Users-renhao-git-github-renquant-orchestrator/428feb92-8ee7-4b4f-afed-1e4fa82ef367/scratchpad/clf-wf/clf_wf_scores.parquet

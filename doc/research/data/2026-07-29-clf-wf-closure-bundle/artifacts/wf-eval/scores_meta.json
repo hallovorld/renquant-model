@@ -1,0 +1,9 @@
+{
+  "n_folds": 43,
+  "n_rows": 88750,
+  "n_dates": 625,
+  "wall_seconds": 467.3,
+  "corpus": "/private/tmp/claude-502/-Users-renhao-git-github-renquant-orchestrator/428feb92-8ee7-4b4f-afed-1e4fa82ef367/scratchpad/modal-probe/repo-root/backtesting/renquant_104/artifacts/walkforward_patchtst_runs/wf-pt-b4e47e2c-batch1",
+  "panel": "/Users/renhao/git/github/RenQuant/data/transformer_v4_wl200_clean.parquet",
+  "last_fold_trading_days": 21
+}

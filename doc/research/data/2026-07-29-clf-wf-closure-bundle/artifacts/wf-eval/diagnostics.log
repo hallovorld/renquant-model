@@ -1,0 +1,27 @@
+=== (a) raw vs cal monotonicity ===
+per-date spearman(raw,cal): min=1.000000 mean=1.000000  dates=625  n_dates_lt_1=0
+cal spread per date: mean n_unique=142.0, mean std=0.0241
+
+=== (b) label scale ===
+fwd_60d_excess: mean=0.0433 std=1.0185 p1=-2.217 p50=-0.045 p99=3.336
+per-date std (cross-sectional) mean=1.0051
+
+=== (c) shift-arm fold coverage ===
+folds with any shift label: 37 of 43; partial folds: [(36, np.int64(5), 15)]
+first uncovered fold idx: 37
+
+=== (d) DESCRIPTIVE: IC vs label lag (why the shift placebo is not a null) ===
+  lag=  0 td: IC=+0.0278 t_fold=+1.22 (n_folds=43, n_dates=625)
+  lag= 20 td: IC=+0.0359 t_fold=+1.50 (n_folds=43, n_dates=624)
+  lag= 40 td: IC=+0.0525 t_fold=+2.11 (n_folds=42, n_dates=604)
+  lag= 60 td: IC=+0.0705 t_fold=+2.66 (n_folds=41, n_dates=584)
+  lag= 80 td: IC=+0.0724 t_fold=+2.91 (n_folds=40, n_dates=564)
+  lag=100 td: IC=+0.0784 t_fold=+3.21 (n_folds=38, n_dates=544)
+  lag=120 td: IC=+0.0715 t_fold=+2.90 (n_folds=37, n_dates=524)
+  lag=160 td: IC=+0.0453 t_fold=+2.05 (n_folds=34, n_dates=484)
+
+=== (e) score persistence (autocorr of cross-sectional score ranks) ===
+  rank autocorr lag= 1: 0.590
+  rank autocorr lag= 5: 0.517
+  rank autocorr lag=20: 0.377
+  rank autocorr lag=60: 0.304

@@ -1,0 +1,18 @@
+corrected-eval start  smoke=True  perm_seeds=3
+142-name intersection check: |inter|=142  |panel|=142  identical=True
+== harness self-test (control, not a decision statistic) ==
+  [selftest_oracle_plus_noise] common sample: 540 score dates evaluable at all 8 lags (0, 20, 40, 60, 80, 100, 120, 160); dropped per lag {0: 160, 20: 140, 40: 120, 60: 100, 80: 80, 100: 60, 120: 40, 160: 0} (worst 160)
+  SELF-TEST oracle_plus_noise: {'ic_real_t': 57.88845851086322, 'ic_d_vs_perm_t': 65.59712382108007, 'ic_d_vs_persist_t': 17.40280934340912, 'ic_real_mean': 0.3982350977815058}
+  [selftest_pure_noise] common sample: 540 score dates evaluable at all 8 lags (0, 20, 40, 60, 80, 100, 120, 160); dropped per lag {0: 160, 20: 140, 40: 120, 60: 100, 80: 80, 100: 60, 120: 40, 160: 0} (worst 160)
+  SELF-TEST pure_noise: {'ic_real_t': 0.1309541154122941, 'ic_d_vs_perm_t': 0.18646844567456297, 'ic_d_vs_persist_t': -0.11808034970567041, 'ic_real_mean': 0.00040604730854546976}
+== comparative: 142-name intersection, panel labels ==
+-- prod_XGB
+  [prod_XGB] common sample: 400 score dates evaluable at all 8 lags (0, 20, 40, 60, 80, 100, 120, 160); dropped per lag {0: 108, 20: 108, 40: 108, 60: 100, 80: 80, 100: 60, 120: 40, 160: 0} (worst 108)
+-- certified_clf
+  [certified_clf] common sample: 484 score dates evaluable at all 8 lags (0, 20, 40, 60, 80, 100, 120, 160); dropped per lag {0: 141, 20: 140, 40: 120, 60: 100, 80: 80, 100: 60, 120: 40, 160: 0} (worst 141)
+-- PatchTST
+  [PatchTST] common sample: 484 score dates evaluable at all 8 lags (0, 20, 40, 60, 80, 100, 120, 160); dropped per lag {0: 141, 20: 140, 40: 120, 60: 100, 80: 80, 100: 60, 120: 40, 160: 0} (worst 141)
+== descriptive: own universe, subject's own carried label ==
+  [prod_XGB] common sample: 348 score dates evaluable at all 8 lags (0, 20, 40, 60, 80, 100, 120, 160); dropped per lag {0: 160, 20: 140, 40: 120, 60: 100, 80: 80, 100: 60, 120: 40, 160: 0} (worst 160)
+  [certified_clf] common sample: 465 score dates evaluable at all 8 lags (0, 20, 40, 60, 80, 100, 120, 160); dropped per lag {0: 160, 20: 140, 40: 120, 60: 100, 80: 80, 100: 60, 120: 40, 160: 0} (worst 160)
+wrote /private/tmp/claude-502/-Users-renhao-git-github-renquant-orchestrator/428feb92-8ee7-4b4f-afed-1e4fa82ef367/scratchpad/corrected-eval/results_smoke.json  wall=7.3s

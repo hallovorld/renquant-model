@@ -1,0 +1,20 @@
+(a) score rank-autocorrelation across names, score(t) vs score(t-60)  [how persistent is each score]
+  prod_XGB        lag-1 rank-autocorr=+0.9712   lag-60 rank-autocorr=+0.6980   (n dates 448)
+  certified_clf   lag-1 rank-autocorr=+0.9645   lag-60 rank-autocorr=+0.7899   (n dates 565)
+  PatchTST        lag-1 rank-autocorr=+0.5979   lag-60 rank-autocorr=+0.3036   (n dates 565)
+
+(b) per-block means of d = IC_real - IC_persist  (block=60 dates; is one block driving it?)
+  prod_XGB        t=+1.155  blocks=[np.float64(-0.0492), np.float64(0.0309), np.float64(0.0109), np.float64(0.0824), np.float64(0.1471), np.float64(0.0124), np.float64(0.0293), np.float64(-0.0506)]
+                  leave-one-block-out t range=[+0.533,+1.612]  sign-stable=True
+  certified_clf   t=+1.667  blocks=[np.float64(-0.0105), np.float64(-0.0087), np.float64(0.0578), np.float64(0.0107), np.float64(0.0276), np.float64(0.0754), np.float64(0.0333), np.float64(-0.0047), np.float64(-0.0206), np.float64(0.0056)]
+                  leave-one-block-out t range=[+1.198,+2.047]  sign-stable=True
+  PatchTST        t=-2.314  blocks=[np.float64(-0.0557), np.float64(0.0546), np.float64(-0.0774), np.float64(-0.0455), np.float64(-0.1106), np.float64(-0.1682), np.float64(0.0057), np.float64(0.0236), np.float64(-0.0172), np.float64(-0.1651)]
+                  leave-one-block-out t range=[-2.936,-1.875]  sign-stable=True
+
+(b-REDONE, on the COMPARATIVE 142-name arms) per-block d = IC_real - IC_persist
+  prod_XGB        t=+1.229 n_eff=8 blocks=[-0.052, 0.0172, 0.0271, 0.0643, 0.1337, 0.0264, 0.0829, -0.0678]
+                  leave-one-block-out t in [+0.666,+1.939] sign-stable=True
+  certified_clf   t=+1.312 n_eff=10 blocks=[-0.0128, 0.0124, -0.0116, 0.007, 0.0345, 0.0548, 0.0192, 0.0183, -0.0084, -0.0171]
+                  leave-one-block-out t in [+0.770,+1.681] sign-stable=True
+  PatchTST        t=-2.314 n_eff=10 blocks=[-0.0557, 0.0546, -0.0774, -0.0455, -0.1106, -0.1682, 0.0057, 0.0236, -0.0172, -0.1651]
+                  leave-one-block-out t in [-2.936,-1.875] sign-stable=True

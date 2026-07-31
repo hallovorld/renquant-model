@@ -1,0 +1,36 @@
+======================================================================================================================
+H6 — CLOSE-VERDICT DECISION STATISTIC: closure arms vs FIXED-SCORE-DATE arms
+======================================================================================================================
+  'as closure' = paired on the common LABEL date (what closure.py/verdict.py did).
+  'common-SD'  = both arms recomputed on the SAME SCORE-date set (confound removed).
+  diff = REAL - PERSIST. CLOSE verdict required diff<0 with t_block<=-1.0 at >=3 lags.
+
+  --- PatchTST ---
+     L  REALarm(as closure)  PERSarm(as closure)      diff   t_blk |   REAL common-SD  PERS common-SD  diff_fixed   t_blk
+    20             +0.02680             +0.03791  -0.01291   -1.18 |         +0.03095        +0.03713    -0.00206   -0.07
+    40             +0.01914             +0.04917  -0.03484   -1.72 |         +0.02918        +0.05022    -0.00643   -0.11
+    60             +0.01645             +0.06523  -0.05557   -2.31 |         +0.02533        +0.06738    -0.04873   -0.65
+    80             +0.01831             +0.07001  -0.05665   -2.41 |         +0.02614        +0.07164    -0.06132   -0.83
+  score-date windows used by the two closure arms:
+    L= 20: REAL arm score dates = corpus[20:625] (2023-10-31..2026-03-31);  PERSIST arm score dates = corpus[0:605] (2023-10-03..2026-03-03)
+    L= 40: REAL arm score dates = corpus[40:625] (2023-11-29..2026-03-31);  PERSIST arm score dates = corpus[0:585] (2023-10-03..2026-02-02)
+    L= 60: REAL arm score dates = corpus[60:625] (2023-12-28..2026-03-31);  PERSIST arm score dates = corpus[0:565] (2023-10-03..2026-01-02)
+    L= 80: REAL arm score dates = corpus[80:625] (2024-01-29..2026-03-31);  PERSIST arm score dates = corpus[0:545] (2023-10-03..2025-12-03)
+
+  --- prodXGB ---
+     L  REALarm(as closure)  PERSarm(as closure)      diff   t_blk |   REAL common-SD  PERS common-SD  diff_fixed   t_blk
+    20             +0.08436             +0.07062  +0.00951   +0.87 |         +0.07312        +0.07905    -0.02069   -0.47
+    40             +0.09095             +0.06232  +0.01461   +0.70 |         +0.07312        +0.08248    -0.02751   -0.45
+    60             +0.09072             +0.05482  +0.02899   +1.23 |         +0.07114        +0.07815    -0.02546   -0.32
+    80             +0.10012             +0.04915  +0.04227   +1.91 |         +0.07721        +0.07575    +0.00147   +0.01
+  score-date windows used by the two closure arms:
+    L= 20: REAL arm score dates = corpus[20:508] (2024-03-04..2026-02-11);  PERSIST arm score dates = corpus[0:488] (2024-02-02..2026-01-13)
+    L= 40: REAL arm score dates = corpus[40:508] (2024-04-02..2026-02-11);  PERSIST arm score dates = corpus[0:468] (2024-02-02..2025-12-12)
+    L= 60: REAL arm score dates = corpus[60:508] (2024-04-30..2026-02-11);  PERSIST arm score dates = corpus[0:448] (2024-02-02..2025-11-13)
+    L= 80: REAL arm score dates = corpus[80:508] (2024-05-29..2026-02-11);  PERSIST arm score dates = corpus[0:428] (2024-02-02..2025-10-16)
+
+======================================================================================================================
+RE-APPLYING THE FROZEN §3 RULE TO THE CONFOUND-REMOVED STATISTIC
+======================================================================================================================
+  PatchTST p (diff<0 AND t_block<=-1.0):  as-closure = 4/4   FIXED-score-date = 0/4      (CLOSE needs p>=3)
+  prodXGB control positive lags:          as-closure = 4/4   FIXED-score-date = 1/4      (validity needs >=3)
