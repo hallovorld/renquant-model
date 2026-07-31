@@ -316,12 +316,85 @@ class DependenceAwareResult:
 
     @property
     def resolves(self) -> bool:
-        """True only if every view agrees the effect excludes zero."""
+        """True only if every view agrees the effect excludes zero.
+
+        **THIS IS A SIGN-AGREEMENT CRITERION, NOT A SIGNIFICANCE TEST.** The
+        block-t leg contributes only its SIGN here — its magnitude is never
+        compared against a critical value. So `resolves` can be True while
+        `|block_t|` sits below the bar its own block count implies.
+
+        That is not hypothetical: the 2026-07-30 GOAL-7 total-return bundle
+        reports `resolves: True` on a paired contrast with `block_t = 1.682`
+        over 10 blocks, where the correct Student floor is `t(9) = 2.262`.
+        Read beside the field name alone, that number reads as significant and
+        is not. Use :attr:`exceeds_student_reference` when the question is whether the
+        magnitude clears a bar; use this when the question is whether three
+        independent views of the uncertainty agree on a direction.
+        """
         if self.block_t is None:
             return False
         same_sign = (self.ci_low > 0 and self.lobo_low > 0 and self.block_t > 0) or \
                     (self.ci_high < 0 and self.lobo_high < 0 and self.block_t < 0)
         return bool(same_sign)
+
+    @property
+    def student_bar(self) -> float | None:
+        """A REFERENCE threshold: `t(n_blocks - 1)` two-sided at 5%.
+
+        **NOT a calibrated significance floor, and this class cannot make it one.**
+        `t(n-1)` is the correct bar only if the block means are i.i.d. Normal. A
+        **gap >= label horizon between blocks** is *necessary* for that -- without it
+        adjacent blocks literally share label windows -- but it is **not sufficient**.
+        Removing direct label overlap does not remove common factor exposure,
+        volatility clustering, or serial correlation in the underlying series, and any
+        of those leaves the block means dependent with a gap of any size. This
+        dataclass carries `n_blocks` and `block_length` and **no gap field at all** --
+        it cannot even check the necessary condition, let alone the sufficient one, so
+        it must not present the comparison as inference. Codex on model#137 and #134:
+        block length is not an embargo, and adjacent blocks with `gap = 0` still share
+        labels.
+
+        What it IS good for: replacing the *normal* approximation. On single-digit
+        block counts 1.96 understates even the i.i.d. reference substantially --
+        t(7) = 2.365, t(9) = 2.262 -- and comparing a block-t against 1.96 is a
+        defect this programme has committed at seven separate sites. Fixing that is
+        worth doing; it does not make the result calibrated.
+
+        WHEN A CALLER MAY TREAT THIS AS INFERENTIAL. Not on `gap >= h` alone -- that
+        buys the necessary condition and nothing more. It requires, additionally, a
+        **separately justified or calibrated null** for the block statistic (a
+        dependence-preserving bootstrap of the caller's own per-date series is the
+        cheap route, and GOAL-4 shows it is available wherever that series was
+        persisted), together with whatever residual-dependence controls that null does
+        not already absorb. Absent both, this is a descriptive reference only, and the
+        honest report is the estimate with its geometry, not a verdict.
+        """
+        if self.n_blocks < 2:
+            return None
+        try:
+            from scipy import stats  # noqa: PLC0415 - optional at import time
+        except ImportError:
+            return None
+        return float(stats.t.ppf(0.975, self.n_blocks - 1))
+
+    @property
+    def exceeds_student_reference(self) -> bool | None:
+        """Does `|block_t|` exceed the i.i.d. REFERENCE threshold?
+
+        Renamed from `clears_student_bar` after codex on model#137: "clears the
+        bar" reads as a significance verdict, and under retained dependence it is
+        not one. See :attr:`student_bar` -- this class cannot know whether the
+        blocks were gap-separated, so this answers a descriptive question only.
+
+        `None` when it cannot be computed (too few blocks, or scipy absent) --
+        never `False`, because "unknown" and "does not exceed" are different
+        answers and collapsing them is the fail-open default this repo keeps
+        re-learning.
+        """
+        bar = self.student_bar
+        if bar is None or self.block_t is None:
+            return None
+        return bool(abs(self.block_t) > bar)
 
     def describe(self) -> str:
         t = "n/a" if self.block_t is None else f"{self.block_t:+.2f}"
@@ -331,6 +404,7 @@ class DependenceAwareResult:
             f"[{self.ci_low:+.4f}, {self.ci_high:+.4f}] | leave-one-block-out "
             f"[{self.lobo_low:+.4f}, {self.lobo_high:+.4f}] | "
             f"{'RESOLVES' if self.resolves else 'DOES NOT RESOLVE'}"
+            f"{'' if self.exceeds_student_reference is None else (' | above the iid reference t(' + str(self.n_blocks - 1) + ')=' + f'{self.student_bar:.3f}' + ' (NOT calibrated for retained dependence)' if self.exceeds_student_reference else ' | below the iid reference t(' + str(self.n_blocks - 1) + ')=' + f'{self.student_bar:.3f}')}"
         )
 
 
