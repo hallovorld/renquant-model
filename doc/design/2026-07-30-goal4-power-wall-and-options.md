@@ -433,6 +433,19 @@ well-calibrated.**
 
 ### §5.5 The MDE bound is WITHDRAWN — the same signed inequality, a third time
 
+> **And it was still in the TOOL.** I corrected this document three times and did not
+> check `tools/goal4_power_wall.py`, which kept emitting the withdrawn direction in its
+> `WITHDRAWN_note` — *"the true bar is HIGHER, which strengthens the non-detection and
+> worsens the detection floor"* — as machine-readable output a caller could act on.
+> Worse, `independent_blocks_established` was set from `crossing < 1.0`, deriving
+> **independence from geometry alone**, which is the exact error corrected in T18 and
+> in the GOAL-7 redesign on the same day. Both fixed: the flag is now unconditionally
+> `False` with an `independence_basis` string saying why, the note carries **NO
+> DIRECTION IS AVAILABLE**, and the self-check asserts the direction words cannot
+> return. A withdrawal that lives only in prose while the executable keeps publishing
+> the claim has withdrawn nothing.
+
+
 **This section asserted that "any dependence-valid bar is at least 2.3646" and derived
 an MDE lower bound from it. Withdrawn.** Review round 3: *"an uncalibrated or
 nonconvergent null does not imply that every dependence-valid critical value is at

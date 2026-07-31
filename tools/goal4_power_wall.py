@@ -73,17 +73,30 @@ def build(probe: dict) -> dict:
     return {
         "label_h": LABEL_H, "block_L": BLOCK_L,
         "crossing_fraction": crossing,
-        "independent_blocks_established": crossing < 1.0,
+        # NEVER derived from geometry. `crossing < 1` says label windows do not fully
+        # overlap; it says nothing about predictor persistence, regimes, or any
+        # dependence outliving the label horizon. The previous version set this flag
+        # from `crossing < 1.0`, i.e. it inferred independence from the one channel it
+        # happened to measure -- the same error the design's own §0a corrects.
+        # Establishing independence needs a dependence-preserving calibration on the
+        # real series, which this tool does not perform, so it is unconditionally
+        # False and the reason travels with it.
+        "independent_blocks_established": False,
+        "independence_basis": (
+            "NOT ESTABLISHED. crossing_fraction measures label-window overlap only; "
+            "block independence additionally requires that predictor persistence, "
+            "regimes and longer-horizon dependence do not correlate blocks, none of "
+            "which this tool measures."
+        ),
         "WITHDRAWN_note": (
             "block_se, minimum_detectable_gain and every row of `rows` assume "
-            "independent blocks and are WITHDRAWN at crossing 1.00 (design §0). "
-            "The permutation P95_null is ALSO not established (design §0a): a "
-            "within-date permutation destroys the score's across-date "
-            "autocorrelation, so its null variance is understated and the bar it "
-            "yields is too LOW. Direction is knowable, size is not: the true bar is "
-            "HIGHER, which strengthens the non-detection and worsens the detection "
-            "floor. Cite neither number."
-        ) if crossing >= 1.0 else None,
+            "independent blocks and are WITHDRAWN (design §0). The permutation "
+            "P95_null is ALSO not established (design §0a). NO DIRECTION IS "
+            "AVAILABLE: an un-established null has no known relation to a valid one, "
+            "so this note may not say the true bar is higher or lower, and no "
+            "detection floor, MDE bound or ratio may be derived from it. Cite none "
+            "of these numbers."
+        ),
         # Emitted so no caller can read a detection floor off this tool while the
         # null is unresolved. The first version of the design did exactly that.
         "null_calibration_established": False,
@@ -108,7 +121,13 @@ def main(argv=None) -> int:
         # The crossing fraction must be REPORTED whatever its value; a tool that
         # silently omits it is how the withdrawn table shipped in the first place.
         assert "crossing_fraction" in out
-        assert (out["WITHDRAWN_note"] is None) == out["independent_blocks_established"]
+        # Both are now unconditional, and BOTH are asserted so a future edit that
+        # re-derives either from geometry fails here rather than in a caller.
+        assert out["independent_blocks_established"] is False
+        assert out["WITHDRAWN_note"], "the withdrawal must be emitted unconditionally"
+        assert "HIGHER" not in out["WITHDRAWN_note"], (
+            "the tool re-published a signed direction the design withdrew")
+        assert "NO DIRECTION IS AVAILABLE" in out["WITHDRAWN_note"]
         rows = out["rows"]
         # Sorted by DECREASING gain, so blocks must be strictly increasing. This is
         # the exact invariant the discarded solver violated.
