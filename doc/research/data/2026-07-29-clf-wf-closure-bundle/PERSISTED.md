@@ -6,7 +6,7 @@
 > the artifacts live in a session scratchpad that is garbage-collected and the
 > definition is the part that makes them verifiable at all."*
 
-**Measured 2026-08-01**: the 61 files were still alive, in **this session's** scratchpad
+**Measured 2026-07-31**: the 61 files were still alive, in **this session's** scratchpad
 (`…/428feb92-…/scratchpad/`). One session boundary from being unrecoverable, while **ten
 committed documents cite the bundle**.
 
