@@ -31,7 +31,7 @@ adversarial review to fill the section.
 | T10 | confusing "the score is stale" with "the signal is long-horizon" | |
 | T11 | cross-lag statistics on a drifting sample (`Y.shift(-lag)` nulls the NEWEST rows) | |
 | T12 | paired arms drawn from different score windows (era term measured at 19–28%) | |
-| T18 | **contiguous blocks under an overlapping label** — blocking is treated as discharging T2, but the crossing fraction is `min(1, h/L)` and equals **1.00 whenever `L ≤ h`**; a 60-day block under a 120-day label voided a whole study on 2026-07-30. **Disclosing the residual is not a remedy** — §4a requires gaps, non-overlapping labels, or a preregistered dependence-valid estimator | |
+| T18 | **contiguous blocks under an overlapping label** — blocking is treated as discharging T2, but the crossing fraction is `min(1, h/L)` and equals **1.00 whenever `L ≤ h`**; a 60-day block under a 120-day label voided a whole study on 2026-07-30. **Disclosing the residual is not a remedy**, and **a gap is not independence** — it removes label-window overlap only; §4a requires that plus an inference method whose validity covers what survives | |
 | **T13** | **the estimand named only after seeing which one gives the preferred answer — HARKing.** Cost a retracted CLOSE. | |
 | **T14** | **a control that cannot fail.** A bare sign-count control passed 37.5% of the time on signal-free input; zero-skill AR scores 50–55%. | |
 | **T15** | **a digest cited against a bundle that was later appended to.** Cited `f6b6ef6d…`/44 files; the bundle was `901f0add…`/61. | |
@@ -117,10 +117,10 @@ the residual dependence is **necessary and not sufficient**.
 **Register one of these, explicitly:**
 
 1. a **gap of at least `h` between retained blocks**, so no label window reaches the next
-   retained block — the only construction that removes the dependence rather than
-   shrinking it; or
-2. **non-overlapping labels** (sample dates at least `h` apart), which removes it at
-   source; or
+   retained block — this removes **label-window overlap**, which is the mechanism this
+   row is about; or
+2. **non-overlapping labels** (sample dates at least `h` apart), which removes
+   label-window overlap at source; or
 3. `L ≫ h` **together with both**: (a) a **preregistered justification** for why the
    residual dependence at that `h/L` is tolerable for this estimand, and (b) a **named
    inference method whose stated validity conditions cover that dependence** — e.g. a
@@ -129,8 +129,29 @@ the residual dependence is **necessary and not sufficient**.
    condition. A null that permutes the dependence away does not qualify: it calibrates a
    different estimator than the one it certifies.
 
-Options 1 and 2 are preferred because their validity is structural. Option 3 is a
-promise about an estimator, and promises get checked.
+> ⚠️ **None of these establishes independence, and an earlier version of this row said
+> option 1 did.** It called a gap *"the only construction that removes the dependence
+> rather than shrinking it"*. That is wrong in the same way as the `L = h` mistake above:
+> a gap of `h` removes **label-window overlap** — the specific channel by which adjacent
+> blocks share a label — and nothing else. **Predictor persistence, market regimes, and
+> any dependence that outlives the label horizon survive it untouched.** Momentum is
+> persistent; regimes span quarters. Removing one known channel is not removing
+> dependence.
+>
+> So options 1 and 2 close the channel this row catalogues; they do **not** license a
+> plain Student-`t` bar on the surviving blocks. That still needs option 3's second
+> clause — an inference method whose validity conditions cover whatever dependence
+> remains, or an argued case that the blocks really are independent.
+>
+> **A simulation showing correct size under an assumed dependence model does not
+> discharge this.** It shows the arithmetic is self-consistent under the model it was
+> given; a data-generating process cannot exhibit a channel it was not handed. Only a
+> dependence-preserving calibration **on the real series** — or an argued independence
+> case — establishes the bar. Caught on renquant-model#128, 2026-07-31, where exactly
+> that simulation was reported as "the first measured confirmation".
+
+Options 1 and 2 are preferred because they remove a channel *structurally* rather than
+modelling it. Option 3 is a promise about an estimator, and promises get checked.
 
 Whichever is chosen, **state `L`, `h`, the crossing fraction and the maximum blocks
 touched in the frozen text**, so a reader can check the relation without re-deriving it —

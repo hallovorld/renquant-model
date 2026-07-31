@@ -34,7 +34,7 @@ Accepting the VOID, I wrote that *"a dependence-valid block must satisfy `L ≥ 
 **Wrong.** At `L = h` the crossing fraction is still **1.00** — every date crosses; the
 span merely drops from two adjacent blocks to one. I framed a reduction as a fix, one
 round after accepting a defect of exactly that shape. §4a therefore requires **either** a
-gap of `h` between retained blocks (removes the dependence) **or** `L ≫ h` with the
+gap of `h` between retained blocks (removes label-window overlap) **or** `L ≫ h` with the
 residual `h/L` written down as a number.
 
 ## §3 Scope — five designs, and why this is a template row
@@ -67,7 +67,7 @@ better documentation. Stating the residual dependence is **necessary and not suf
 
 Three registrable options now, replacing two:
 
-1. a **gap ≥ `h`** between retained blocks — removes the dependence structurally;
+1. a **gap ≥ `h`** between retained blocks — removes label-window overlap structurally;
 2. **non-overlapping labels** — removes it at source;
 3. `L ≫ h` **only together with** (a) a preregistered justification for why the residual
    is tolerable *for this estimand*, and (b) a **named inference method whose stated
@@ -76,7 +76,7 @@ Three registrable options now, replacing two:
    since it calibrates a different estimator than the one it certifies — which is what
    the failed study did.
 
-Options 1–2 are preferred because their validity is structural; option 3 is a promise
+Options 1–2 are preferred because they close a channel structurally; option 3 is a promise
 about an estimator, and promises get checked.
 
 **Second finding, also accepted:** `ceil(h/L)` is a **maximum span, not a count every
@@ -94,3 +94,33 @@ which is how this line got here.
 Also now required in the frozen text: the resulting **inferential unit and its degrees of
 freedom**, since under all three options that number is generally *not* `n_blocks − 1` —
 the specific thing the voided study got wrong.
+
+## Round 3 — none of the three options establishes independence, and option 1 said it did
+
+Found while correcting renquant-model#128, which made the same error in a design: the
+row called a gap *"the only construction that removes the dependence rather than
+shrinking it"*. It does not. A gap of `h` removes **label-window overlap** — the
+specific channel by which adjacent blocks share a label — and leaves **predictor
+persistence, market regimes, and any dependence outliving the label horizon** untouched.
+Momentum is persistent; regimes span quarters. **Removing one known channel is not
+removing dependence.**
+
+This is the same shape as the `L = h` mistake the row already catalogues, one level up:
+I fixed "a reduction is not a solution" for the crossing fraction and then wrote "a gap
+is a solution" for dependence in the next paragraph.
+
+Corrected in the template with a banner: options 1 and 2 close the channel this row is
+about; **they do not license a plain Student-`t` bar** on the surviving blocks. That
+still needs option 3's second clause — an inference method whose validity conditions
+cover the remaining dependence, or an argued independence case.
+
+Also registered, because it is the trap #128 fell into: **a simulation showing correct
+size under an assumed dependence model does not discharge this.** A data-generating
+process cannot exhibit a channel it was not handed, so such a run shows the arithmetic
+is self-consistent under its own model and nothing about the real series. Only a
+dependence-preserving calibration on the real data, or an argued independence case,
+establishes a bar.
+
+The template had **not yet reached `main`** `[VERIFIED — `git show origin/main:…` finds
+no such text, this session]`, so the wrong wording never became the guidance other
+studies read.
