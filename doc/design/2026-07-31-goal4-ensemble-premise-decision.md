@@ -94,10 +94,31 @@ a preregistered, dependence-aware bar **individually**, on a gap-honest geometry
 > * **What the freeze may NOT do until a validated procedure exists:** cite any member's
 >   block-`t` as evidence *against* it. `−2.31` and `+1.31` are inputs awaiting an
 >   instrument, not findings.
-> * **The unblocking condition, stated so it is reachable:** a dependence-preserving
->   null for the block statistic on a `gap ≥ h` geometry — a bootstrap of each arm's own
->   persisted per-date series is sufficient and is the cheap route (GOAL-4's Phase-0
->   screen already demonstrated it with 508 real rows). Once that exists, this rule
+> * **The unblocking condition — four requirements, not one.** *"Bootstrap the per-date
+>   series"* was the earlier wording and it **overclaimed** (codex on model#136): a
+>   bootstrap is a resampling scheme, not automatically a calibrated null for a
+>   `gap ≥ h` decision. Persisting the series is a **precondition**, not the procedure.
+>   What is required is a **validated dependence-preserving null**, and that has four
+>   parts, all preregistered before any run:
+>
+>   1. **A null-generating mechanism, stated in advance** — what is being resampled and
+>      under which exchangeability argument. "Resample dates" assumes date-level
+>      exchangeability, which `gap = 0` geometry demonstrably violates; the argument has
+>      to be made for the realised geometry, not asserted.
+>   2. **Paired dependence preserved.** The members share dates. A null that resamples
+>      each arm independently destroys the common-date covariance that the paired
+>      contrast is built on, and will understate the variance of a *difference*. Arms
+>      must be resampled **jointly, by date**.
+>   3. **An empirical calibration target.** The procedure must be shown to hit its
+>      nominal size **at the realised geometry** — e.g. rejection rate ≈ 0.05 under a
+>      constructed no-effect condition. Without that number the null is asserted, not
+>      calibrated; the programme has a measured precedent for how far off it can be
+>      (0.2162 and 0.1034 at nominal 0.05).
+>   4. **The geometry itself declared** — `n_blocks`, `block_length`, `gap`, and the
+>      resulting crossing fraction, recorded with the result rather than inferred.
+>
+>   GOAL-4's Phase-0 screen persisted 508 real per-date rows, which satisfies (0) — the
+>   data exists. **None of (1)–(4) has been done.** Once they are, this rule
 >   becomes evidential and either releases or binds **on measurement**.
 
 Specifically:

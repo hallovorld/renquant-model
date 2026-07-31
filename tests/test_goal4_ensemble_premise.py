@@ -75,6 +75,14 @@ def test_the_freeze_cannot_cite_an_uncalibrated_bar_AS_EVIDENCE():
     assert "prior-discipline" in d
     assert "unblocking condition" in d
     assert "dependence-preserving null" in d
+    # codex #136 round 2: "bootstrap the series" is a PRECONDITION, not the procedure.
+    # The four requirements must be named, or the release condition is another
+    # unvalidated instrument standing in for a calibrated one.
+    assert "overclaimed" in d
+    assert "null-generating mechanism, stated in advance" in d
+    assert "Paired dependence preserved" in d
+    assert "empirical calibration target" in d
+    assert "None of (1)–(4) has been done" in d
     assert "inputs awaiting an instrument, not findings" in d
 
 
