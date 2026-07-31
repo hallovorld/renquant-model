@@ -111,5 +111,17 @@ Ordering is also pinned in the source itself: `test_the_runner_writes_AFTER_form
 fails if a future edit hoists the write back above the intersection, which would
 re-create the ambiguity without breaking any value assertion.
 
-`[VERIFIED — this session]` 12 tests pass; dropping `paired=dpair` from the call fails
-the suite, so the column is load-bearing.
+**And the first version of that load-bearing claim was false.** I wrote in the commit
+that dropping `paired=dpair` fails the suite. It did not: **12 tests still passed.**
+Every value test calls `write_per_date_series` directly, so they verify the *writer*
+and say nothing about whether the *runner* still hands it the paired series. A correct
+writer plus a call site that stopped using it is exactly the regression this PR is
+about, and nothing would have caught it.
+
+Added `test_the_runner_actually_PASSES_dpair_to_the_writer`, which asserts the call
+site. Re-verified properly: with `paired=None` the suite now reports **1 failed / 12
+passed**, and **13 passed** on restore `[VERIFIED — both runs this session]`.
+
+The claim in commit `5c85708` was wrong when written and is corrected here rather than
+quietly fixed — I checked load-bearing, got an answer that contradicted what I had
+already written, and the honest move is to record that the check found something.

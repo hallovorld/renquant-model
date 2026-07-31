@@ -175,6 +175,20 @@ def test_the_sidecar_carries_enough_to_read_the_csv_alone(tmp_path):
     assert meta["sidecar"].endswith("s.meta.json")
 
 
+def test_the_runner_actually_PASSES_dpair_to_the_writer():
+    """The gap my first load-bearing check exposed.
+
+    Every value test above calls `write_per_date_series` directly, so they all pass
+    even if the runner stops handing it `dpair` — I verified that by changing the call
+    to `paired=None` and watching 12 tests still pass. The writer being correct is not
+    the same as the runner using it correctly, and only the call site can say so.
+    """
+    src = pathlib.Path(M.__file__).read_text()
+    assert "paired=dpair" in src, (
+        "the runner no longer passes the paired contrast to the writer — the CSV "
+        "would carry only subject/baseline and the reconstruction ambiguity is back")
+
+
 def test_the_runner_writes_AFTER_forming_dpair():
     """Ordering is the defect, so it is pinned in the source rather than only in
     behaviour: a future edit that hoists the write back above the intersection
