@@ -72,3 +72,23 @@ def test_the_tool_does_not_claim_fabrication():
     src = MOD.read_text(encoding="utf-8")
     assert "'Not locatable' is NOT 'fabricated'" in src
     assert "draws no conclusion about why" in src
+
+
+def test_the_tool_does_not_claim_a_search_it_did_not_run():
+    """Codex on model#140: the default scan is index-local, so the claim must be too.
+
+    `audit_one` searches the index's directory and its `artifacts/` subdirectory unless
+    `--also-search` is passed. A document citing this tool for "not locatable anywhere"
+    is citing a search that did not happen. The module docstring is where a reader forms
+    that expectation, so it is held here.
+    """
+    # Whitespace-normalised, and read off the module THIS FILE loads rather than a
+    # second import: the phrases held here are prose, and a line wrap moving by one
+    # word must not decide whether a scope claim is enforced. It did on the first run
+    # of this test -- `NOT "not\nlocatable"` failed a literal match.
+    doc = " ".join((C.__doc__ or "").split())
+    assert "not present beside this index" in doc
+    assert 'NOT "not locatable"' in doc
+    assert "--also-search" in doc
+    # And the stronger claim must not be sitting somewhere else in the same docstring.
+    assert "could not be located at all" not in doc

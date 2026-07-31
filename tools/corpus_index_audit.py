@@ -5,17 +5,27 @@ A `artifact_corpus_index.v2` file records `{relpath: {bytes, sha256}}` for a bun
 evidence. Committing the index without the bytes leaves a promise nobody can check:
 the digests stay reproducible in principle and unverifiable in practice.
 
-Measured 2026-08-01 across this repo, that was the state of **two** indexes, not one --
+Measured 2026-07-31 across this repo, that was the state of **two** indexes, not one --
 the clf/WF closure bundle (61 files, rescued from a session scratchpad in model#139)
-and the PatchTST 43-fold corpus (133 files, 14.8 MB), which could not be located at
-all.
+and the PatchTST 43-fold corpus (133 files, 14.8 MB).
 
-WHAT THIS DOES NOT SAY. "Not locatable" is not "fabricated". This programme has a
-2026-07-28/29 incident on exactly that distinction, including one occasion where a
-REAL corpus was wrongly re-flagged as fake. The audit reports where each file was
-looked for and how many were found; it draws no conclusion about why.
+THE SCOPE OF WHAT THIS TOOL ESTABLISHES (narrowed after codex on model#140). By
+default `audit_one` searches only the index's own directory and its `artifacts/`
+subdirectory. Its finding is therefore **"not present beside this index"** -- NOT "not
+locatable". Wider roots are reachable only by explicitly passing `--also-search`, and
+a run that did not pass it supports nothing whatever about those roots.
+`searched_roots` in the output records exactly what was covered, so the scope of a nil
+result is readable off the artifact instead of being inferred from the prose around
+it.
 
-Exit codes: 0 every index fully locatable, 1 at least one is not, 2 usage/IO error.
+WHAT THIS DOES NOT SAY. Neither "not present beside this index" nor "not locatable" is
+"fabricated". This programme has a 2026-07-28/29 incident on exactly that distinction,
+including one occasion where a REAL corpus was wrongly re-flagged as fake. The audit
+reports where each file was looked for and how many were found; it draws no conclusion
+about why.
+
+Exit codes: 0 every index fully accounted for within the roots actually searched, 1 at
+least one is not, 2 usage/IO error.
 """
 
 from __future__ import annotations
