@@ -1,9 +1,23 @@
-# GOAL-7's own frozen study does not license a standalone momentum model
+# GOAL-7: the frozen RULE returns UNRESOLVED — and that is a rule output, not a verdict
 
-**Bottom line.** The dividend blocker is **discharged** — but discharging it made the
-signal *slightly worse*, and the arm then **fails its own preregistered baseline
-contrast**. The frozen verdict is `UNRESOLVED / TILT-NOT-EXCLUDED — Nothing licensed.`
-`[早前实测 2026-07-30 bundle, read and decomposed 本次实测 2026-07-31]`
+**Bottom line — SEPARATED 2026-08-01 after codex on #135.** Two different things were
+run together here and only one of them is supportable today.
+
+**(a) The frozen preregistered rule output — deterministic, reportable as-is.**
+`beats_baseline_holm: False`, and the registered verdict string is
+`UNRESOLVED / TILT-NOT-EXCLUDED — Nothing licensed.` That is what the rule returns on
+the frozen inputs. It is a **rule output**, not an evidential conclusion.
+
+**(b) What I additionally claimed, and now defer.**
+
+| claim | why it is deferred |
+|---|---|
+| *"removing the dividend tilt made momentum WORSE"* | a **causal** reading of four deltas whose own t are **−1.74 / −1.35 / −0.97 / −0.79** — not one clears any bar, and all sit on `gap = 0` geometry |
+| *"the study licenses nothing"* as an **evidential verdict** | it is the frozen rule's output. Treating it as evidence about momentum requires the E2 inference to be calibrated, and it is not: `gap = 0`, realised size **0.1034** |
+| any conclusion resting on the TR series being confound-free | **#133** narrowed that to *internal construction verified*; the external adjuster check never ran |
+
+**Deferred pending:** a valid external source validation (#133) and a dependence-aware
+calibration at `gap ≥ h` (#134, #137). Neither exists today.
 
 ## Four gates; three pass; the fourth is the one that matters
 
@@ -17,7 +31,7 @@ contrast**. The frozen verdict is `UNRESOLVED / TILT-NOT-EXCLUDED — Nothing li
 The momentum arm **does not beat a naive dividend-yield sort** under the paired
 Holm-corrected contrast. Paired subject-minus-baseline: mean **+0.3455**, **t = 1.682**.
 
-## Removing the dividend tilt made momentum WORSE, at every horizon
+## The TR-minus-price deltas — reported, NOT interpreted
 
 | h | TR | price | Δ (TR − px) | t |
 |---:|---:|---:|---:|---:|
@@ -26,7 +40,9 @@ Holm-corrected contrast. Paired subject-minus-baseline: mean **+0.3455**, **t = 
 | 120 | 0.4310 | 0.4417 | **−0.0107** | −0.97 |
 | 250 | 0.4885 | 0.4988 | **−0.0103** | −0.79 |
 
-> **The dividend tilt was contributing to the price-based edge, not masking it.** The
+> **NOT claimed: that the tilt was contributing.** All four deltas are negative and
+> all four are un-resolved (|t| ≤ 1.74). What can be said is only that the TR series
+> does not score HIGHER than the price series here. The
 > §3 reminder said a positive could not be attributed to momentum rather than to a
 > dividend-yield tilt. Measured on total-return prices, the answer is the
 > uncomfortable one: take the tilt away and the number goes **down** at all four
