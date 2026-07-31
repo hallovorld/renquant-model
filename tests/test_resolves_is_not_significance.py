@@ -6,7 +6,13 @@ the correct Student floor is `t(9) = 2.262`. The block-t leg contributes only it
 SIGN to `resolves`; its magnitude is never compared to anything.
 
 That is a documented, deliberate design — and the field name invites the opposite
-reading, which is why `clears_student_bar` now exists beside it.
+reading, which is why `exceeds_student_reference` now exists beside it.
+
+CODEX ON #137: `t(n_blocks-1)` is NOT a calibrated significance floor unless the block
+means are i.i.d., which needs a **gap >= horizon** between blocks. This dataclass has
+`n_blocks` and `block_length` and **no gap field**, so it cannot know whether the
+geometry was gap-honest — hence a REFERENCE threshold, and a name that does not say
+"clears the bar".
 """
 
 from __future__ import annotations
@@ -33,31 +39,31 @@ def test_resolves_can_be_true_below_the_bar_its_block_count_implies():
     """THE finding, reproduced as a unit."""
     m = _m()
     assert m.resolves is True
-    assert m.clears_student_bar is False
+    assert m.exceeds_student_reference is False
     assert m.student_bar == pytest.approx(2.262, abs=5e-4)
 
 
-def test_the_bar_is_computed_at_the_realised_geometry_not_borrowed():
+def test_the_reference_is_computed_at_the_realised_geometry_not_borrowed():
     assert _m(n_blocks=8).student_bar == pytest.approx(2.3646, abs=5e-4)
     assert _m(n_blocks=10).student_bar == pytest.approx(2.2622, abs=5e-4)
     assert _m(n_blocks=50).student_bar < 2.02          # approaches 1.96 from above
     assert _m(n_blocks=50).student_bar > 1.96          # but never below it
 
 
-def test_a_clearly_significant_estimate_satisfies_BOTH():
-    """CONTROL. If `clears_student_bar` were always False the test above would be
-    vacuous."""
+def test_a_large_estimate_satisfies_BOTH():
+    """CONTROL. If `exceeds_student_reference` were always False the test above would
+    be vacuous. NOTE it says LARGE, not "significant" — see the module docstring."""
     m = _m(block_t=3.767)
     assert m.resolves is True
-    assert m.clears_student_bar is True
+    assert m.exceeds_student_reference is True
 
 
 def test_unknown_is_not_False():
     """Too few blocks yields None, never False: 'cannot be computed' and 'does not
     clear' are different answers."""
     assert _m(n_blocks=1).student_bar is None
-    assert _m(n_blocks=1).clears_student_bar is None
-    assert _m(block_t=None).clears_student_bar is None
+    assert _m(n_blocks=1).exceeds_student_reference is None
+    assert _m(block_t=None).exceeds_student_reference is None
 
 
 def test_resolves_still_requires_all_three_views_to_agree():
@@ -68,8 +74,10 @@ def test_resolves_still_requires_all_three_views_to_agree():
 
 
 def test_describe_now_says_which_side_of_the_bar_it_is_on():
-    assert "BELOW t(9)=2.262" in _m().describe()
-    assert "clears t(9)=2.262" in _m(block_t=3.767).describe()
+    assert "below the iid reference t(9)=2.262" in _m().describe()
+    d = _m(block_t=3.767).describe()
+    assert "above the iid reference t(9)=2.262" in d
+    assert "NOT calibrated for retained dependence" in d
 
 
 def test_the_goal7_bundle_is_the_real_instance():
@@ -81,3 +89,12 @@ def test_the_goal7_bundle_is_the_real_instance():
     assert paired["n_blocks"] == 10
     assert abs(paired["t"] - 1.682) < 0.01
     assert abs(paired["t"]) < 2.262                    # below its own bar
+
+
+def test_the_class_cannot_know_whether_the_geometry_was_gap_honest():
+    """The reason this is a REFERENCE and not a floor: there is no gap to read."""
+    import dataclasses
+
+    fields = {f.name for f in dataclasses.fields(DependenceAwareResult)}
+    assert "block_length" in fields and "n_blocks" in fields
+    assert "gap" not in fields

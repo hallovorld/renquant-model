@@ -327,7 +327,7 @@ class DependenceAwareResult:
         reports `resolves: True` on a paired contrast with `block_t = 1.682`
         over 10 blocks, where the correct Student floor is `t(9) = 2.262`.
         Read beside the field name alone, that number reads as significant and
-        is not. Use :attr:`clears_student_bar` when the question is whether the
+        is not. Use :attr:`exceeds_student_reference` when the question is whether the
         magnitude clears a bar; use this when the question is whether three
         independent views of the uncertainty agree on a direction.
         """
@@ -339,13 +339,25 @@ class DependenceAwareResult:
 
     @property
     def student_bar(self) -> float | None:
-        """Two-sided 5% Student floor at THIS block count: `t(n_blocks - 1)`.
+        """A REFERENCE threshold: `t(n_blocks - 1)` two-sided at 5%.
 
-        Computed at the realised geometry, never borrowed. On single-digit block
-        counts 1.96 understates the bar substantially -- t(7) is 2.365, t(9) is
-        2.262 -- and comparing a correctly computed block-t against a normal
-        approximation is a defect this programme has committed at seven separate
-        sites.
+        **NOT a calibrated significance floor, and this class cannot make it one.**
+        `t(n-1)` is the correct bar only if the block means are i.i.d. Normal, which
+        requires a **gap >= label horizon between blocks**. This dataclass carries
+        `n_blocks` and `block_length` and **no gap field at all** -- it cannot know
+        whether the geometry that produced these blocks was gap-honest, so it must
+        not present the comparison as inference. Codex on model#137 and #134: block
+        length is not an embargo, and adjacent blocks with `gap = 0` still share
+        labels.
+
+        What it IS good for: replacing the *normal* approximation. On single-digit
+        block counts 1.96 understates even the i.i.d. reference substantially --
+        t(7) = 2.365, t(9) = 2.262 -- and comparing a block-t against 1.96 is a
+        defect this programme has committed at seven separate sites. Fixing that is
+        worth doing; it does not make the result calibrated.
+
+        A caller that has established `gap >= h` may treat this as inferential. One
+        that has not may treat it only as a descriptive reference.
         """
         if self.n_blocks < 2:
             return None
@@ -356,11 +368,16 @@ class DependenceAwareResult:
         return float(stats.t.ppf(0.975, self.n_blocks - 1))
 
     @property
-    def clears_student_bar(self) -> bool | None:
-        """Does `|block_t|` exceed the bar its own block count implies?
+    def exceeds_student_reference(self) -> bool | None:
+        """Does `|block_t|` exceed the i.i.d. REFERENCE threshold?
+
+        Renamed from `clears_student_bar` after codex on model#137: "clears the
+        bar" reads as a significance verdict, and under retained dependence it is
+        not one. See :attr:`student_bar` -- this class cannot know whether the
+        blocks were gap-separated, so this answers a descriptive question only.
 
         `None` when it cannot be computed (too few blocks, or scipy absent) --
-        never `False`, because "unknown" and "does not clear" are different
+        never `False`, because "unknown" and "does not exceed" are different
         answers and collapsing them is the fail-open default this repo keeps
         re-learning.
         """
@@ -377,7 +394,7 @@ class DependenceAwareResult:
             f"[{self.ci_low:+.4f}, {self.ci_high:+.4f}] | leave-one-block-out "
             f"[{self.lobo_low:+.4f}, {self.lobo_high:+.4f}] | "
             f"{'RESOLVES' if self.resolves else 'DOES NOT RESOLVE'}"
-            f"{'' if self.clears_student_bar is None else (' | clears t(' + str(self.n_blocks - 1) + ')=' + f'{self.student_bar:.3f}' if self.clears_student_bar else ' | BELOW t(' + str(self.n_blocks - 1) + ')=' + f'{self.student_bar:.3f}')}"
+            f"{'' if self.exceeds_student_reference is None else (' | above the iid reference t(' + str(self.n_blocks - 1) + ')=' + f'{self.student_bar:.3f}' + ' (NOT calibrated for retained dependence)' if self.exceeds_student_reference else ' | below the iid reference t(' + str(self.n_blocks - 1) + ')=' + f'{self.student_bar:.3f}')}"
         )
 
 
