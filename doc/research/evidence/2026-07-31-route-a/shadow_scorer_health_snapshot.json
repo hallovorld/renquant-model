@@ -1,0 +1,179 @@
+{
+  "captured": "2026-07-31",
+  "n_rows": 13,
+  "note": "A LIVE, APPEND-ONLY surface. The digest pins the bytes this finding was computed from; a later read will differ and should.",
+  "rows": [
+    {
+      "content_sha256": "sha256:07046963994dbb8d",
+      "effective_train_cutoff_date": "2024-11-13",
+      "loaded": true,
+      "n_scored": 80,
+      "reasons": [
+        "stale_621d_limit_28d"
+      ],
+      "run_date": "2026-07-27",
+      "run_id": "2026-07-27-live-e548dd21",
+      "staleness_days": 621,
+      "state": "degraded"
+    },
+    {
+      "content_sha256": "sha256:99687a900bee01c4",
+      "effective_train_cutoff_date": null,
+      "loaded": true,
+      "n_scored": 84,
+      "reasons": [
+        "missing_train_cutoff"
+      ],
+      "run_date": "2026-07-27",
+      "run_id": "2026-07-27-live-e548dd21",
+      "staleness_days": null,
+      "state": "degraded"
+    },
+    {
+      "content_sha256": "sha256:07046963994dbb8d",
+      "effective_train_cutoff_date": "2024-11-13",
+      "loaded": true,
+      "n_scored": 77,
+      "reasons": [
+        "stale_622d_limit_28d"
+      ],
+      "run_date": "2026-07-28",
+      "run_id": "2026-07-28-live-be8ee266",
+      "staleness_days": 622,
+      "state": "degraded"
+    },
+    {
+      "content_sha256": "sha256:1e644354e0981f47",
+      "effective_train_cutoff_date": "2026-04-28",
+      "loaded": true,
+      "n_scored": 85,
+      "reasons": [
+        "stale_91d_limit_28d"
+      ],
+      "run_date": "2026-07-28",
+      "run_id": "2026-07-28-live-be8ee266",
+      "staleness_days": 91,
+      "state": "degraded"
+    },
+    {
+      "content_sha256": null,
+      "effective_train_cutoff_date": null,
+      "loaded": false,
+      "n_scored": 0,
+      "reasons": [
+        "no shadow_models configured"
+      ],
+      "run_date": "2026-07-28",
+      "run_id": "2026-07-28-live-735c7e9b",
+      "staleness_days": null,
+      "state": "no_shadow_models"
+    },
+    {
+      "content_sha256": "sha256:07046963994dbb8d",
+      "effective_train_cutoff_date": "2024-11-13",
+      "loaded": true,
+      "n_scored": 78,
+      "reasons": [
+        "stale_622d_limit_28d"
+      ],
+      "run_date": "2026-07-28",
+      "run_id": "2026-07-28-live-5b859fff",
+      "staleness_days": 622,
+      "state": "degraded"
+    },
+    {
+      "content_sha256": "sha256:1e644354e0981f47",
+      "effective_train_cutoff_date": "2026-04-28",
+      "loaded": true,
+      "n_scored": 85,
+      "reasons": [
+        "stale_91d_limit_28d"
+      ],
+      "run_date": "2026-07-28",
+      "run_id": "2026-07-28-live-5b859fff",
+      "staleness_days": 91,
+      "state": "degraded"
+    },
+    {
+      "content_sha256": "sha256:07046963994dbb8d",
+      "effective_train_cutoff_date": "2024-11-13",
+      "loaded": true,
+      "n_scored": 78,
+      "reasons": [
+        "stale_623d_limit_28d"
+      ],
+      "run_date": "2026-07-29",
+      "run_id": "2026-07-29-live-34603e64",
+      "staleness_days": 623,
+      "state": "degraded"
+    },
+    {
+      "content_sha256": "sha256:1e644354e0981f47",
+      "effective_train_cutoff_date": "2026-04-28",
+      "loaded": true,
+      "n_scored": 84,
+      "reasons": [
+        "stale_92d_limit_28d"
+      ],
+      "run_date": "2026-07-29",
+      "run_id": "2026-07-29-live-34603e64",
+      "staleness_days": 92,
+      "state": "degraded"
+    },
+    {
+      "content_sha256": null,
+      "effective_train_cutoff_date": null,
+      "loaded": false,
+      "n_scored": 0,
+      "reasons": [
+        "no shadow_models configured"
+      ],
+      "run_date": "2026-07-29",
+      "run_id": "2026-07-29-live-a68df3f8",
+      "staleness_days": null,
+      "state": "no_shadow_models"
+    },
+    {
+      "content_sha256": "sha256:07046963994dbb8d",
+      "effective_train_cutoff_date": "2024-11-13",
+      "loaded": true,
+      "n_scored": 77,
+      "reasons": [
+        "stale_624d_limit_28d"
+      ],
+      "run_date": "2026-07-30",
+      "run_id": "2026-07-30-live-7521e521",
+      "staleness_days": 624,
+      "state": "degraded"
+    },
+    {
+      "content_sha256": "sha256:1e644354e0981f47",
+      "effective_train_cutoff_date": "2026-04-28",
+      "loaded": true,
+      "n_scored": 83,
+      "reasons": [
+        "stale_93d_limit_28d"
+      ],
+      "run_date": "2026-07-30",
+      "run_id": "2026-07-30-live-7521e521",
+      "staleness_days": 93,
+      "state": "degraded"
+    },
+    {
+      "content_sha256": null,
+      "effective_train_cutoff_date": null,
+      "loaded": false,
+      "n_scored": 0,
+      "reasons": [
+        "no shadow_models configured"
+      ],
+      "run_date": "2026-07-30",
+      "run_id": "2026-07-30-live-ce5fa504",
+      "staleness_days": null,
+      "state": "no_shadow_models"
+    }
+  ],
+  "source_bytes": 12033,
+  "source_path": "backtesting/renquant_104/logs/shadow_scorer_health.jsonl",
+  "source_sha256": "6063ed225826280b7093c3f579ccfeea94758dfde74a3123c9e18b5c04ca5f12"
+}
