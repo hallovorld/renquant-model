@@ -492,6 +492,25 @@ no option.
 
 ### §5.6 What prerequisite 1 still needs
 
+> **`tools/goal4_null_calibration.py` does NOT meet it, and an earlier version of that
+> module claimed it did.** Its docstring said it "supplies the second half of that
+> prerequisite … and it needs no model of the dependence at all". Review round 5:
+> recentring and circularly bootstrapping the one observed series is conditional on
+> bootstrap validity and stationarity, the resampled series may retain a real effect,
+> and `size_excess_over_baseline` is a contrast between two uncalibrated quantities
+> rather than a type-I error.
+>
+> *"Needs no model of the dependence"* was the error in one phrase. Bootstrapping an
+> observed series does not avoid assuming a model — it assumes the one implicit in the
+> resampling scheme, and hides that assumption inside a procedure that looks empirical.
+>
+> The module is relabelled a **dependence-sensitivity diagnostic**, every output is
+> marked non-decisional **in the emitted JSON and on stdout** rather than only in a
+> docstring, and `prerequisite_1_established: false` travels with the numbers.
+> Prerequisite 1 remains UNMET pending a preregistered null-generating calibration
+> with an explicit exchangeability or DGP justification.
+
+
 Unchanged, minus the calibration: a documented **exchangeability argument**, or a null
 whose validity does not rest on a window this short. Given §5.3, the honest reading is
 that **any option scored on the 508-date window inherits an unidentified bar**, which

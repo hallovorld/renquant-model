@@ -1,4 +1,35 @@
-"""GOAL-4 Phase-0 — the empirical false-positive calibration prerequisite 1 demands.
+"""GOAL-4 Phase-0 — a DEPENDENCE-SENSITIVITY DIAGNOSTIC. NOT a calibration.
+
+READ THIS BEFORE ANY NUMBER BELOW
+---------------------------------
+**This module does NOT satisfy prerequisite 1 and nothing it prints is decisional.**
+
+An earlier version of this docstring said it "supplies the second half of that
+prerequisite — the empirical false-positive calibration at the realised geometry —
+and it needs no model of the dependence at all". Review rejected that and is right:
+
+  * recentring and circularly bootstrapping the ONE observed series is conditional on
+    bootstrap validity and on stationarity, neither of which is established here;
+  * the resampled series **may retain a real effect**, so a size measured from it is
+    not the design's realised false-positive rate;
+  * subtracting an i.i.d. bootstrap baseline from the observed size is **not** a
+    calibrated type-I error — it is a difference between two uncalibrated quantities.
+
+"Needs no model of the dependence" was the error. Bootstrapping an observed series
+does not avoid assuming a model; it assumes the model implicit in the resampling
+scheme, and hides that assumption inside a procedure that looks empirical.
+
+WHAT IT IS FOR
+--------------
+One question only: **how sensitive is the Student bar at this geometry to the serial
+dependence the series actually carries?** A sweep over block length shows whether the
+answer moves. That is worth knowing before designing the real calibration, and it is
+not the real calibration.
+
+**Every output is NON-DECISIONAL.** No bar here may size a run, no MDE here may be
+compared to a plausible gain to conclude anything, and prerequisite 1 stays UNMET
+until there is a preregistered null-generating calibration with an explicit
+exchangeability or DGP justification.
 
 WHY THIS EXISTS
 ---------------
@@ -14,9 +45,11 @@ Review said the same thing three times, and it was right each time: the within-d
 permutation preserves the *label* overlap but destroys the score's *across-date*
 autocorrelation, so `P95_null = 1.9131` was never established as a valid bar.
 
-This module supplies the second half of that prerequisite — the **empirical
-false-positive calibration at the realised geometry** — and it needs no model of the
-dependence at all, because the screen persisted its own per-date statistic series.
+This module does **not** supply that prerequisite. It probes one input to it — how
+much the Student bar's behaviour at this geometry moves with the series' own serial
+dependence — using the per-date statistic series the screen persisted. The
+preregistered null-generating calibration, with its exchangeability or DGP argument,
+remains to be designed and is not attempted here.
 
 WHAT IT DOES NOT DO
 -------------------
@@ -44,8 +77,10 @@ the conservative direction for a size measurement and it is stated rather than h
 
 UNITS
 -----
-`g` is the screen's own ensemble-gain statistic, in IC units. So unlike a geometry-only
-calibration, the MDE here is directly comparable to a plausible gain.
+`g` is the screen's own ensemble-gain statistic, in IC units. That makes the printed
+MDE *look* directly comparable to a plausible gain — and it must not be used that way.
+A comparison against an uncalibrated bar is not a power statement, however convenient
+the units are.
 """
 
 from __future__ import annotations
@@ -134,8 +169,12 @@ def calibrate(rng, x0, reps, b, L, gap):
     introduced.
 
     Every row carries `size_iid_baseline`, measured by pushing i.i.d. Gaussian
-    noise of the same length and dispersion through the IDENTICAL path.  Read
-    `size_excess_over_baseline`, not `size_at_student_bar`.
+    noise of the same length and dispersion through the IDENTICAL path.
+
+    `size_excess_over_baseline` is a **contrast between two uncalibrated quantities**,
+    NOT a calibrated type-I error, and review was explicit about this. It is useful for
+    one thing: seeing whether the instrument's distortion or the series' dependence
+    dominates. It cannot be read as "the true size is X".
     """
     nb = n_blocks(x0.shape[0], L, gap)
     student = float(stats.t.ppf(1 - ALPHA / 2, nb - 1))
@@ -190,7 +229,7 @@ def main(argv=None) -> int:
     if x.shape[0] != N_EVAL:
         raise SystemExit(
             f"series has {x.shape[0]} dates, the executed screen had {N_EVAL} — "
-            "this calibration is only valid at the realised geometry")
+            "this diagnostic only describes the realised geometry")
     x0 = x - x.mean()
     rng = np.random.default_rng(a.seed)
 
@@ -204,7 +243,22 @@ def main(argv=None) -> int:
                       "P95_null_withdrawn": P95_NULL_WITHDRAWN},
          "reps": a.reps, "seed": a.seed, "sweep": [], "repaired": [], "mde": []}
 
-    print(f"\nGOAL-4 Phase-0 null calibration — {a.series}")
+    # Travels WITH the numbers, in machine-readable output and on stdout. A caller
+    # reads this, not the module docstring, and the previous version let a bar and an
+    # MDE leave here with nothing marking them undecidable.
+    R["prerequisite_1_established"] = False
+    R["decisional"] = False
+    R["status"] = (
+        "DEPENDENCE-SENSITIVITY DIAGNOSTIC — NOT a calibration. Bootstrapping the one "
+        "observed series is conditional on bootstrap validity and stationarity, the "
+        "resampled series may retain a real effect, and size_excess_over_baseline is a "
+        "contrast between two uncalibrated quantities rather than a type-I error. No "
+        "bar here may size a run and no MDE here may be compared to a plausible gain.")
+
+    print(f"\nGOAL-4 Phase-0 dependence-sensitivity diagnostic — {a.series}")
+    print("  *** NON-DECISIONAL: prerequisite 1 is NOT established by this run. ***")
+    print("  *** No bar below may size a run; no MDE below may be compared to a "
+          "plausible gain. ***")
     print(f"  n={x.shape[0]}  mean_g={x.mean():+.6f}  sd={x.std(ddof=1):.6f}")
     print("  measured autocorrelation of the per-date statistic: " +
           "  ".join(f"r{k}={v:+.3f}" for k, v in ac.items()))
@@ -231,7 +285,8 @@ def main(argv=None) -> int:
               f"{row['size_at_student_bar']:>7.4f} {row['size_iid_baseline']:>9.4f} "
               f"{row['size_excess_over_baseline']:>+8.4f}")
 
-    print("\nMDE in the screen's own gain units (IC), at the BOOTSTRAP-calibrated bar")
+    print("\nMDE in the screen's own gain units (IC), at the BOOTSTRAP bar "
+          "(NON-DECISIONAL — the bar is not calibrated)")
     grid = [0.002, 0.005, 0.01, 0.02, 0.03, 0.05, 0.07, 0.10, 0.15, 0.20,
             0.30, 0.50]
     for label, L, gap in (("executed L=60 gap=0", BLOCK_L, 0),

@@ -143,17 +143,20 @@
     {
       "design": "executed L=60 gap=0",
       "crit": 2.8777,
-      "mde_ic": 0.04509
+      "mde_ic": 0.04459
     },
     {
       "design": "repaired L=60 gap=60",
-      "crit": 3.6566,
-      "mde_ic": 0.08234
+      "crit": 3.7208,
+      "mde_ic": 0.0825
     },
     {
       "design": "repaired L=30 gap=60",
-      "crit": 3.1817,
-      "mde_ic": 0.08321
+      "crit": 3.2094,
+      "mde_ic": 0.08459
     }
-  ]
+  ],
+  "prerequisite_1_established": false,
+  "decisional": false,
+  "status": "DEPENDENCE-SENSITIVITY DIAGNOSTIC \u2014 NOT a calibration. Bootstrapping the one observed series is conditional on bootstrap validity and stationarity, the resampled series may retain a real effect, and size_excess_over_baseline is a contrast between two uncalibrated quantities rather than a type-I error. No bar here may size a run and no MDE here may be compared to a plausible gain."
 }
