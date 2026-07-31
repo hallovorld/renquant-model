@@ -252,3 +252,66 @@ write that design.
   prevent.
 - It licenses nothing. No scorer, no shadow deployment, no capital, and no factor budget is
   spent by agreeing an approach.
+
+---
+
+## §7 A design requirement the erratum earned: PERSIST THE PER-DATE SERIES
+
+Added 2026-07-31 after trying, and failing, to check this programme's own dependence
+assumption against its own data.
+
+### §7.1 What could be checked, and what could not
+
+**GOAL-4's Phase-0 screen persisted `per_date_g_real.csv`** — 508 per-date statistics.
+That single file made a **model-free, assumption-free** dependence-preserving calibration
+possible: bootstrap the real series, measure the realised false-positive rate at the
+realised geometry, report excess over the instrument's own i.i.d. baseline. No `ρ₁` had
+to be assumed.
+
+**The momentum total-return run persisted only summary JSON plus 10 block means.** So the
+same calibration is not reconstructible here, and every MDE in §3.1 is conditional on a
+`ρ₁` carried in from elsewhere — the assumption §3.1a already flags as load-bearing.
+
+### §7.2 What the 10 block means CAN say — and it is less than I expected
+
+`robustness.json.block_means` reproduces the published statistic exactly
+`[VERIFIED — this session]`:
+
+```
+mean = +0.4532   sd = 0.3805   block t = +3.7666      (model#110 published +3.767)
+```
+
+So the numbers are the real thing. Their lag-1 autocorrelation:
+
+```
+r1 = -0.197      r2 = +0.124      r3 = +0.100
+```
+
+Under **truly independent** blocks, `E[r1] ≈ -1/(n-1) = -0.111` with `sd ≈ 1/√n = 0.316`,
+so the observed `r1` sits at **z = −0.27** `[DERIVED]`.
+
+**This does not support the erratum, and it does not refute it.** At `n = 10` the standard
+error on `r1` is **0.316**, so this check cannot separate `r1 = 0` from `r1 = +0.5`. It is
+underpowered by an order of magnitude relative to the effect it would need to detect.
+
+The erratum's claim stands **as arithmetic** — `crossing = min(1, h/L) = 1.00` is a
+property of the geometry, not of a sample. What must not be claimed is that the realised
+block means *confirm* it. They cannot adjudicate it either way, and saying so is the
+difference between an argument and a measurement.
+
+For the record, from the same file: `lobo_t` ranges **3.258 – 5.340**, and **0 of 10**
+leave-one-block-out refits fall below the programme bar of 3.1019 — robust, *conditional
+on that bar being valid*, which is exactly what the erratum withdrew.
+
+### §7.3 The requirement
+
+> **Any GOAL-7 run under this design MUST persist the per-date statistic series as a
+> committed artifact, alongside the block means.**
+
+Not for reproducibility — the runner and pins already give that. For **falsifiability of
+the design's own dependence assumption**. Without the per-date series, the only handle on
+that assumption is `n = 10` block means, which §7.2 shows is powerless; with it, the check
+is exact for the harness and needs no `ρ₁` from anywhere.
+
+This is cheap: one CSV, ~16 KB at GOAL-4's size. The cost of not having it is that §3.2
+item 4's MDE is permanently conditional on a number measured on a different programme.
