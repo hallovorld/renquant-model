@@ -12,6 +12,7 @@ import csv
 import pathlib
 
 import numpy as np
+import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DOC = (ROOT / "doc/research/2026-07-31-goal4-bootstrap-block-length-prereg.md"
@@ -55,22 +56,41 @@ def test_the_prereg_discloses_that_the_sensitivity_table_was_already_seen():
     assert "can be steered" in d
 
 
-def test_the_answer_this_prereg_gates_is_NOT_in_this_branch():
-    """Freeze-before-run, made mechanical.
+def test_the_prereg_COMMIT_PRECEDES_the_result_commit():
+    """Freeze-before-run, proved from the commit graph rather than from an absence.
 
-    If a size at b = 35 appears here, the registration is retrospective and worthless.
-    35 is deliberately not one of the five lengths model#143 measured.
+    The first version of this test asserted that no size at b = 35 existed anywhere in
+    the branch. That was the right guard WHILE the prereg was unmerged: it is what made
+    "registered before the answer" checkable. Once the prereg merged and the run
+    executed, the guard fired -- correctly, and it had done its job.
+
+    Replacing it with an absence check that permits the result would have been a
+    weakening. Asserting the ORDER IN GIT is strictly stronger: it holds forever, it
+    survives both files existing, and it cannot be satisfied by deleting evidence.
     """
-    for path in ROOT.rglob("*"):
-        if not path.is_file() or ".git" in path.parts:
-            continue
-        if path.suffix not in (".md", ".json", ".csv", ".py"):
-            continue
-        if path.name == "test_goal4_block_length_prereg.py":
-            continue
-        text = path.read_text(encoding="utf-8", errors="replace")
-        if "boot35" in text or "b = 35, size" in text or "size at b = 35 =" in text:
-            raise AssertionError(f"a size at b=35 already exists in {path}")
+    import subprocess
+
+    def added_in(path: str) -> str | None:
+        r = subprocess.run(
+            ["git", "-C", str(ROOT), "log", "--format=%H", "--diff-filter=A", "--", path],
+            capture_output=True, text=True, timeout=30)
+        if r.returncode != 0 or not r.stdout.strip():
+            return None
+        return r.stdout.split()[-1]          # oldest = the adding commit
+
+    prereg = added_in("doc/research/2026-07-31-goal4-bootstrap-block-length-prereg.md")
+    result = added_in(
+        "doc/research/evidence/2026-07-31-g4-null-calibration/size_study_b35.json")
+    if prereg is None:
+        pytest.skip("prereg commit not resolvable (shallow clone or git unavailable)")
+    if result is None:
+        return                                # the run has not happened yet: nothing to order
+    anc = subprocess.run(
+        ["git", "-C", str(ROOT), "merge-base", "--is-ancestor", prereg, result],
+        capture_output=True, text=True, timeout=30)
+    assert anc.returncode == 0, (
+        f"the prereg commit {prereg[:9]} is NOT an ancestor of the result commit "
+        f"{result[:9]} — the registration would be retrospective")
 
 
 def test_the_reporting_obligations_and_the_registered_threshold_are_stated():
