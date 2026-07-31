@@ -431,26 +431,51 @@ Removing the crossing entirely leaves 4–5 blocks, where the instrument's own b
 dominates. **On this window there is no geometry that is both dependence-valid and
 well-calibrated.**
 
-### §5.5 What survives: an MDE in the screen's own units
+### §5.5 The MDE bound is WITHDRAWN — the same signed inequality, a third time
 
-The MDE does **not** depend on pinning the bar, because it can be bounded from below by
-the **most generous bar in the entire sweep** — the executed Student bar 2.3646. Any
-dependence-valid bar is at least that, so any dependence-valid MDE is at least:
+**This section asserted that "any dependence-valid bar is at least 2.3646" and derived
+an MDE lower bound from it. Withdrawn.** Review round 3: *"an uncalibrated or
+nonconvergent null does not imply that every dependence-valid critical value is at
+least the invalid Student t(7) value 2.3646; without a valid null distribution there is
+no defensible MDE bound from that comparison."*
+
+Correct. `2.3646` is the **invalid** bar — the one §0 withdrew for having no legitimate
+`df` at crossing 1.00. Using it as a *floor* for the valid bars smuggles the discarded
+number back in as an ordering fact. There is no established direction here: an
+un-established null has no known relation to the valid one, which is precisely what
+"un-established" means.
+
+**This is the third instance of one habit on this document** — signing an unmeasured
+direction to keep a number alive. First: "true bar > 1.9131 ⇒ non-detection survives *a
+fortiori*". Second: the α-sweep note "probably too low, so the wall is worse". Now: "any
+dependence-valid bar is at least 2.3646". Each time the number under rescue was one this
+document had already withdrawn, and each time the rescue took the form of an inequality
+that felt safe because it pointed toward the conservative-sounding answer. **A bound is
+not conservative if its floor is unestablished; it is just a claim wearing a `≥`.**
+
+**Registered consequence:** the MDE, the `≈ 48×` ratio, and the `14.5×` conclusion in
+§6 are all **UNRESOLVED**, not "bounded". They may not be cited as power statements
+until a valid null exists.
+
+The table below is retained as the shape of the computation — what the tool returns at
+each bar — with no claim that either bar is the right one and no lower bound implied:
 
 | design | bar | **MDE (IC gain units)** |
 |---|---:|---:|
-| executed `L=60 gap=0` | 2.3646 (most generous) | **0.0376** |
+| executed `L=60 gap=0` | 2.3646 (INVALID — §0) | **0.0376** |
 | repaired `L=60 gap=60` | 3.1824 | **0.0712** |
 
 `[VERIFIED — same tool, 4000 reps]`
 
-Against a plausible ensemble gain of **+0.00079** on the production recipe
-`[早前实测 — genuine_ic, GOAL-6 evaluation]`, the lower bound is **≈ 48×** the effect.
+~~Against a plausible ensemble gain of **+0.00079**, the lower bound is **≈ 48×** the
+effect.~~ **Withdrawn with the bound above** — a ratio computed against a floor that is
+not established is not a power statement, whichever way it points.
 
-**This is a power statement, not a verdict.** It says the Phase-0 window cannot resolve a
-gain of that size no matter which valid bar is eventually justified. It says nothing
-about whether such a gain exists. The screen's result remains UNRESOLVED, and this
-document still recommends no option.
+What is left is narrower and still worth saying: **at the executed geometry the tool
+returns an MDE of 0.0376, and no valid bar has been identified for that geometry.** That
+is a statement about what has and has not been established, not about what the window
+can resolve. The screen's result remains UNRESOLVED and this document still recommends
+no option.
 
 ### §5.6 What prerequisite 1 still needs
 
@@ -501,18 +526,38 @@ that just pays an annual running cost `C` is
 
 **δ\* ≈ 0.0026 IC** at the centre of the sweep `[DERIVED — this document]`.
 
-### §6.2 Two conclusions, and the second one is the surprise
+### §6.2 Two SENSITIVITY READINGS — neither settles an option
 
-**(1) The Phase-0 window cannot see a gain worth deploying.** The measured MDE lower
-bound is **0.0376 IC** (§5.5) against δ\* = 0.0026 — **14.5×**. No choice of threshold
-inside the swept range closes that: even at `$500/yr` and `σ=10%`, δ\* = 0.0194 is still
-below the MDE. So prerequisite 2 does **not** rescue the window, and this is now a
-measured statement rather than an intuition.
+**Downgraded from "conclusions" after review round 3.** Codex: *"the materiality
+calculation uses post hoc selected inputs and an earlier `genuine_ic` estimate to claim
+what the book can or cannot justify … it cannot settle option D or a book-size
+threshold."* Correct, and it is worth being precise about *why*, because the arithmetic
+below is not wrong — it is unlicensed.
 
-**(2) At today's book, the plausible gain does not clear materiality at all.**
-The production recipe's `genuine_ic = +0.00079` `[早前实测]` is **0.31×** δ\*. So even a
-*successful* ensemble delivering exactly that gain would **not pay for its own running
-cost** on $10,552.
+Every input was chosen **after** seeing the problem it is used to settle: `σ`, the cost
+`C`, the breadth `BR`, the implementation assumptions behind `δ · √BR · σ`, and a
+`genuine_ic` measured on a different line for a different purpose. None was
+precommitted. A calculation assembled from post-hoc inputs can be a useful sensitivity
+sketch and cannot be a decision rule — and this document's own §0 exists because that
+distinction was violated three times already.
+
+So both readings below are **exploratory sensitivity inputs and hypotheses to
+preregister**, not findings. They may not settle option D, a book-size threshold, or
+anything else.
+
+**(1) Sensitivity: the window's resolution against a swept δ\*.** ~~The measured MDE
+lower bound is 0.0376 IC against δ\* = 0.0026 — 14.5×.~~ **Withdrawn**: §5.5 withdrew
+the MDE lower bound itself, so the ratio has no floor to stand on. What remains is that
+the tool returns 0.0376 at the executed geometry, for which no valid bar is identified.
+The comparison is recorded as a hypothesis — *"the window may be unable to resolve a
+materially-sized gain"* — to be tested once a valid null exists.
+
+**(2) Sensitivity: the plausible gain against the same swept δ\*.**
+The production recipe's `genuine_ic = +0.00079` `[早前实测 — measured on a DIFFERENT
+line, for a different question, and not a prediction of this ensemble's gain]` is
+**0.31×** δ\*. Read as a sketch, that suggests a gain of that size would not pay its own
+running cost at today's book — **a hypothesis about economics, not a demonstrated one**,
+and one whose input was selected after the fact.
 
 That second one is not a statement about the model. It is a statement about **book
 size**, and it inverts cleanly:
@@ -528,8 +573,13 @@ E_breakeven = C / (√BR · σ · δ_plausible)
 | $200 | $103,665 | $69,110 | $51,833 |
 | $500 | $259,164 | $172,776 | $129,582 |
 
-**At $100/yr and σ=15%, the book must reach ≈ $34,555 before a +0.00079 IC ensemble pays
-for itself.** Today's $10,552 is **3.3× short** `[DERIVED]`.
+~~**At $100/yr and σ=15%, the book must reach ≈ $34,555 before a +0.00079 IC ensemble
+pays for itself.** Today's $10,552 is **3.3× short**.~~ **Withdrawn as a threshold.**
+The arithmetic holds given its inputs; the inputs are post-hoc, so this is a
+**sensitivity sketch, not a book-size threshold**, and it settles nothing about when to
+revisit GOAL-4. To become a threshold it needs `C`, `σ`, `BR`, the implementation
+assumptions and the `δ` estimate **precommitted**, which is the preregistration this
+section can propose and not perform.
 
 ### §6.3 Both approximations err in the same direction
 
@@ -544,10 +594,15 @@ correction; none reverses.
 
 ### §6.4 What this settles, and what it does not
 
-**Settles:** prerequisite 2 now has a number and a derivation, and both prerequisites
-point the same way. Option **D** (wait) is the only one that moves a binding constraint —
-and §6.2 shows *which* constraint: not only the evaluation window, but **the book size
-that decides whether the answer would matter**.
+**Settles: nothing.** This heading previously read that prerequisite 2 "now has a number
+and a derivation" and that option **D** is "the only one that moves a binding
+constraint". Both are withdrawn — the number came from post-hoc inputs (§6.2) and the
+"binding constraint" argument leant on the withdrawn MDE bound (§5.5). A derivation is
+not a settlement when every input to it was chosen after seeing the question.
+
+What §6 contributes is a **framing**: the ensemble's value depends on book size as well
+as on the window, and nobody had written that down. That is worth keeping and is not a
+decision.
 
 **Does not settle:** the Phase-0 screen's result stays **UNRESOLVED**. This document
 still recommends no option. And §6 changes nothing about whether an ensemble gain
