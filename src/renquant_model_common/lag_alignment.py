@@ -316,12 +316,58 @@ class DependenceAwareResult:
 
     @property
     def resolves(self) -> bool:
-        """True only if every view agrees the effect excludes zero."""
+        """True only if every view agrees the effect excludes zero.
+
+        **THIS IS A SIGN-AGREEMENT CRITERION, NOT A SIGNIFICANCE TEST.** The
+        block-t leg contributes only its SIGN here — its magnitude is never
+        compared against a critical value. So `resolves` can be True while
+        `|block_t|` sits below the bar its own block count implies.
+
+        That is not hypothetical: the 2026-07-30 GOAL-7 total-return bundle
+        reports `resolves: True` on a paired contrast with `block_t = 1.682`
+        over 10 blocks, where the correct Student floor is `t(9) = 2.262`.
+        Read beside the field name alone, that number reads as significant and
+        is not. Use :attr:`clears_student_bar` when the question is whether the
+        magnitude clears a bar; use this when the question is whether three
+        independent views of the uncertainty agree on a direction.
+        """
         if self.block_t is None:
             return False
         same_sign = (self.ci_low > 0 and self.lobo_low > 0 and self.block_t > 0) or \
                     (self.ci_high < 0 and self.lobo_high < 0 and self.block_t < 0)
         return bool(same_sign)
+
+    @property
+    def student_bar(self) -> float | None:
+        """Two-sided 5% Student floor at THIS block count: `t(n_blocks - 1)`.
+
+        Computed at the realised geometry, never borrowed. On single-digit block
+        counts 1.96 understates the bar substantially -- t(7) is 2.365, t(9) is
+        2.262 -- and comparing a correctly computed block-t against a normal
+        approximation is a defect this programme has committed at seven separate
+        sites.
+        """
+        if self.n_blocks < 2:
+            return None
+        try:
+            from scipy import stats  # noqa: PLC0415 - optional at import time
+        except ImportError:
+            return None
+        return float(stats.t.ppf(0.975, self.n_blocks - 1))
+
+    @property
+    def clears_student_bar(self) -> bool | None:
+        """Does `|block_t|` exceed the bar its own block count implies?
+
+        `None` when it cannot be computed (too few blocks, or scipy absent) --
+        never `False`, because "unknown" and "does not clear" are different
+        answers and collapsing them is the fail-open default this repo keeps
+        re-learning.
+        """
+        bar = self.student_bar
+        if bar is None or self.block_t is None:
+            return None
+        return bool(abs(self.block_t) > bar)
 
     def describe(self) -> str:
         t = "n/a" if self.block_t is None else f"{self.block_t:+.2f}"
@@ -331,6 +377,7 @@ class DependenceAwareResult:
             f"[{self.ci_low:+.4f}, {self.ci_high:+.4f}] | leave-one-block-out "
             f"[{self.lobo_low:+.4f}, {self.lobo_high:+.4f}] | "
             f"{'RESOLVES' if self.resolves else 'DOES NOT RESOLVE'}"
+            f"{'' if self.clears_student_bar is None else (' | clears t(' + str(self.n_blocks - 1) + ')=' + f'{self.student_bar:.3f}' if self.clears_student_bar else ' | BELOW t(' + str(self.n_blocks - 1) + ')=' + f'{self.student_bar:.3f}')}"
         )
 
 
