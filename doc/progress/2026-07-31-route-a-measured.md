@@ -67,9 +67,19 @@ need any new statistics — only the two rates above.
    `stale_91d → 93d`. Also degraded, also growing 1:1. Not part of §0.1's admitted
    series; noted because any "just use the other shadow" move inherits the same
    structure.
-2. **Every date also emits a `no_shadow_models` row** (`n_candidates = 0`,
-   `actionable = true`, reason *"no shadow_models configured"*). Two lanes are being
-   logged into one file and one of them is configured with nothing. Not diagnosed here.
+2. **Every date also emits a `no_shadow_models` row** (`n_candidates = 0`, reason
+   *"no shadow_models configured"*). Two lanes are logged into one file and one of them
+   is configured with nothing. Not diagnosed here.
+
+   > **Correction to my own first reading.** I originally cited `actionable = true` on
+   > that row as if it meant *"this needs attention."* **It does not.** The producer
+   > contract is `actionable == (status != "fault")`: `ok` **and** `expected_skip` both
+   > carry `actionable = true`, and a real `fault` carries `actionable = false`. Measured
+   > across these 13 rows: the **10 `degraded` fault rows are `actionable = false`**, the
+   > **3 `no_shadow_models` rows are `actionable = true`**, and the invariant holds
+   > 13/13. The field means *"this lane is serviceable this run"*, not *"act on this"* —
+   > a naming trap I walked into, and the reason this note now states the polarity
+   > explicitly instead of quoting the flag.
 
 ## Not claimed
 
