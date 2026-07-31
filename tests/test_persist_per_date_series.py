@@ -319,3 +319,52 @@ def test_a_series_too_short_for_two_blocks_is_UNRESOLVED_not_a_crash():
     assert r["E2"]["resolves"] is False
     assert r["E2"]["t"] != r["E2"]["t"]        # NaN
     assert r["E2"]["n"] > 0                    # the series existed; the BAR did not
+
+
+# ============================================ WHAT PRODUCED THE FILE ==========
+# codex on model#131: the sidecar identified the INPUTS and the arm/label settings
+# but not the runner revision or the execution configuration. A later source or
+# config change can emit the same input pins under a different definition, and
+# nothing in the artifact distinguishes the two runs.
+
+def test_the_sidecar_pins_the_CODE_not_only_the_inputs(tmp_path):
+    out = tmp_path / "fp.csv"
+    rep = M.write_per_date_series({"subject": _s(["2026-01-02"], [0.1])}, out)
+    fp = json.loads(pathlib.Path(rep["sidecar"]).read_text())["run_fingerprint"]
+    for key in ("runner_entrypoint", "runner_sha256", "writer_sha256",
+                "code_revision", "code_revision_dirty", "argv", "python"):
+        assert key in fp, key
+
+
+def test_the_writer_fingerprints_ITSELF_because_it_is_shared(tmp_path):
+    """Two runners import this file. Pinning only the entrypoint would leave a
+    change to the shared writer invisible in both artifacts."""
+    out = tmp_path / "fp2.csv"
+    rep = M.write_per_date_series({"subject": _s(["2026-01-02"], [0.1])}, out)
+    fp = json.loads(pathlib.Path(rep["sidecar"]).read_text())["run_fingerprint"]
+    assert fp["writer_sha256"].startswith("sha256:")
+    assert len(fp["writer_sha256"]) == len("sha256:") + 64
+    import hashlib
+    real = hashlib.sha256((ROOT / "tools" / "per_date_series_io.py").read_bytes()).hexdigest()
+    assert fp["writer_sha256"] == "sha256:" + real
+
+
+def test_a_dirty_tree_is_RECORDED_not_hidden(tmp_path):
+    """`code_revision` alone does not reproduce a run made on a dirty tree, and a
+    fingerprint that omits that is worse than none — it looks reproducible."""
+    out = tmp_path / "fp3.csv"
+    rep = M.write_per_date_series({"subject": _s(["2026-01-02"], [0.1])}, out)
+    fp = json.loads(pathlib.Path(rep["sidecar"]).read_text())["run_fingerprint"]
+    assert fp["code_revision_dirty"] in (True, False, None)
+    assert "does NOT reproduce this run" in fp["note"]
+
+
+def test_an_unavailable_component_is_recorded_with_its_reason(tmp_path, monkeypatch):
+    """Absent is not clean. A fingerprint that silently drops an unreadable
+    component is the fail-open default."""
+    monkeypatch.setattr(sys, "argv", [])
+    out = tmp_path / "fp4.csv"
+    rep = M.write_per_date_series({"subject": _s(["2026-01-02"], [0.1])}, out)
+    fp = json.loads(pathlib.Path(rep["sidecar"]).read_text())["run_fingerprint"]
+    assert fp["runner_entrypoint"] is None
+    assert "cannot fingerprint" in fp["runner_sha256"]

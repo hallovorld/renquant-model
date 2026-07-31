@@ -24,6 +24,60 @@ from pathlib import Path
 import pandas as pd
 
 
+def _run_fingerprint() -> dict:
+    """WHAT PRODUCED THIS CSV, not just what went into it.
+
+    Codex on model#131: the sidecar identified the input files and the arm/label
+    settings but **not the runner revision or the execution configuration**. A later
+    source or config change can then emit the same input pins under a different
+    definition, and nothing in the artifact distinguishes the two runs. Input pins
+    answer "which data"; these answer "which code, invoked how".
+
+    Everything here is READ, never asserted. A field that cannot be determined is
+    recorded as ``None`` with a reason -- absent is not the same as clean, and a
+    fingerprint that silently drops an unavailable component is the fail-open
+    default this programme keeps re-learning.
+    """
+    import hashlib
+    import subprocess
+    import sys as _sys
+
+    def _sha(path):
+        try:
+            with open(path, "rb") as fh:
+                return "sha256:" + hashlib.sha256(fh.read()).hexdigest()
+        except OSError as exc:
+            return f"unreadable: {type(exc).__name__}"
+
+    entry = Path(_sys.argv[0]).resolve() if _sys.argv and _sys.argv[0] else None
+    here = Path(__file__).resolve()
+
+    rev = None
+    dirty = None
+    try:
+        r = subprocess.run(["git", "-C", str(here.parent), "rev-parse", "HEAD"],
+                           capture_output=True, text=True, timeout=20)
+        rev = r.stdout.strip() if r.returncode == 0 else f"git rev-parse rc={r.returncode}"
+        d = subprocess.run(["git", "-C", str(here.parent), "status", "--porcelain"],
+                           capture_output=True, text=True, timeout=20)
+        dirty = (bool(d.stdout.strip()) if d.returncode == 0 else None)
+    except Exception as exc:  # noqa: BLE001
+        rev = f"unavailable: {type(exc).__name__}: {exc}"
+
+    return {
+        "runner_entrypoint": str(entry) if entry else None,
+        "runner_sha256": _sha(entry) if entry else "argv[0] empty — cannot fingerprint",
+        "writer_sha256": _sha(here),
+        "code_revision": rev,
+        "code_revision_dirty": dirty,
+        "argv": list(_sys.argv),
+        "python": _sys.version.split()[0],
+        "note": ("`code_revision_dirty` true means the tree had uncommitted changes, so "
+                 "`code_revision` alone does NOT reproduce this run. `writer_sha256` "
+                 "pins this file specifically because it is shared by several runners."),
+    }
+
+
 def write_per_date_series(series_by_name: "dict[str, pd.Series]",
                           out_path: "str | Path",
                           paired: "pd.Series | None" = None,
@@ -81,6 +135,9 @@ def write_per_date_series(series_by_name: "dict[str, pd.Series]",
             "indexes, NaN dropped. This is the exact series passed to agg(); do not "
             "re-derive it from the component columns."
         )} if paired is not None else {}),
+        # WHAT PRODUCED THIS FILE. Input pins say "which data"; this says "which
+        # code, invoked how" (codex on model#131).
+        "run_fingerprint": _run_fingerprint(),
         **(provenance or {}),
     }
     side = out.with_suffix(".meta.json")
