@@ -13,3 +13,10 @@ data/
 _hf_trainer/
 /data
 experiments/
+
+# `data/` above matches ANY directory named data, including every evidence
+# bundle under doc/research/data/. All 31 tracked evidence files to date landed
+# only because someone remembered `git add -f`; the next one to be forgotten
+# disappears silently, which is the failure mode evidence bundles exist to
+# prevent. Un-exclude the directory itself so git will descend into it.
+!doc/research/data/

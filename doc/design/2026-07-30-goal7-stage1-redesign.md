@@ -76,17 +76,77 @@ Two columns replace "independent-equivalent obs" and "`t` bar": what makes the d
 below is `N // (L + gap)` at `N = 1082`, remainder dropped
 `[DERIVED — integer arithmetic, this document]`.
 
-| | approach | dependence validity | blocks / dropped | critical value | MDE |
-|---|---|---|---:|---|---|
-| **A** | gap-separated blocks, `L = 120`, `gap = 120` | **valid** — `gap >= h`, so no block's label window reaches the next | **4** / 122d | `max(P95_null, t(.975, 3) = 3.1824)` | must be measured; almost certainly too coarse to conclude |
-| **B** | HAC / Newey–West on the per-date series | **valid only once specified** — see §3.2 | n/a (uses all 1 082 dates) | **`P95` of `\|t_HAC\|` under within-date permutation.** No Student bar. | must be measured by the same calibration |
-| **C′** | `h = 20`, gap-separated, `L = 60`, `gap = 20` | **valid** — `gap >= h` | **13** / 42d | `max(P95_null, t(.975, 12) = 2.1788)` | must be measured |
-| **C″** | `h = 20`, gap-separated, `L = 40`, `gap = 20` | **valid** — `gap >= h` | **18** / 2d | `max(P95_null, t(.975, 17) = 2.1098)` | must be measured |
+| | approach | dependence validity | blocks / dropped | critical value | MDE (`σ_x`) |
+|---|---|---|---:|---|---:|
+| **A** | gap-separated blocks, `L = 120`, `gap = 120` | **valid** — `gap >= h`, so no block's label window reaches the next | **4** / 122d | `max(P95_null, t(.975, 3) = 3.1824)` → **3.2004** | **1.714** |
+| **B** | HAC / Newey–West on the per-date series | **valid only once specified** — see §3.2 | n/a (uses all 1 082 dates) | **`P95` of `\|t_HAC\|` under within-date permutation** → **3.0173**. No Student bar. | **0.995** |
+| **C′** | `h = 20`, gap-separated, `L = 60`, `gap = 20` | **valid** — `gap >= h` | **13** / 42d | `max(P95_null, t(.975, 12) = 2.1788)` → **2.1801** | **0.447** |
+| **C″** | `h = 20`, gap-separated, `L = 40`, `gap = 20` | **valid** — `gap >= h` | **18** / 2d | `max(P95_null, t(.975, 17) = 2.1098)` → **2.1564** | **0.447** |
 | **D** | wait for post-2021 data to leave the burned region | n/a | grows | — | zero today |
+
+`[VERIFIED — python3 tools/goal7_design_mde.py --reps-null 8000 --reps-power 4000
+--executed --sensitivity, this branch; log + JSON in
+doc/research/data/2026-07-30-goal7-design-mde/]`
+
+**Units.** `σ_x` is the per-date statistic's own standard deviation. Converting an MDE
+into an economically meaningful number needs `σ_x` from a **clean** run, and no clean run
+exists — the only one that produced it is void. In `σ_x` units the comparison review
+asked for is exact and leans on nothing that has been retracted.
 
 `C′` and `C″` trade block length against block count on the same window; both remain a
 **different question** from the 120-day hypothesis (§4), and that objection is
 unaffected by fixing their arithmetic.
+
+### §3.1a Two measured facts that change the decision
+
+**1 — the gap-separated designs need no rescue.** Their plain Student bars are already
+correctly sized: realised false-positive rate **0.0473 / 0.0508 / 0.0495** for A / C′ / C″
+against a nominal 0.05. That is the first *measured* confirmation that `gap >= h` does
+what §3.1 claims of it. Until now that was an assertion.
+
+**2 — B is the design that genuinely needed its permutation bar, and it is still NOT the
+most powerful.** A naive `|t_HAC| > 1.96` rejects **17.9%** of the time under the null —
+3.6× nominal — so §3.2 item 3 was right and now has a number. The calibrated bar
+(**3.0173**) restores size to 0.050. But using all 1 082 dates buys **less** power than 18
+gap-separated 40-day blocks: **0.995 vs 0.447 `σ_x`**. The information the overlap
+destroyed is not recoverable by a better estimator, exactly as §2 said — and the price of
+asking the 120-day question is now measured rather than argued.
+
+**A is close to unusable**: MDE **1.714 `σ_x`** on 4 blocks.
+
+**Sensitivity.** The `h = 20` rows carry the overlap/idiosyncratic variance ratio over from
+the measured `h = 120` value (`ρ₁ = 0.94 ⇒ c² = 0.9479`); there is no measured `ρ₁` at
+`h = 20`, and that carry-over is an **assumption**. Across `c² ∈ {0.80, 0.9479, 0.99}` the
+MDEs move A `1.617 → 1.813`, B `0.932 → 1.019`, C′ `0.416 → 0.454`, C″ `0.407 → 0.461`
+`[VERIFIED — same run, --sensitivity]`. **The ordering A ≫ B ≫ C holds across the whole
+band**, so the assumption does not drive the comparison it feeds.
+
+### §3.1b What the executed designs actually cost, measured
+
+The same harness pointed at the geometries this programme really ran, at the bars those
+runs really used `[VERIFIED — same run, --executed]`:
+
+| study | `h` | `L` | gap | crossing | blocks | bar used | **realised size** |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| GOAL-7 Stage 1 as executed | 120 | 60 | 0 | 1.000 | 18 | 2.1098 | **0.2162** |
+| momentum total-return as executed | 120 | 120 | 0 | 1.000 | 9 | 2.3060 | **0.1034** |
+| GOAL-4 Phase-0 ensemble screen | 60 | 60 | 0 | 1.000 | 18 | 2.1098 | **0.1070** |
+| C row rejected at review | 20 | 60 | 0 | 0.333 | 18 | 2.1098 | **0.0615** |
+| repaired: A / C′ / C″ | — | — | ≥ `h` | 0.000 | 4 / 13 / 18 | own | **0.047 / 0.051 / 0.050** |
+
+Two things follow that were previously only argued:
+
+1. **Crossing 1.00 is worth a 2×–4.3× inflation of the false-positive rate**, not a
+   rounding error. Stage 1's own bar was a **21.6%** test, not a 5% one.
+2. **Crossing fraction is not a severity ranking.** The rejected `C` row crosses only
+   0.333 and costs **0.0615** — inflated, but nowhere near the others. The review was
+   right to reject it, *and* the erratum's three-study table must not be read as three
+   equally damaged studies: Stage 1 is far the worst, because it combined full crossing
+   with the **largest** block count.
+
+Note that `crossing = min(1, h/L)` as published is the `gap = 0` special case. With a gap
+it is `min(1, max(0, h − gap)/L)` — which is why the repaired rows read 0.000 and not the
+value their `L` alone would suggest.
 
 ### §3.2 What Option B must specify before it is a design at all
 
@@ -113,6 +173,14 @@ The review's demand, restated as the checklist a prereg would have to satisfy:
 run. That is a small calibration job on already-committed data, and it should happen
 **before** this PR is settled rather than inside a frozen prereg.
 
+> **STATUS at revision 2: items 2–4 have now been run** — `tools/goal7_design_mde.py`,
+> results in §3.1/§3.1a/§3.1b. Item 2 (bandwidth) was executed at **`M = h = 120`**;
+> that is a *choice this document makes and review should confirm or replace*, not a
+> settled registration. Items 3 and 4 are measured. One thing the calibration does
+> **not** discharge: it is a calibration of the *harness geometry*, run on a simulated
+> per-date series whose dependence is pinned by the one measured input `ρ₁ = 0.94`. It
+> is not a run of the hypothesis and touches no score, label or panel.
+
 ## §4 The real decision, and why it is not mine alone
 
 **A and D need no argument** — A is underpowered by construction, D is a fallback not a
@@ -123,6 +191,14 @@ The decision is **B versus C** (now `C′`/`C″`), and it is not a technical ch
 runs, because until then `B` has no measured MDE and the comparison would be an
 argument about method rather than about power. What follows is the framing of the
 choice, not a claim that it can be closed today.
+
+**Revision 2 — the calibration has run, and it did not settle the question; it priced
+it.** `B` needs **0.995 `σ_x`** where `C″` needs **0.447 `σ_x`** — asking the original 120-day
+question costs a factor of **2.2× in detectable effect** `[VERIFIED — §3.1]`. That is
+the size of the temptation to switch horizons, stated as a number instead of a feeling,
+and it is *precisely why* the switch has to be justified on its own terms rather than
+taken because it is easier. The measurement does not weaken the §4 objection to `C`; it
+quantifies what refusing `C` costs. My recommendation below is unchanged.
 
 - **B tests the hypothesis that was actually raised**, at whatever power the honest window
   supports. Likely outcome: *"cannot tell"*. That is a real answer and it is cheap.

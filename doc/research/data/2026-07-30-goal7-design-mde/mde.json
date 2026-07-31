@@ -1,0 +1,183 @@
+{
+  "n_dates": 1082,
+  "rho1_h120": 0.94,
+  "c2": 0.9478991596638655,
+  "reps_null": 8000,
+  "reps_power": 4000,
+  "seed": 20260730,
+  "candidates": [
+    {
+      "key": "A",
+      "kind": "block",
+      "h": 120,
+      "L": 120,
+      "gap": 120,
+      "bandwidth": null,
+      "blocks": 4,
+      "crossing": 0.0,
+      "rho1_implied": 0.94,
+      "crit": 3.2004,
+      "crit_permutation": 3.2004,
+      "bar_uncalibrated": 3.1824,
+      "size_calibrated": 0.05,
+      "size_uncalibrated": 0.05075,
+      "mde_sigma_x": 1.7136,
+      "power_at_grid_end": 0.816
+    },
+    {
+      "key": "B",
+      "kind": "hac",
+      "h": 120,
+      "L": null,
+      "gap": null,
+      "bandwidth": 120,
+      "blocks": null,
+      "crossing": null,
+      "rho1_implied": 0.94,
+      "crit": 3.0173,
+      "crit_permutation": 3.0173,
+      "bar_uncalibrated": 1.96,
+      "size_calibrated": 0.05,
+      "size_uncalibrated": 0.179,
+      "mde_sigma_x": 0.9954,
+      "power_at_grid_end": 0.804
+    },
+    {
+      "key": "C'",
+      "kind": "block",
+      "h": 20,
+      "L": 60,
+      "gap": 20,
+      "bandwidth": null,
+      "blocks": 13,
+      "crossing": 0.0,
+      "rho1_implied": 0.9005,
+      "crit": 2.1801,
+      "crit_permutation": 2.1801,
+      "bar_uncalibrated": 2.1788,
+      "size_calibrated": 0.05,
+      "size_uncalibrated": 0.050375,
+      "mde_sigma_x": 0.4465,
+      "power_at_grid_end": 0.80775
+    },
+    {
+      "key": "C\"",
+      "kind": "block",
+      "h": 20,
+      "L": 40,
+      "gap": 20,
+      "bandwidth": null,
+      "blocks": 18,
+      "crossing": 0.0,
+      "rho1_implied": 0.9005,
+      "crit": 2.1564,
+      "crit_permutation": 2.1564,
+      "bar_uncalibrated": 2.1098,
+      "size_calibrated": 0.05,
+      "size_uncalibrated": 0.053875,
+      "mde_sigma_x": 0.4474,
+      "power_at_grid_end": 0.80525
+    }
+  ],
+  "executed": [
+    {
+      "study": "GOAL-7 Stage 1 as executed",
+      "h": 120,
+      "L": 60,
+      "gap": 0,
+      "crossing": 1.0,
+      "blocks": 18,
+      "bar": 2.1098,
+      "size": 0.21625
+    },
+    {
+      "study": "momentum total-return as executed",
+      "h": 120,
+      "L": 120,
+      "gap": 0,
+      "crossing": 1.0,
+      "blocks": 9,
+      "bar": 2.306,
+      "size": 0.103375
+    },
+    {
+      "study": "GOAL-4 Phase-0 ensemble screen",
+      "h": 60,
+      "L": 60,
+      "gap": 0,
+      "crossing": 1.0,
+      "blocks": 18,
+      "bar": 2.1098,
+      "size": 0.107
+    },
+    {
+      "study": "C row rejected at review (h=20 in L=60)",
+      "h": 20,
+      "L": 60,
+      "gap": 0,
+      "crossing": 0.3333333333333333,
+      "blocks": 18,
+      "bar": 2.1098,
+      "size": 0.0615
+    },
+    {
+      "study": "repaired: A (gap-separated)",
+      "h": 120,
+      "L": 120,
+      "gap": 120,
+      "crossing": 0.0,
+      "blocks": 4,
+      "bar": 3.1824,
+      "size": 0.04725
+    },
+    {
+      "study": "repaired: C' (gap-separated)",
+      "h": 20,
+      "L": 60,
+      "gap": 20,
+      "crossing": 0.0,
+      "blocks": 13,
+      "bar": 2.1788,
+      "size": 0.05075
+    },
+    {
+      "study": "repaired: C\" (gap-separated)",
+      "h": 20,
+      "L": 40,
+      "gap": 20,
+      "crossing": 0.0,
+      "blocks": 18,
+      "bar": 2.1098,
+      "size": 0.0495
+    }
+  ],
+  "sensitivity": [
+    {
+      "c2": 0.8,
+      "mde": {
+        "A": 1.6172,
+        "B": 0.9323,
+        "C'": 0.416,
+        "C\"": 0.4069
+      }
+    },
+    {
+      "c2": 0.9479,
+      "mde": {
+        "A": 1.7636,
+        "B": 0.9976,
+        "C'": 0.4512,
+        "C\"": 0.4383
+      }
+    },
+    {
+      "c2": 0.99,
+      "mde": {
+        "A": 1.8128,
+        "B": 1.019,
+        "C'": 0.4535,
+        "C\"": 0.4611
+      }
+    }
+  ]
+}

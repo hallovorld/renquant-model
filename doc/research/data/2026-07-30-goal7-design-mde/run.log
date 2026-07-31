@@ -1,0 +1,24 @@
+
+GOAL-7 design MDE — N=1082 rho1(h=120)=0.94 c2=0.9479 reps_null=8000 reps_power=4000
+cand    h  blocks   rho1  bar_naive  bar_cal  size_naive  size_cal  MDE(sig_x)
+   A  120       4  0.940     3.1824   3.2004       0.051     0.050       1.714
+   B  120       -  0.940     1.9600   3.0173       0.179     0.050       0.995
+  C'   20      13  0.900     2.1788   2.1801       0.050     0.050       0.447
+  C"   20      18  0.900     2.1098   2.1564       0.054     0.050       0.447
+
+realised size of the designs this programme ACTUALLY ran (nominal 0.05)
+study                                      h    L  gap  cross  blk     bar    SIZE
+GOAL-7 Stage 1 as executed               120   60    0  1.000   18  2.1098  0.2162
+momentum total-return as executed        120  120    0  1.000    9  2.3060  0.1034
+GOAL-4 Phase-0 ensemble screen            60   60    0  1.000   18  2.1098  0.1070
+C row rejected at review (h=20 in L=60)   20   60    0  0.333   18  2.1098  0.0615
+repaired: A (gap-separated)              120  120  120  0.000    4  3.1824  0.0473
+repaired: C' (gap-separated)              20   60   20  0.000   13  2.1788  0.0508
+repaired: C" (gap-separated)              20   40   20  0.000   18  2.1098  0.0495
+
+sensitivity — MDE(sigma_x) across the overlap-share band
+  c2=0.8000  A=1.6172  B=0.9323  C'=0.416  C"=0.4069
+  c2=0.9479  A=1.7636  B=0.9976  C'=0.4512  C"=0.4383
+  c2=0.9900  A=1.8128  B=1.019  C'=0.4535  C"=0.4611
+
+wrote doc/research/data/2026-07-30-goal7-design-mde/mde.json
