@@ -342,12 +342,16 @@ class DependenceAwareResult:
         """A REFERENCE threshold: `t(n_blocks - 1)` two-sided at 5%.
 
         **NOT a calibrated significance floor, and this class cannot make it one.**
-        `t(n-1)` is the correct bar only if the block means are i.i.d. Normal, which
-        requires a **gap >= label horizon between blocks**. This dataclass carries
-        `n_blocks` and `block_length` and **no gap field at all** -- it cannot know
-        whether the geometry that produced these blocks was gap-honest, so it must
-        not present the comparison as inference. Codex on model#137 and #134: block
-        length is not an embargo, and adjacent blocks with `gap = 0` still share
+        `t(n-1)` is the correct bar only if the block means are i.i.d. Normal. A
+        **gap >= label horizon between blocks** is *necessary* for that -- without it
+        adjacent blocks literally share label windows -- but it is **not sufficient**.
+        Removing direct label overlap does not remove common factor exposure,
+        volatility clustering, or serial correlation in the underlying series, and any
+        of those leaves the block means dependent with a gap of any size. This
+        dataclass carries `n_blocks` and `block_length` and **no gap field at all** --
+        it cannot even check the necessary condition, let alone the sufficient one, so
+        it must not present the comparison as inference. Codex on model#137 and #134:
+        block length is not an embargo, and adjacent blocks with `gap = 0` still share
         labels.
 
         What it IS good for: replacing the *normal* approximation. On single-digit
@@ -356,8 +360,14 @@ class DependenceAwareResult:
         defect this programme has committed at seven separate sites. Fixing that is
         worth doing; it does not make the result calibrated.
 
-        A caller that has established `gap >= h` may treat this as inferential. One
-        that has not may treat it only as a descriptive reference.
+        WHEN A CALLER MAY TREAT THIS AS INFERENTIAL. Not on `gap >= h` alone -- that
+        buys the necessary condition and nothing more. It requires, additionally, a
+        **separately justified or calibrated null** for the block statistic (a
+        dependence-preserving bootstrap of the caller's own per-date series is the
+        cheap route, and GOAL-4 shows it is available wherever that series was
+        persisted), together with whatever residual-dependence controls that null does
+        not already absorb. Absent both, this is a descriptive reference only, and the
+        honest report is the estimate with its geometry, not a verdict.
         """
         if self.n_blocks < 2:
             return None

@@ -98,3 +98,19 @@ def test_the_class_cannot_know_whether_the_geometry_was_gap_honest():
     fields = {f.name for f in dataclasses.fields(DependenceAwareResult)}
     assert "block_length" in fields and "n_blocks" in fields
     assert "gap" not in fields
+
+
+def test_gap_alone_is_never_presented_as_sufficient_for_inference():
+    """Codex on model#137: `gap >= h` removes label overlap, not dependence.
+
+    The earlier guidance read "a caller that has established `gap >= h` may treat this
+    as inferential", which promotes a NECESSARY condition to a sufficient one. Common
+    factor exposure, volatility clustering and serial correlation in the underlying all
+    survive any gap. This holds the docstring to saying so, because the sentence a
+    caller reads is the whole of the contract this class can offer.
+    """
+    doc = DependenceAwareResult.student_bar.__doc__ or ""
+    assert "not sufficient" in doc
+    assert "separately justified or calibrated null" in doc
+    # And it must NOT contain the promoted form.
+    assert "established `gap >= h` may treat this as inferential" not in doc
