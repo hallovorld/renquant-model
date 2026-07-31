@@ -1,6 +1,6 @@
 # GOAL-7: the INTERNAL construction is verified; the dividend DATA is not
 
-**Bottom line — NARROWED 2026-08-01 after codex on #133.** What is cleared is the
+**Bottom line — NARROWED 2026-07-31 after codex on #133.** What is cleared is the
 **internal construction**: the total-return series does, on its own data, what it was
 built to do. What is **not** cleared, and cannot be with what exists here, is the
 dividend confound **as a fact about the source data** — because the only external check
@@ -51,10 +51,25 @@ its own independent check happened. A NaN can no longer impersonate a result.
 
 ## Honest reading for GOAL-7
 
-The dividend confound is **discharged for the purpose it was raised** — a momentum
-result on the TR series is no longer attributable to a dividend-yield tilt at the
-ex-div-day level. What is **not** established is external agreement with an
-independent adjuster. That is now recorded as *unavailable*, not as *checked*.
+The total-return construction is **internally consistent**: it removes what this
+dataset's own `dividend` column says was there, and V1–V3 and V7 demonstrate that
+much. That is the whole of what the surviving checks support.
+
+The confound is **not discharged**, and a momentum result on the TR series is **not**
+established as free of a dividend-yield tilt. Both of those claims need the source
+data to be right, and — as the next section shows at the level of the line of code —
+*every* surviving validation reads its ground truth from the same column the
+construction consumes. None of them can fail on a bad feed. `V5`, the only check that
+could have contradicted the feed, is recorded as **unavailable**, not as *checked*.
+
+> An earlier draft of this section said the confound was *"discharged for the purpose
+> it was raised"* and that a TR momentum result was *"no longer attributable to a
+> dividend-yield tilt."* Codex on model#133 flagged it: a later supersession does not
+> make an earlier contradictory positive claim safe, because a reader who stops here
+> carries away the opposite of what the rest of this document proves. Rewritten rather
+> than annotated — this is a working progress note, so the right fix is for the text to
+> be correct. The **frozen** prereg that repeats the same claim cannot be rewritten, so
+> it gets an errata instead: **model#141**.
 
 One more thing not glossed: `V7` gives ΔCAGR **0.02597** against realised yield
 **0.02150** — a **0.45 pp** gap the tool describes as "must equal". Compounding is the
@@ -67,7 +82,7 @@ Tests: 5, pinned to a frozen coverage CSV and to the published bundle.
 
 `exdiv_gap()` identifies ex-dividend days as `s["dividend"] > 0` — **the same
 `dividend` column the TR construction consumes to build the series**
-`[VERIFIED — 本次实测 2026-08-01, tools/build_total_return_series.py:250]`.
+`[VERIFIED — 本次实测 2026-07-31, tools/build_total_return_series.py:250]`.
 
 > **So if the dividend feed is wrong — a missing event, a wrong amount, a wrong date —
 > the construction will not adjust for it AND V1 will not look for it**, because it
@@ -90,5 +105,9 @@ non-null rows over 2 658 rows × 6 tickers).
 | a momentum result on this TR series is free of a dividend-yield tilt | **NOT established**, and downstream claims must say so |
 
 **This supersedes the earlier phrasing** — *"the dividend confound is discharged for the
-purpose it was raised"*. That over-reached: it is discharged **for the construction**,
-which is a smaller claim than it sounded.
+purpose it was raised"*. Nothing about the confound is discharged. What was shown is
+that the construction applies its own rule correctly to its own data; the word
+"confound" refers to the data, so the sentence attached a data-level verdict to a
+construction-level result. The phrase has been removed from §"Honest reading" rather
+than left standing under a supersession note, because a contradictory positive claim
+earlier in a document is not made safe by a correction later in it.
