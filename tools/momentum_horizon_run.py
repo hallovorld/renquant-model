@@ -19,7 +19,9 @@ import numpy as np
 import pandas as pd
 
 sys.path.append(str(Path(__file__).resolve().parent.parent / "src"))
+sys.path.append(str(Path(__file__).resolve().parent))   # tools/ — shared writers
 from renquant_model_common.lag_alignment import dependence_aware_mean  # noqa: E402
+from per_date_series_io import write_per_date_series  # noqa: E402
 
 MATRIX_SHA256 = "544701bacb552f0fc0e4ea5e5099d2ece28b32cfa6f4dbd57df2757f92ff200e"
 HORIZONS = (20, 60, 120, 250)
@@ -137,17 +139,41 @@ def shuffle_within_date(f: pd.DataFrame, seed: int, ycol: str) -> np.ndarray:
     return y
 
 
+def _unresolved(n: int) -> dict:
+    return {"n": int(n), "mean": float("nan"), "t": float("nan"),
+            "ci_low": float("nan"), "ci_high": float("nan"), "resolves": False}
+
+
 def agg(s: pd.Series, block: int, n_boot: int) -> dict:
+    """Aggregate a per-date series to a dependence-aware mean and block t.
+
+    THE GUARD BELOW CHECKS TWO DIFFERENT THINGS AND BOTH ARE NEEDED. `len(s) < 3`
+    is about having any series at all; it is NOT the condition the block bootstrap
+    actually requires, which is **at least two blocks of length `block`**. Between
+    the two -- a series with 3+ dates but fewer than two whole blocks -- the old
+    code sailed past the guard and `float(r.block_t)` raised `TypeError: float()
+    argument must be ... not 'NoneType'`. A short holdout therefore CRASHED the run
+    instead of reporting UNRESOLVED, which is the strictly worse failure: a
+    statement about power was turned into a stack trace.
+
+    The second check asks the estimator whether it resolved rather than
+    re-deriving its block-count rule here -- a re-derivation would be a twin of
+    that rule and could drift from it. Behaviour is unchanged on every path that
+    previously returned: this can only convert a crash into an honest `resolves:
+    False`.
+    """
     if len(s) < 3:
-        return {"n": len(s), "mean": float("nan"), "t": float("nan"),
-                "ci_low": float("nan"), "ci_high": float("nan"), "resolves": False}
+        return _unresolved(len(s))
     r = dependence_aware_mean(list(s.values), block_length=block, n_boot=n_boot)
+    if r.block_t is None:                      # too few blocks at this geometry
+        return _unresolved(len(s))
     return {"n": int(len(s)), "mean": float(r.mean), "t": float(r.block_t),
             "ci_low": float(r.ci_low), "ci_high": float(r.ci_high),
             "resolves": bool(r.resolves)}
 
 
-def measure(sub: pd.DataFrame, arm: str, h: int, *, controls: bool) -> dict:
+def measure(sub: pd.DataFrame, arm: str, h: int, *, controls: bool,
+            keep_series: bool = False) -> dict:
     sub = sub.dropna(subset=[arm, f"fwd_{h}"]).copy()
     if sub.empty:
         return {}
@@ -155,6 +181,10 @@ def measure(sub: pd.DataFrame, arm: str, h: int, *, controls: bool) -> dict:
     ycol = f"fwd_{h}"
     e1, e2 = per_date_stats(sub, arm, ycol)
     out = {"rows": len(sub), "E1": agg(e1, h, N_BOOT_REAL), "E2": agg(e2, h, N_BOOT_REAL)}
+    if keep_series:
+        # The EXACT series handed to `agg` above, not a recomputation. A second
+        # call to per_date_stats would be a twin of this one and could drift.
+        out["_series"] = {"E1_rank_ic": e1, "E2_top_decile_spread": e2}
     if controls:
         c1, c2 = [], []
         for seed in range(N_CONTROLS):
@@ -173,6 +203,11 @@ def main(argv=None) -> int:
     ap.add_argument("--ohlcv-dir", required=True, type=Path)
     ap.add_argument("--allow-input-mismatch", action="store_true")
     ap.add_argument("--json-out", default=None)
+    ap.add_argument("--per-date-out", default=None,
+                    help="CSV path for the HOLDOUT per-date series (the exact "
+                         "input to the block bootstrap). Without it the only "
+                         "surviving handle on dependence is a handful of block "
+                         "means, which cannot separate rho1=0 from rho1=+0.5.")
     a = ap.parse_args(argv)
 
     print("INPUTS"); check_pin(a.matrix, a.allow_input_mismatch)
@@ -228,7 +263,8 @@ def main(argv=None) -> int:
           f"(screen E2 t={best_t:+.2f}; {len(tied)} tied within 0.05)")
 
     print("\n=== PHASE H — the holdout, used ONCE ===")
-    hr = measure(hold, sel_arm, sel_h, controls=True)
+    hr = measure(hold, sel_arm, sel_h, controls=True, keep_series=True)
+    series = hr.pop("_series")
     e2 = hr["E2"]
     print(f"   {sel_arm} h={sel_h}: E2={e2['mean']:+.4f} t={e2['t']:+.2f} "
           f"CI=[{e2['ci_low']:+.4f},{e2['ci_high']:+.4f}] n={e2['n']} "
@@ -255,6 +291,33 @@ def main(argv=None) -> int:
     print("   §3 REMINDER: prices are NOT dividend-adjusted and the bias is "
           "sector-correlated, so a positive cannot be attributed to momentum "
           "rather than to a dividend-yield tilt.")
+    if a.per_date_out:
+        # block_length is `sel_h` (see `agg(e2, h, ...)`), so crossing fraction is
+        # min(1, max(0, h - gap)/L) = min(1, h/h) = 1.00 -- FULL label overlap
+        # between adjacent blocks. That is recorded, not hidden: it is precisely
+        # why the series must survive the run, so the bar can be calibrated on
+        # this data instead of assumed from another programme's rho1.
+        meta = write_per_date_series(
+            series, a.per_date_out,
+            provenance={
+                "run": "GOAL-7 momentum horizon sweep, PHASE H holdout",
+                "arm": sel_arm, "horizon_days": sel_h,
+                "statistic_E1": "per-date Spearman rank IC",
+                "statistic_E2": "per-date top-decile spread (top 10% - rest)",
+                "block_length_used_by_agg": sel_h,
+                "label_horizon_days": sel_h,
+                "gap_between_blocks": 0,
+                "crossing_fraction": 1.0,
+                "crossing_note": (
+                    "L = h with gap 0 gives crossing 1.00, the MAXIMUM overlap, not "
+                    "a remedy for it. The Student bar over these blocks is therefore "
+                    "NOT calibrated; treat |t| here as uncalibrated until a "
+                    "dependence-preserving null is run ON THIS FILE."),
+                "units": "E2 in SD of the cross-section (labels are per-date z-scores)",
+            })
+        print(f"\n   per-date series written: {meta['n_rows']} rows "
+              f"{meta['first_date']} -> {meta['last_date']} -> {meta['path']}")
+
     if a.json_out:
         Path(a.json_out).write_text(json.dumps(
             {"screen": sres, "selected": [sel_arm, sel_h], "holdout": hr,

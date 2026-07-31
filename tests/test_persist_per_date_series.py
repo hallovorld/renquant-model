@@ -199,3 +199,123 @@ def test_the_runner_writes_AFTER_forming_dpair():
     assert i_dpair < i_write, (
         "the per-date write happens before dpair is formed — it can only persist "
         "ingredients, not the series actually tested")
+
+
+# ===================================================================== SHARED ==
+# The writer is now imported by two runners. These tests defend the property that
+# made sharing worth doing: ONE definition. `renquant-pipeline` keeps a registry of
+# twin implementations precisely because copies agree the day they are written and
+# drift silently afterwards -- and a duplicated writer in the lane whose purpose is
+# making a dependence assumption CHECKABLE would produce two artifacts that
+# disagree about the very series the check reads.
+
+def test_the_writer_is_defined_exactly_once_in_the_repo():
+    hits = [p for p in (ROOT / "tools").rglob("*.py")
+            if "def write_per_date_series(" in p.read_text(encoding="utf-8")]
+    assert [p.name for p in hits] == ["per_date_series_io.py"], hits
+
+
+def test_both_runners_import_it_rather_than_redefining_it():
+    for name in ("momentum_total_return_run.py", "momentum_horizon_run.py"):
+        src = (ROOT / "tools" / name).read_text(encoding="utf-8")
+        assert "from per_date_series_io import write_per_date_series" in src, name
+        assert "def write_per_date_series(" not in src, name
+
+
+def test_the_sidecar_does_not_define_a_column_it_did_not_write(tmp_path):
+    """A sidecar that documents `paired_contrast` for a file WITHOUT that column
+    describes an object that is not there; a reader who trusts it reconstructs a
+    contrast the run never made."""
+    out = tmp_path / "unpaired.csv"
+    rep = M.write_per_date_series({"E1": _s(["2026-01-02"], [0.1])}, out)
+    assert "paired_contrast" not in rep["columns"]
+    side = json.loads(pathlib.Path(rep["sidecar"]).read_text())
+    assert "paired_contrast_definition" not in side
+    assert side["n_paired"] == 0
+    # ...and the mirror: when the column IS written, the definition must be there.
+    out2 = tmp_path / "paired.csv"
+    rep2 = M.write_per_date_series({"subject": _s(["2026-01-02"], [0.1])}, out2,
+                                   paired=_s(["2026-01-02"], [0.3]))
+    side2 = json.loads(pathlib.Path(rep2["sidecar"]).read_text())
+    assert "paired_contrast_definition" in side2
+
+
+# =========================================================== HORIZON RUNNER ====
+_hspec = importlib.util.spec_from_file_location(
+    "momentum_horizon_run", ROOT / "tools" / "momentum_horizon_run.py")
+H = importlib.util.module_from_spec(_hspec)
+sys.modules[_hspec.name] = H
+_hspec.loader.exec_module(H)
+
+
+def _panel(n_dates=64, n_names=40, seed=0):
+    import numpy as np
+    rng = np.random.default_rng(seed)
+    dates = pd.bdate_range("2022-01-03", periods=n_dates)
+    rows = []
+    for d in dates:
+        x = rng.standard_normal(n_names)
+        rows.append(pd.DataFrame({"date": d,
+                                  "ticker": [f"T{i}" for i in range(n_names)],
+                                  "A1_mom_12_1": x,
+                                  "fwd_20": 0.3 * x + rng.standard_normal(n_names)}))
+    return pd.concat(rows, ignore_index=True)
+
+
+def test_keep_series_returns_the_EXACT_series_agg_consumed():
+    """Not a recomputation. A second call to per_date_stats would be a twin of the
+    one that produced the reported t, and the persisted file could then disagree
+    with the number the run published."""
+    df = _panel()
+    r = H.measure(df, "A1_mom_12_1", 20, controls=False, keep_series=True)
+    e1, e2 = H.per_date_stats(df.assign(_dcode=pd.factorize(df["date"])[0]),
+                              "A1_mom_12_1", "fwd_20")
+    pd.testing.assert_series_equal(r["_series"]["E1_rank_ic"], e1)
+    pd.testing.assert_series_equal(r["_series"]["E2_top_decile_spread"], e2)
+    assert r["E2"]["n"] == len(e2)          # the reported n IS this series' length
+
+
+def test_measure_is_unchanged_when_the_series_is_not_kept():
+    """Anti-regression on a frozen harness: persistence must not move a number."""
+    df = _panel(seed=3)
+    a = H.measure(df, "A1_mom_12_1", 20, controls=False, keep_series=False)
+    b = H.measure(df, "A1_mom_12_1", 20, controls=False, keep_series=True)
+    b.pop("_series")
+    assert a == b
+    assert "_series" not in a
+
+
+def test_the_persisted_holdout_file_records_that_crossing_is_full(tmp_path):
+    """The runner's block_length IS the label horizon (`agg(e2, h, ...)`), so
+    crossing = min(1, h/h) = 1.00 -- the MAXIMUM overlap, not a remedy for it.
+    The artifact must say so, or a later reader treats an uncalibrated Student
+    bar as calibrated."""
+    df = _panel()
+    r = H.measure(df, "A1_mom_12_1", 20, controls=False, keep_series=True)
+    out = tmp_path / "holdout.csv"
+    meta = M.write_per_date_series(
+        r["_series"], out,
+        provenance={"block_length_used_by_agg": 20, "label_horizon_days": 20,
+                    "gap_between_blocks": 0, "crossing_fraction": 1.0})
+    assert meta["crossing_fraction"] == 1.0
+    assert meta["block_length_used_by_agg"] == meta["label_horizon_days"]
+    side = json.loads(pathlib.Path(meta["sidecar"]).read_text())
+    assert side["crossing_fraction"] == 1.0
+
+
+def test_the_horizon_runner_exposes_the_flag_and_records_full_crossing():
+    src = (ROOT / "tools" / "momentum_horizon_run.py").read_text(encoding="utf-8")
+    assert '"--per-date-out"' in src
+    assert '"crossing_fraction": 1.0' in src
+    assert 'keep_series=True' in src
+
+
+def test_a_series_too_short_for_two_blocks_is_UNRESOLVED_not_a_crash():
+    """`len(s) < 3` and "enough dates for two blocks" are different quantities.
+    Between them the old code raised TypeError -- a short holdout crashed the run
+    instead of reporting a statement about POWER."""
+    df = _panel(n_dates=8)          # 8 dates, block_length 20 -> not two blocks
+    r = H.measure(df, "A1_mom_12_1", 20, controls=False)
+    assert r["E2"]["resolves"] is False
+    assert r["E2"]["t"] != r["E2"]["t"]        # NaN
+    assert r["E2"]["n"] > 0                    # the series existed; the BAR did not
