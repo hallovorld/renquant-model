@@ -85,7 +85,10 @@ def main(argv: list[str] | None = None) -> int:
     centred = g - g.mean()
 
     geometries = [(60, 0), (60, H), (30, H), (20, H)]
-    boot_blocks = [20, 40, 60, 90, 120]
+    # 35 is the REGISTERED value (model#144: first zero crossing of the sample ACF).
+    # The other five are model#143's sensitivity band, reported beside it as the prereg
+    # requires -- the registered value never replaces the band.
+    boot_blocks = [20, 35, 40, 60, 90, 120]
 
     out = {
         "n": len(g),

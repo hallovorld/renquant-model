@@ -1,0 +1,148 @@
+{
+  "acf": {
+    "rho_1": 0.7320521194834336,
+    "rho_10": 0.4609554750965655,
+    "rho_2": 0.7120833978074486,
+    "rho_20": 0.2135923239537001,
+    "rho_5": 0.5826127047930044,
+    "rho_60": -0.23136469918713606
+  },
+  "draws": 4000,
+  "h": 60,
+  "harness_control_iid": {
+    "L20_gap60": {
+      "n_blocks": 7,
+      "size": 0.05425
+    },
+    "L60_gap0": {
+      "n_blocks": 8,
+      "size": 0.049
+    }
+  },
+  "mean": -0.008550393526757342,
+  "n": 508,
+  "sd": 0.054845658280159075,
+  "seed": 20260731,
+  "size_by_geometry_and_boot_block": {
+    "boot120_L20_gap60": {
+      "crossing": 0.0,
+      "n_blocks": 7,
+      "size": 0.042
+    },
+    "boot120_L30_gap60": {
+      "crossing": 0.0,
+      "n_blocks": 6,
+      "size": 0.04375
+    },
+    "boot120_L60_gap0": {
+      "crossing": 1.0,
+      "n_blocks": 8,
+      "size": 0.05
+    },
+    "boot120_L60_gap60": {
+      "crossing": 0.0,
+      "n_blocks": 4,
+      "size": 0.06425
+    },
+    "boot20_L20_gap60": {
+      "crossing": 0.0,
+      "n_blocks": 7,
+      "size": 0.06375
+    },
+    "boot20_L30_gap60": {
+      "crossing": 0.0,
+      "n_blocks": 6,
+      "size": 0.0645
+    },
+    "boot20_L60_gap0": {
+      "crossing": 1.0,
+      "n_blocks": 8,
+      "size": 0.05275
+    },
+    "boot20_L60_gap60": {
+      "crossing": 0.0,
+      "n_blocks": 4,
+      "size": 0.058
+    },
+    "boot35_L20_gap60": {
+      "crossing": 0.0,
+      "n_blocks": 7,
+      "size": 0.05675
+    },
+    "boot35_L30_gap60": {
+      "crossing": 0.0,
+      "n_blocks": 6,
+      "size": 0.06775
+    },
+    "boot35_L60_gap0": {
+      "crossing": 1.0,
+      "n_blocks": 8,
+      "size": 0.07825
+    },
+    "boot35_L60_gap60": {
+      "crossing": 0.0,
+      "n_blocks": 4,
+      "size": 0.0635
+    },
+    "boot40_L20_gap60": {
+      "crossing": 0.0,
+      "n_blocks": 7,
+      "size": 0.059
+    },
+    "boot40_L30_gap60": {
+      "crossing": 0.0,
+      "n_blocks": 6,
+      "size": 0.07
+    },
+    "boot40_L60_gap0": {
+      "crossing": 1.0,
+      "n_blocks": 8,
+      "size": 0.0715
+    },
+    "boot40_L60_gap60": {
+      "crossing": 0.0,
+      "n_blocks": 4,
+      "size": 0.05975
+    },
+    "boot60_L20_gap60": {
+      "crossing": 0.0,
+      "n_blocks": 7,
+      "size": 0.056
+    },
+    "boot60_L30_gap60": {
+      "crossing": 0.0,
+      "n_blocks": 6,
+      "size": 0.06875
+    },
+    "boot60_L60_gap0": {
+      "crossing": 1.0,
+      "n_blocks": 8,
+      "size": 0.07975
+    },
+    "boot60_L60_gap60": {
+      "crossing": 0.0,
+      "n_blocks": 4,
+      "size": 0.06875
+    },
+    "boot90_L20_gap60": {
+      "crossing": 0.0,
+      "n_blocks": 7,
+      "size": 0.04775
+    },
+    "boot90_L30_gap60": {
+      "crossing": 0.0,
+      "n_blocks": 6,
+      "size": 0.07175
+    },
+    "boot90_L60_gap0": {
+      "crossing": 1.0,
+      "n_blocks": 8,
+      "size": 0.071
+    },
+    "boot90_L60_gap60": {
+      "crossing": 0.0,
+      "n_blocks": 4,
+      "size": 0.065
+    }
+  }
+}
