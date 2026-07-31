@@ -58,9 +58,10 @@ def test_the_run_reports_its_own_V5_status():
     assert '"V5_usable_rows_by_ticker"' in src
 
 
-def test_the_dividend_blocker_itself_DID_collapse():
-    """The GOAL-7 gate, separate from V5's vacuity. Reported honestly in both
-    directions: the headline result holds; the independent check does not exist."""
+def test_the_INTERNAL_construction_check_did_collapse():
+    """NARROWED after codex on #133: this is an INTERNAL result. It shows the
+    construction removed what its own dividend column says was there — it cannot
+    show the dividend DATA is right."""
     b = json.loads(BUNDLE.read_text(encoding="utf-8"))
     assert abs(b["V1_raw"]["diff_bp"] + 66.58) < 0.05
     assert abs(b["V1_raw"]["t"]) > 20
@@ -68,3 +69,26 @@ def test_the_dividend_blocker_itself_DID_collapse():
     assert abs(b["V1_tr"]["t"]) < 1.96          # no longer significant
     assert b["V2_max_abs_diff_nonpayers"] == 0.0
     assert b["V3_max_identity_error"] < 1e-15
+
+
+def test_every_surviving_validation_reads_the_SAME_dividend_column():
+    """The line of code that makes V1-V3/V7 internal, asserted so the narrowing
+    cannot be undone by prose.
+
+    `exdiv_gap` identifies ex-dividend days as `s["dividend"] > 0` -- the same column
+    the TR construction consumes. A wrong feed is therefore invisible to BOTH: the
+    construction will not adjust for it and the test will not look for it.
+    """
+    src = (ROOT / "tools" / "build_total_return_series.py").read_text(encoding="utf-8")
+    body = src[src.index("def exdiv_gap("):src.index("def ", src.index("def exdiv_gap(") + 10)]
+    assert 's["dividend"] > 0' in body
+    # and the construction reads the same column
+    assert 'dividend' in src[:src.index("def exdiv_gap(")]
+
+
+def test_the_document_states_the_narrowed_status():
+    doc = (ROOT / "doc/progress/2026-07-31-v5-independent-check-was-vacuous.md"
+           ).read_text(encoding="utf-8")
+    assert "the dividend DATA is not" in doc
+    assert "NOT established" in doc
+    assert "supersedes the earlier phrasing" in doc
