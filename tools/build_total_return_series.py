@@ -47,8 +47,11 @@ V3  exactness: TR[k]/TR[k-1] == (P[k]+D[k])/P[k-1] on every event.
 V4  yield-slope: regress ex-div-day return on event yield. Raw slope must be
     ~ -1 (bigger dividend, bigger drop); TR slope must be ~ 0. Much sharper
     than V1's mean gap because it is per-event.
-V5  INDEPENDENT CROSS-CHECK against the vendor's own `adj close` on the 6
-    watchlist files that happen to carry both columns. Not self-referential.
+V5  INDEPENDENT CROSS-CHECK against the vendor's own `adj close`. The ONLY
+    non-self-referential validation here -- V1/V2/V3/V7 all check the
+    construction against its own identity. MEASURED 2026-07-31: the six
+    candidate files carry the column with ZERO non-null values, so this
+    validation DID NOT RUN and reported `nan`. It now reports its own status.
 V6  V1 with ticker AND date fixed effects, to separate a real adjustment
     failure from the composition/calendar tilt of who pays dividends when.
 V7  economic sanity: TR CAGR - price CAGR must equal the realised average
@@ -331,8 +334,29 @@ print("\n" + "=" * 78)
 print("V5  INDEPENDENT CROSS-CHECK vs the vendor's own `adj close`")
 print("    (only on files that happen to carry both columns -- not self-made)")
 print("=" * 78)
-both = [t for t in series if "vendor_adj_close" in series[t].columns
-        and meta[t]["n_events"] > 0]
+# THE SELECTOR TESTED THE COLUMN'S PRESENCE, NOT ITS CONTENT. Measured
+# 2026-07-31: all six files carry an `adj close` column with 2658 rows and
+# ZERO non-null values, so V5 -- the one validation this file labels "Not
+# self-referential" -- correlated two all-NaN series and recorded `nan`
+# rather than a failure. A NaN in a results bundle reads as "ran"; this one
+# meant "measured nothing". Every other validation here (V1/V2/V3/V7) checks
+# the construction against its own identity, so V5 was the only external
+# anchor, and it did not exist.
+def _usable_vendor(t) -> int:
+    if "vendor_adj_close" not in series[t].columns:
+        return 0
+    return int(series[t]["vendor_adj_close"].notna().sum())
+
+
+has_col = [t for t in series if "vendor_adj_close" in series[t].columns
+           and meta[t]["n_events"] > 0]
+both = [t for t in has_col if _usable_vendor(t) >= 2]
+if has_col and not both:
+    print(f"  V5 UNAVAILABLE: {len(has_col)} file(s) carry an `adj close` column and "
+          f"ALL are entirely null -> "
+          f"{', '.join(f'{t}:0/{len(series[t])}' for t in has_col)}")
+    print("  -> the ONLY non-self-referential validation in this file DID NOT RUN.")
+    print("     V1/V2/V3/V7 all check the construction against its own identity.")
 print(f"  files with both `adj close` and `dividend`: {len(both)} -> {both}")
 print(f"  {'ticker':<7}{'events':>7}{'corr(dlogTR,dlogVendor)':>26}"
       f"{'mean|ret diff| bp':>19}{'max|ret diff| bp':>18}")
@@ -395,6 +419,15 @@ report = {
     "universe": len(series), "payers": len(payers), "nonpayers": len(nonpayers),
     "nonpayer_tickers": sorted(nonpayers),
     "control_names": ctrl,
+    # Status, not just numbers: a bundle of NaNs is indistinguishable from a
+    # bundle of results unless the run says which it is.
+    "V5_status": ("ran" if both else
+                  ("unavailable: vendor `adj close` column present but entirely "
+                   "null on every candidate file — no independent cross-check "
+                   "exists in this corpus" if has_col else
+                   "unavailable: no file carries a vendor `adj close` column")),
+    "V5_candidates_with_column": sorted(has_col),
+    "V5_usable_rows_by_ticker": {t: _usable_vendor(t) for t in sorted(has_col)},
     "V1_raw": g_raw, "V1_tr": g_tr,
     "V2_max_abs_diff_nonpayers": allmax,
     "V3_events": n_ev_tot, "V3_max_identity_error": worst,
