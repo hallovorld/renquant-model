@@ -37,8 +37,13 @@ diversify. That is measured (§5) but not gated, because redundancy is continuou
 its effect is already captured by the primary statistic.
 
 Carried as prior work, not measured for this document, and load-bearing on what to
-expect: the production recipe's `genuine_ic` above the placebo floor is **+0.00079**
-`[VERIFIED — prior work, renquant-backtesting#83]`; the prod XGB's traded estimand is
+expect: **CORRECTED 2026-07-31 — see the errata block at the end of this section.** The
+figure previously written here as *"the production recipe's `genuine_ic` above the placebo
+floor is **+0.00079** `[VERIFIED — prior work, renquant-backtesting#83]`"* was wrong in
+its source, its subject and its wording. The deployed recipe's `genuine_ic` is **+0.04153**;
+**+0.00079** belongs to the newest weekly retrain **candidate**, which FAILS the enforced
+leakage criterion
+`[VERIFIED — 本次实测 2026-07-31, doc/research/evidence/2026-07-31-genuine-ic-provenance/sanity_placebo_by_vintage.csv]`; the prod XGB's traded estimand is
 reproduced by a **single sort on STD20** (+0.2836 against the model's +0.2534) and
 collapses to **−0.0554** when orthogonalised to STD60
 `[VERIFIED — prior work, traded-estimand study, memory panel-signal-identity-capacity]`;
@@ -357,10 +362,15 @@ remains. Fixing `α` fixes the wrong term.
 ### A1.6 The registered consequence is a POWER finding, not a control patch
 
 The control's failure is a measurement of the whole screen, not of the control:
-**the minimum member IC this design can detect is somewhere between 0.05 and 0.18**, an
-order of magnitude above any plausible ensemble member on this panel, where the production
-recipe's `genuine_ic` above the placebo floor is **+0.00079**
-`[VERIFIED — prior work, renquant-backtesting#83]`.
+**the minimum member IC this design can detect is somewhere between 0.05 and 0.18**.
+The clause that followed — *"an order of magnitude above any plausible ensemble member on
+this panel, where the production recipe's `genuine_ic` above the placebo floor is
+**+0.00079**"* — is **WITHDRAWN 2026-07-31**. It compared the design's MDE against a number
+that is neither the production recipe's nor an ensemble gain. Against the **deployed**
+recipe's `genuine_ic` of **+0.04153** the MDE lower bound 0.0376 is **0.91×**, not 47× —
+the same order of magnitude. The screen is **marginally powered, not hopeless**, and the
+achievable ensemble increment remains **unmeasured**
+`[VERIFIED — 本次实测 2026-07-31, evidence/2026-07-31-genuine-ic-provenance/]`.
 
 Registered, replacing A1.2's step 3:
 
