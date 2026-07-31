@@ -1,22 +1,39 @@
 # GOAL-4: the ensemble premise, evaluated against its own registered members
 
-**Bottom line.** An ensemble needs members that (a) individually carry skill and (b) are
-not redundant. **Every candidate member GOAL-4 has registered is measured, and none
-clears a preregistered bar.** That is not a reason to close the lane — it is a reason to
-stop treating "combine the models" as the next step, because there is nothing measured to
-combine.
+**Bottom line — NARROWED after codex on model#136.** An ensemble needs members that (a)
+individually carry skill and (b) are not redundant. **Not one registered member has been
+shown to carry skill** — and, equally, **not one has been shown not to**. The estimates
+below are descriptive; no validated inference procedure exists to adjudicate them. That
+is not a reason to close the lane, and it is not a verdict against the members. It is a
+reason to stop treating *"combine the models"* as the next step, because **the premise is
+unmeasured** — there is nothing established to combine.
 
-## The three registered members, as measured
+## The three registered members, as measured — DESCRIPTIVE ESTIMATES
 
-| member | the measurement | clears its bar? |
+| member | the measurement | status |
 |---|---|:--|
-| **production XGB** | its traded estimand is reproduced by a **single sort on STD20** (**+0.2836** vs the model's **+0.2534**) and collapses to **−0.0554** when orthogonalised to STD60 | **no** — what it trades is a volatility tilt |
-| **PatchTST** | margin over **its own 60-day-stale score** = **−0.0556 (t = −2.31)**, against the correctly calibrated **2.3646** at `n_eff = 8` | **no** — and the sign is negative |
-| **certified clf** | **+0.0096 (t = +1.31)** | **no** |
+| **production XGB** | its traded estimand is reproduced by a **single sort on STD20** (**+0.2836** vs the model's **+0.2534**) and collapses to **−0.0554** when orthogonalised to STD60 | **not established** — the traded estimand is reproducible by a volatility tilt |
+| **PatchTST** | margin over **its own 60-day-stale score** = **−0.0556**, block `t = −2.31` at `n_eff = 8` | **un-adjudicated** — see the bar caveat below |
+| **certified clf** | **+0.0096**, block `t = +1.31` | **un-adjudicated** |
 
 `[VERIFIED — prior work, model#90; and the frozen §1 of doc/research/2026-07-30-goal4-phase0-ensemble-gain-prereg.md]`
 
-Three independent subjects, three different reasons, the same answer.
+> **WHY "un-adjudicated" AND NOT "does not clear"** (codex on model#136). An earlier
+> version of this table called `2.3646` *"the correctly calibrated"* floor and used it to
+> declare every member non-clearing. `t(n−1)` is a **reference** threshold, correct only
+> if the block means are i.i.d. Normal. **No null calibration for the block statistic was
+> ever supplied here**, and the supporting #134 geometry has **`gap = 0` on every row** —
+> so the blocks share label windows and the i.i.d. premise fails at the necessary
+> condition, let alone the sufficient one (model#137).
+>
+> Fixing the *normal-vs-Student* error was real progress — comparing a block-`t` to 1.96
+> on single-digit block counts is a defect at seven sites in this programme. **It did not
+> make the comparison calibrated.** An instrument that cannot license *"clears"* cannot
+> license *"does not clear"* either; the XGB row is different because it rests on a
+> reproduction, not on a threshold.
+
+Three independent subjects, three different reasons, and the same *absence* of an
+established result.
 
 ## What tonight's two measurements add
 
@@ -59,14 +76,41 @@ range, blending buys percent, not multiples.**
 
 GOAL-4 does not proceed to a combination study until **at least two** members each clear
 a preregistered, dependence-aware bar **individually**, on a gap-honest geometry
-(`gap ≥ h`), with matched per-arm placebos. Specifically:
+(`gap ≥ h`), with matched per-arm placebos.
+
+> **THE FREEZE IS A DEFAULT, NOT A VERDICT — and it has an unblocking condition**
+> (codex on model#136). As written, this rule blocked a combination study on the basis
+> of members "not clearing" a bar that **is not calibrated**. That is the same
+> instrument doing the blocking that cannot do the adjudicating, and a freeze resting on
+> it would be unliftable by construction: no procedure exists to produce the "clears"
+> that would release it.
+>
+> So the rule is split:
+>
+> * **What holds today, on no inferential claim at all:** no combination study, because
+>   the premise is *unmeasured* and a blend over members of unknown skill is a search
+>   over weights that will find something. This is a **prior-discipline** freeze
+>   (`[DERIVED]` from rule 1 below), and it needs no bar to justify it.
+> * **What the freeze may NOT do until a validated procedure exists:** cite any member's
+>   block-`t` as evidence *against* it. `−2.31` and `+1.31` are inputs awaiting an
+>   instrument, not findings.
+> * **The unblocking condition, stated so it is reachable:** a dependence-preserving
+>   null for the block statistic on a `gap ≥ h` geometry — a bootstrap of each arm's own
+>   persisted per-date series is sufficient and is the cheap route (GOAL-4's Phase-0
+>   screen already demonstrated it with 508 real rows). Once that exists, this rule
+>   becomes evidential and either releases or binds **on measurement**.
+
+Specifically:
 
 1. **Member viability first.** No blend is fitted, screened or scored while zero members
    have cleared. A combination of un-skilled members is a search over weights, and the
    search will find something.
-2. **The bar is computed at the realised geometry**, never borrowed. On single-digit
-   block counts the Student floor is `t(n−1)`, not 1.96 — the trap that already turned
-   `−2.31` from "decisive" into "un-resolved".
+2. **The bar is computed at the realised geometry**, never borrowed, and **`t(n−1)` is
+   not that bar**. On single-digit block counts the Student *reference* is `t(n−1)`, not
+   1.96 — the trap that already turned `−2.31` from "decisive" into "un-resolved". But
+   correcting normal→Student only removes one error; the bar itself must come from a
+   **null calibrated at the realised geometry, with `gap ≥ h` between blocks**. Until
+   that null exists, no `t` in this lane is compared to any threshold at all.
 3. **Redundancy is measured before combination, not after.** Two members whose per-date
    series correlate above 0.8 do not need a blend study; they need a different second
    member.
