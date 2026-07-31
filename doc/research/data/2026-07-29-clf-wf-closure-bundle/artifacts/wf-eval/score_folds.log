@@ -1,0 +1,54 @@
+[panel] (353548, 178) dates 2016-01-04 .. 2026-04-28
+[fold 00] 2023-10-02 n_dates=15 n_scores=2130 10.9s (elapsed 14s)
+[fold 01] 2023-10-23 n_dates=15 n_scores=2130 11.0s (elapsed 25s)
+[fold 02] 2023-11-13 n_dates=14 n_scores=1988 10.4s (elapsed 35s)
+[fold 03] 2023-12-04 n_dates=14 n_scores=1988 10.3s (elapsed 46s)
+[fold 04] 2023-12-25 n_dates=13 n_scores=1846 9.7s (elapsed 55s)
+[fold 05] 2024-01-15 n_dates=15 n_scores=2130 11.0s (elapsed 66s)
+[fold 06] 2024-02-05 n_dates=14 n_scores=1988 10.2s (elapsed 77s)
+[fold 07] 2024-02-26 n_dates=15 n_scores=2130 10.6s (elapsed 87s)
+[fold 08] 2024-03-18 n_dates=14 n_scores=1988 9.8s (elapsed 97s)
+[fold 09] 2024-04-08 n_dates=15 n_scores=2130 10.7s (elapsed 108s)
+[fold 10] 2024-04-29 n_dates=15 n_scores=2130 10.8s (elapsed 118s)
+[fold 11] 2024-05-20 n_dates=14 n_scores=1988 9.9s (elapsed 128s)
+[fold 12] 2024-06-10 n_dates=14 n_scores=1988 9.8s (elapsed 138s)
+[fold 13] 2024-07-01 n_dates=14 n_scores=1988 10.0s (elapsed 148s)
+[fold 14] 2024-07-22 n_dates=15 n_scores=2130 10.6s (elapsed 159s)
+[fold 15] 2024-08-12 n_dates=14 n_scores=1988 9.9s (elapsed 169s)
+[fold 16] 2024-09-02 n_dates=15 n_scores=2130 10.6s (elapsed 180s)
+[fold 17] 2024-09-23 n_dates=15 n_scores=2130 10.8s (elapsed 190s)
+[fold 18] 2024-10-14 n_dates=15 n_scores=2130 10.9s (elapsed 201s)
+[fold 19] 2024-11-04 n_dates=15 n_scores=2130 10.8s (elapsed 212s)
+[fold 20] 2024-11-25 n_dates=14 n_scores=1988 10.1s (elapsed 222s)
+[fold 21] 2024-12-16 n_dates=13 n_scores=1846 9.7s (elapsed 232s)
+[fold 22] 2025-01-06 n_dates=13 n_scores=1846 9.8s (elapsed 241s)
+[fold 23] 2025-01-27 n_dates=14 n_scores=1988 10.5s (elapsed 252s)
+[fold 24] 2025-02-17 n_dates=15 n_scores=2130 11.2s (elapsed 263s)
+[fold 25] 2025-03-10 n_dates=15 n_scores=2130 11.4s (elapsed 275s)
+[fold 26] 2025-03-31 n_dates=14 n_scores=1988 10.6s (elapsed 285s)
+[fold 27] 2025-04-21 n_dates=15 n_scores=2130 11.3s (elapsed 296s)
+[fold 28] 2025-05-12 n_dates=14 n_scores=1988 10.5s (elapsed 307s)
+[fold 29] 2025-06-02 n_dates=14 n_scores=1988 10.8s (elapsed 318s)
+[fold 30] 2025-06-23 n_dates=14 n_scores=1988 10.4s (elapsed 328s)
+[fold 31] 2025-07-14 n_dates=15 n_scores=2130 11.5s (elapsed 340s)
+[fold 32] 2025-08-04 n_dates=15 n_scores=2130 11.4s (elapsed 351s)
+[fold 33] 2025-08-25 n_dates=14 n_scores=1988 11.0s (elapsed 362s)
+[fold 34] 2025-09-15 n_dates=15 n_scores=2130 11.7s (elapsed 374s)
+[fold 35] 2025-10-06 n_dates=15 n_scores=2130 11.6s (elapsed 385s)
+[fold 36] 2025-10-27 n_dates=15 n_scores=2130 11.5s (elapsed 397s)
+[fold 37] 2025-11-17 n_dates=14 n_scores=1988 10.8s (elapsed 408s)
+[fold 38] 2025-12-08 n_dates=14 n_scores=1988 10.7s (elapsed 418s)
+[fold 39] 2025-12-29 n_dates=13 n_scores=1846 10.1s (elapsed 428s)
+[fold 40] 2026-01-19 n_dates=15 n_scores=2130 11.5s (elapsed 440s)
+[fold 41] 2026-02-09 n_dates=14 n_scores=1988 11.0s (elapsed 451s)
+[fold 42] 2026-03-02 n_dates=21 n_scores=2982 16.2s (elapsed 467s)
+{
+  "n_folds": 43,
+  "n_rows": 88750,
+  "n_dates": 625,
+  "wall_seconds": 467.3,
+  "corpus": "/private/tmp/claude-502/-Users-renhao-git-github-renquant-orchestrator/428feb92-8ee7-4b4f-afed-1e4fa82ef367/scratchpad/modal-probe/repo-root/backtesting/renquant_104/artifacts/walkforward_patchtst_runs/wf-pt-b4e47e2c-batch1",
+  "panel": "/Users/renhao/git/github/RenQuant/data/transformer_v4_wl200_clean.parquet",
+  "last_fold_trading_days": 21
+}
+[OK] windows disjoint; wrote scores.parquet

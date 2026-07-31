@@ -1,0 +1,42 @@
+================================================================================================
+ARMS  (fold-level mean; t_fold = DECISION dispersion over folds)
+================================================================================================
+
+--- IC ---
+raw  real                          +0.02780  t_fold= +1.22 (n=43)  t_naive=  +4.77  t_blk3= +0.88
+raw  shift120                      +0.07152  t_fold= +2.90 (n=37)  t_naive= +10.08  t_blk3= +1.84
+raw  shuffle                       +0.00128  t_fold= +0.90 (n=43)  t_naive=  +1.01  t_blk3= +1.14
+cal  real                          +0.02780  t_fold= +1.22 (n=43)  t_naive=  +4.77  t_blk3= +0.88
+cal  shift120                      +0.07152  t_fold= +2.90 (n=37)  t_naive= +10.08  t_blk3= +1.84
+cal  shuffle                       +0.00128  t_fold= +0.90 (n=43)  t_naive=  +1.01  t_blk3= +1.14
+
+--- SPREAD ---
+raw  real                          +0.28220  t_fold= +3.01 (n=43)  t_naive= +10.51  t_blk3= +2.16
+raw  shift120                      +0.42217  t_fold= +4.05 (n=37)  t_naive= +13.36  t_blk3= +2.66
+raw  shuffle                       +0.00837  t_fold= +1.26 (n=43)  t_naive=  +1.26  t_blk3= +1.32
+cal  real                          +0.28220  t_fold= +3.01 (n=43)  t_naive= +10.51  t_blk3= +2.16
+cal  shift120                      +0.42217  t_fold= +4.05 (n=37)  t_naive= +13.36  t_blk3= +2.66
+cal  shuffle                       +0.00837  t_fold= +1.26 (n=43)  t_naive=  +1.26  t_blk3= +1.32
+
+================================================================================================
+REAL - PLACEBO  (paired per fold)
+================================================================================================
+raw|real-shift120|ic               -0.03799  t_fold= -0.95 (n=37)  CI90=[-0.10508,+0.02910]  t_blk3= -0.69
+raw|real-shift120|spread           -0.13421  t_fold= -0.78 (n=37)  CI90=[-0.42251,+0.15409]  t_blk3= -0.64
+raw|real-shuffle|ic                +0.02652  t_fold= +1.16 (n=43)  CI90=[-0.01186,+0.06491]  t_blk3= +0.82
+raw|real-shuffle|spread            +0.27382  t_fold= +2.90 (n=43)  CI90=[+0.11496,+0.43268]  t_blk3= +2.05
+cal|real-shift120|ic               -0.03799  t_fold= -0.95 (n=37)  CI90=[-0.10508,+0.02910]  t_blk3= -0.69
+cal|real-shift120|spread           -0.13421  t_fold= -0.78 (n=37)  CI90=[-0.42251,+0.15409]  t_blk3= -0.64
+cal|real-shuffle|ic                +0.02652  t_fold= +1.16 (n=43)  CI90=[-0.01186,+0.06491]  t_blk3= +0.82
+cal|real-shuffle|spread            +0.27382  t_fold= +2.90 (n=43)  CI90=[+0.11496,+0.43268]  t_blk3= +2.05
+
+================================================================================================
+FROZEN DECISION RULE (prereg §3)
+================================================================================================
+  d  = fold mean(real IC - shift120 IC) = -0.03799
+  t_d (fold-level, n=37)     = -0.953
+  90% CI on d                  = [-0.10508, +0.02910]
+  decile-spread arm sign agrees: True  (spread d=-0.13421, t=-0.78)
+  calibrated arm d=-0.03799 t=-0.95 (raw d=-0.03799)
+
+  ==> mechanical bucket: KILL-candidate (requires CI upper bound below smallest useful effect)
