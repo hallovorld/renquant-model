@@ -77,3 +77,39 @@ observe, and that test fails.
 It does not run anything, does not change any published number, and does not make the
 existing void Stage-1 result reconstructible — that run is gone. It makes the **next**
 one checkable.
+
+## Review round 1 — the artifact persisted the ingredients, not the series tested
+
+Codex: the CSV was written **before** the runner formed
+`common = subj.index.intersection(base.index)` and `dpair = (subj - base).dropna()`,
+so a later reader had to guess that alignment, and a different guess yields a different
+calibration — the exact thing this file exists to prevent.
+
+Fixed by moving the write **after** `dpair` exists and persisting it as its own
+`paired_contrast` column, with `subject` and `baseline` kept beside it so the contrast
+can be *checked* rather than trusted.
+
+**A sidecar `<name>.meta.json`** now carries what is needed to read the CSV without
+this source file: subject and baseline arm names, label column and horizon, the
+statistic, both input sha256 pins, and an explicit
+`paired_contrast_definition` telling the reader **not** to re-derive the column.
+
+**One correction to my own first test.** I wrote
+`test_the_contrast_is_NOT_recoverable_by_naive_subtraction` — and it failed, because
+pandas aligns on subtraction, so `(subj - base).dropna()` equals the runner's
+intersection-then-dropna **exactly**. My anti-vacuity check caught my own overstatement
+of the defect.
+
+The real gap is narrower and still real: **the reader must guess which operation was
+performed.** Reconstructions that are entirely reasonable a priori — filling the gaps
+instead of dropping them, or keeping the union — give a different series and therefore
+a different calibration. The replacement test asserts that the equivalent
+reconstruction *is* equivalent (so the record is honest) and that those two plausible
+alternatives *do* diverge (so the persisted column is load-bearing).
+
+Ordering is also pinned in the source itself: `test_the_runner_writes_AFTER_forming_dpair`
+fails if a future edit hoists the write back above the intersection, which would
+re-create the ambiguity without breaking any value assertion.
+
+`[VERIFIED — this session]` 12 tests pass; dropping `paired=dpair` from the call fails
+the suite, so the column is load-bearing.

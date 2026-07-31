@@ -7,6 +7,8 @@ be worse than the omission it fixes.
 from __future__ import annotations
 
 import importlib.util
+import json
+import pathlib
 import sys
 from pathlib import Path
 
@@ -99,3 +101,87 @@ def test_the_flag_exists_and_defaults_to_not_writing(tmp_path):
     assert '"--per-date-out"' in src
     assert 'ap.add_argument("--per-date-out", default=None' in src
     assert "if a.per_date_out:" in src
+
+
+# --- the paired contrast is the artifact (codex #131) -------------------------
+#
+# The first version wrote `subject` and `baseline` BEFORE the runner formed
+# `common = subj.index.intersection(base.index)` and `dpair = (subj - base).dropna()`.
+# A later reader had to guess that alignment, and a different guess yields a different
+# calibration -- which is exactly what this file exists to prevent. These tests pin the
+# persisted contrast against the one the runner actually hands to `agg`.
+
+def _mismatched_pair():
+    """Deliberately misaligned indexes: overlap, subject-only, baseline-only, and a
+    NaN inside the overlap. A naive `subj - base` differs from the runner's dpair on
+    every one of those."""
+    subj = pd.Series({"2026-01-02": 1.0, "2026-01-03": 2.0, "2026-01-05": 4.0,
+                      "2026-01-06": float("nan")})
+    base = pd.Series({"2026-01-02": 0.5, "2026-01-03": 0.25, "2026-01-04": 9.0,
+                      "2026-01-06": 1.0})
+    common = subj.index.intersection(base.index)
+    dpair = (subj.reindex(common) - base.reindex(common)).dropna()
+    return subj, base, dpair
+
+
+def test_the_persisted_contrast_is_byte_for_byte_the_series_agg_receives(tmp_path):
+    subj, base, dpair = _mismatched_pair()
+    out = tmp_path / "s.csv"
+    M.write_per_date_series({"subject": subj, "baseline": base}, out, paired=dpair)
+
+    got = pd.read_csv(out, index_col="date")["paired_contrast"].dropna()
+    assert list(got.index) == list(dpair.index)
+    assert [float(x) for x in got] == [float(x) for x in dpair]
+
+
+def test_a_DIFFERENT_reconstruction_really_does_diverge(tmp_path):
+    """Anti-vacuity, and a correction to my first version of this test.
+
+    I first asserted that a naive `subject - baseline` could not recover `dpair`.
+    That is FALSE: pandas aligns on subtraction, so `(subj - base).dropna()` equals
+    the runner's intersection-then-dropna exactly. My own test caught it.
+
+    The real gap codex identified is narrower and still real: the reader must GUESS
+    which operation was performed. Reconstructions that are entirely reasonable a
+    priori — fill the gaps instead of dropping them, or keep the union — give a
+    different series and therefore a different calibration. That is what the
+    persisted column and the sidecar definition remove.
+    """
+    subj, base, dpair = _mismatched_pair()
+    equivalent = (subj - base).dropna()
+    assert [float(x) for x in equivalent] == [float(x) for x in dpair], (
+        "pandas alignment makes these identical; if that ever changes, say so here")
+
+    filled = (subj - base).fillna(0.0)          # a plausible alternative choice
+    union = subj.reindex(subj.index.union(base.index)) -         base.reindex(subj.index.union(base.index))
+    assert len(filled) != len(dpair) or list(filled) != list(dpair)
+    assert len(union) != len(dpair)
+
+
+def test_the_sidecar_carries_enough_to_read_the_csv_alone(tmp_path):
+    subj, base, dpair = _mismatched_pair()
+    out = tmp_path / "s.csv"
+    meta = M.write_per_date_series(
+        {"subject": subj, "baseline": base}, out, paired=dpair,
+        provenance={"subject_arm": "A1", "baseline_arm": "B1",
+                    "label_column": "fwd_120_tr", "label_horizon_trading_days": 120,
+                    "matrix_sha256": "aa", "tr_sha256": "bb"})
+    side = json.loads((tmp_path / "s.meta.json").read_text())
+    for k in ("subject_arm", "baseline_arm", "label_column",
+              "label_horizon_trading_days", "matrix_sha256", "tr_sha256",
+              "paired_contrast_definition"):
+        assert k in side, f"sidecar cannot be interpreted without {k}"
+    assert side["n_paired"] == len(dpair)
+    assert meta["sidecar"].endswith("s.meta.json")
+
+
+def test_the_runner_writes_AFTER_forming_dpair():
+    """Ordering is the defect, so it is pinned in the source rather than only in
+    behaviour: a future edit that hoists the write back above the intersection
+    re-creates the ambiguity without failing any value assertion."""
+    src = pathlib.Path(M.__file__).read_text()
+    i_dpair = src.index("dpair = (subj.reindex(common)")
+    i_write = src.index("R[\"per_date_series\"] = write_per_date_series(")
+    assert i_dpair < i_write, (
+        "the per-date write happens before dpair is formed — it can only persist "
+        "ingredients, not the series actually tested")

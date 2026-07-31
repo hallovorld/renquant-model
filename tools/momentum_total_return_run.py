@@ -302,7 +302,9 @@ def per_date_e2(sub: pd.DataFrame, arm: str, ycol: str) -> pd.Series:
 
 
 def write_per_date_series(series_by_name: "dict[str, pd.Series]",
-                          out_path: "str | Path") -> dict:
+                          out_path: "str | Path",
+                          paired: "pd.Series | None" = None,
+                          provenance: "dict | None" = None) -> dict:
     """Persist the per-date statistic series this run already computed.
 
     WHY (GOAL-7 redesign §7, 2026-07-31). This runner COMPUTES per-date E2 via
@@ -321,20 +323,44 @@ def write_per_date_series(series_by_name: "dict[str, pd.Series]",
     Costs one CSV (~16 KB at GOAL-4's size). Computes NOTHING new: every value
     written here is already produced by the run, so this cannot move a verdict.
     """
+    import json as _json
     import pandas as _pd
     frame = _pd.DataFrame({k: v for k, v in series_by_name.items() if v is not None})
+
+    # THE PAIRED CONTRAST IS THE ARTIFACT. Writing only `subject` and `baseline`
+    # leaves the reader to re-derive `subj.index.intersection(base).- .dropna()`
+    # themselves, and a different reconstruction gives a different calibration --
+    # which is the whole thing this file exists to make reproducible. So the exact
+    # series handed to `agg` is persisted as its own column, and the components are
+    # kept beside it so the contrast can be checked rather than trusted.
+    if paired is not None:
+        frame = frame.join(paired.rename("paired_contrast"), how="outer")
     frame = frame.sort_index()
     frame.index.name = "date"
     out = Path(out_path)
     out.parent.mkdir(parents=True, exist_ok=True)
     frame.to_csv(out)
-    return {
+
+    meta = {
         "path": str(out),
         "columns": list(frame.columns),
         "n_rows": int(len(frame)),
+        "n_paired": int(paired.notna().sum()) if paired is not None else 0,
         "first_date": str(frame.index.min()) if len(frame) else None,
         "last_date": str(frame.index.max()) if len(frame) else None,
+        # Enough to interpret the CSV WITHOUT this source file. A research artifact
+        # whose columns can only be decoded by reading the runner is not independent.
+        "paired_contrast_definition": (
+            "paired_contrast = subject - baseline on the intersection of their date "
+            "indexes, NaN dropped. This is the exact series passed to agg(); do not "
+            "re-derive it from the component columns."
+        ),
+        **(provenance or {}),
     }
+    side = out.with_suffix(".meta.json")
+    side.write_text(_json.dumps(meta, indent=2, sort_keys=True), encoding="utf-8")
+    meta["sidecar"] = str(side)
+    return meta
 
 
 def holm(pairs: list[tuple[str, float]]) -> dict:
@@ -489,14 +515,26 @@ def main(argv=None) -> int:
 
     subj = per_date_e2(hold, ARM_PRIMARY, ycol)
     base = per_date_e2(hold, "B1_div_yield_252", ycol)
-    if a.per_date_out:
-        R["per_date_series"] = write_per_date_series(
-            {"subject": subj, "baseline": base}, a.per_date_out)
-        print(f"  per-date series written: {R['per_date_series']['n_rows']} rows "
-              f"-> {R['per_date_series']['path']}")
-
     common = subj.index.intersection(base.index)
     dpair = (subj.reindex(common) - base.reindex(common)).dropna()
+    # Written AFTER dpair exists, so the file can carry the series actually tested
+    # rather than the ingredients of one. The previous version wrote here, before
+    # the intersection was formed.
+    if a.per_date_out:
+        R["per_date_series"] = write_per_date_series(
+            {"subject": subj, "baseline": base}, a.per_date_out, paired=dpair,
+            provenance={
+                "subject_arm": ARM_PRIMARY,
+                "baseline_arm": "B1_div_yield_252",
+                "label_column": ycol,
+                "label_horizon_trading_days": H_PRIMARY,
+                "statistic": "per-date E2 (top-decile spread)",
+                "matrix_sha256": R["pins"]["matrix"],
+                "tr_sha256": R["pins"]["tr"],
+            })
+        print(f"  per-date series written: {R['per_date_series']['n_rows']} rows, "
+              f"{R['per_date_series']['n_paired']} paired "
+              f"-> {R['per_date_series']['path']}")
     pc = agg(dpair, H_PRIMARY, N_BOOT_REAL)
     print(f"  PAIRED contrast subject - baseline, same dates/blocks: "
           f"delta={pc['mean']:+.4f} t={pc['t']:+.3f} "
