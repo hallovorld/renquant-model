@@ -140,6 +140,19 @@ def main() -> int:
     ap.add_argument("--data-dir", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--seed", type=int, default=42)
+    # WHY THIS EXISTS. Measured 2026-08-01: the clf recipe matches **0 of 85** walk-forward
+    # corpus folds, because a WF corpus is a series of POINT-IN-TIME artifacts each trained
+    # to a different cutoff and this trainer had no cutoff at all -- it trained on whatever
+    # the data directory held and then REPORTED where that ended. So "the certified clf
+    # recipe has no out-of-sample corpus" was not an oversight in scheduling; the lane
+    # could not produce one.
+    #
+    # `renquant_orchestrator.build_wf_manifest` loops a fold schedule re-running
+    # `train_gbdt --train-cutoff` per cutoff. This gives the clf trainer the same handle,
+    # so the same schedule can be looped for this recipe.
+    ap.add_argument("--train-cutoff", default=None, metavar="YYYY-MM-DD",
+                    help="train only on rows with date <= this. Omit for the full panel "
+                         "(the existing behaviour, byte-identical).")
     args = ap.parse_args()
     out = refuse_non_shadow(Path(args.out))
 
@@ -151,6 +164,22 @@ def main() -> int:
     data_dir = Path(args.data_dir)
     train, feat_cols, label = load_panel(data_dir, label=LABEL)
     train = train.dropna(subset=[LABEL])
+    # THE TRUNCATION HAPPENS HERE, BEFORE build_normalization -- and that placement is the
+    # whole point. `build_normalization` fits feature means/stds/clips on `train`; running
+    # it on the full panel and only then truncating would leak post-cutoff moments into a
+    # fold that is supposed to know nothing after its cutoff. A WF corpus built that way
+    # would look valid and be worthless, which is worse than not having one.
+    if args.train_cutoff is not None:
+        cut = pd.Timestamp(args.train_cutoff)
+        before = len(train)
+        train = train[train["date"] <= cut]
+        if train.empty:
+            raise SystemExit(
+                f"--train-cutoff {args.train_cutoff}: 0 of {before} labelled rows are at "
+                f"or before it — refusing to train on an empty panel")
+        print(f"train-cutoff {args.train_cutoff}: kept {len(train):,} of {before:,} "
+              f"labelled rows (max date now "
+              f"{pd.Timestamp(train['date'].max()).date()})")
     y = top_decile_label(train)
     mu, sd, norm_kind, clip_lo, clip_hi = build_normalization(train, feat_cols,
                                                               data_dir)
