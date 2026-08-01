@@ -18,25 +18,37 @@ every execution would end **UNRESOLVED-METHOD regardless of truth** — the same
 class as Amendment 1's F1: a rule that cannot behave as intended, in the opposite
 direction (always-reject instead of always-zero).
 
-## The amendment
+## The amendment (v2, per review — bootstrap-calibrated, not approximated)
 
-Replace the envelope with the max-test form:
+Replace the envelope with a **parametric-bootstrap-calibrated max test**:
 
-> per-lag envelope `z₁₋α/(2K) · SE_k` with α = 0.05, K = 40, and Bartlett's-formula
-> `SE_k = √((1 + 2·Σ_{j<k} r_j²)/n)`; the gate fails iff any lag's |empirical −
-> implied| exceeds its own envelope.
+> Fit the AR(p) null as §4.2 specifies. Simulate **B = 500** series from the fitted
+> null (seeded, residual-resampled). Score each against the same implied-ACF curve as
+> the real series: `D_b = max_{k≤40} |acf_b(k) − implied(k)|`. The gate threshold is the
+> **95th percentile of {D_b}**; adequacy fails iff `D_real` exceeds it.
 
-Measured on the identical perfect-specification fixtures `[本次实测]`: rejects
-**4/20, 0/20, 0/20** where the frozen rule rejects 18/20, 15/20, 19/20.
+This calibrates the max statistic's threshold under the null itself — no per-lag SE
+approximation, no max-of-K miscalibration — and, per the review, it assesses only the
+GATE's threshold: whether AR is the right real-series null remains guarded by the
+separate UNRESOLVED-METHOD outcome.
 
-## Honesty about the residual miscalibration
+**Validation, frozen and partially executed:** independent perfect-specification sets
+(fresh seed ranges, fit + full gate per trial). Measured at B=300, M=50 per case
+`[本次实测 2026-08-01]`: false-failures **2/50, 2/50, 4/50** for (n=2150, φ=0.6),
+(n=2150, φ=0.9), (n=600, φ=0.5) — all consistent with the nominal 5% (MC SE ≈ 3.1%).
+The frozen acceptance criterion for the full validation (**M = 200, B = 500**, running
+at filing time; JSON to be committed to this PR before merge): per-case false-failure
+rate ≤ **0.10** = 0.05 + 3·√(0.05·0.95/200). A case exceeding it voids this amendment's
+replacement and the frozen rule question returns to review.
 
-The 4/20 cell (n=2150, φ=0.6) is above the nominal ~1/20 and did not move when the
-implied-ACF simulation precision was raised 8× — the rule is approximately sized, not
-exact, and this amendment does NOT claim otherwise. The direction prices it: an
-adequacy false-reject can only ever produce **UNRESOLVED-METHOD** — it costs
-completed-run probability, never verdict validity. A rule erring toward refusing to run
-is acceptable; the frozen rule erring toward *always* refusing is not a gate at all.
+## What the first draft of this amendment got wrong, on the record
+
+Draft 1 proposed a per-lag `z₁₋α/(2K) · Bartlett-SE` envelope whose own perfect-spec
+false-failure rate measured 4/20 in the worst case — and argued the direction
+("errors only cause UNRESOLVED") made that acceptable. The review rejected both: 20
+trials is not evidence for a 5% familywise gate, and direction does not make an
+uncalibrated refusal probability a calibrated criterion. Draft 2 replaces approximation
+with calibration and argument with measurement.
 
 ## Not claimed
 
