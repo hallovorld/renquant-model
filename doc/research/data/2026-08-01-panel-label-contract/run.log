@@ -1,0 +1,8 @@
+  alpha158_291_fundamental_dataset.parquet  column 'fwd_60d_excess'
+    rows 725,840  dates 2599  nulls 0
+    per-date mean==0 on 2599/2599   std==1 on 2599/2599
+    worst |mean|=7.734e-17  worst |std-1|=1.237e-11
+    => PER-DATE Z-SCORE: True  (so it is NOT a return; no bps may be read off it)
+    labels past frontier 2026-04-28: 5 date(s), 723 rows  ['2026-04-29', '2026-04-30', '2026-05-01', '2026-05-04', '2026-05-05']
+
+  [not established] That labels past the frontier are WRONG. A per-date z-score is computable from any values, so its presence says nothing about whether the 60-day window has elapsed — but neither does it show the row is unrealised. Check before using.
