@@ -73,13 +73,26 @@ def _sha(p: Path) -> str:
 
 
 def load_snapshot_manifest() -> dict | None:
-    """The Amendment-3 resolution root, or None (= UNRESOLVED-DATA, never a fallback)."""
+    """The Amendment-3 resolution manifest, or None (= UNRESOLVED-DATA, no fallback)."""
     if not MANIFEST.is_file():
         return None
     man = json.loads(MANIFEST.read_text())
     if man.get("dataset_id") != "momentum-prereg-inputs-20260801":
         return None
     return man
+
+
+def _resolve_root(man: dict) -> Path | None:
+    """content-addressed-v1 resolution: identity lives ENTIRELY in the manifest's
+    digest set; a candidate root is only a cache hint. Selection is by existence
+    (first root carrying panel.parquet); VALIDITY is decided by the digest checks
+    that follow, and a digest failure there is a finding — never grounds to try
+    the next root silently."""
+    for cand in man.get("resolver", {}).get("candidate_roots", []):
+        root = Path(cand["path"])
+        if (root / "panel.parquet").is_file():
+            return root
+    return None
 
 
 def _load_tr_builder():
@@ -115,7 +128,10 @@ def verify_preconditions() -> dict:
               and man["files"]["ticker_sectors.json"]["sha256"] == FROZEN["sector_sha256"]
               and man["combined_ohlcv_digest"]["value"] == FROZEN["ohlcv_combined_sha256"],
               "manifest headline digests must equal the frozen §2 pins byte-for-byte")
-        root = Path(man["location"]["path"])
+        root = _resolve_root(man)
+        check("snapshot_root_resolves", root is not None,
+              "no candidate root carries panel.parquet — refuse; no live-path fallback")
+    if man is not None and root is not None:
         panel = root / "panel.parquet"
         check("panel_digest", panel.is_file() and _sha(panel) == FROZEN["panel_sha256"])
         sect = root / "ticker_sectors.json"
@@ -262,7 +278,7 @@ def execute(json_out: Path | None) -> int:
     # Amendment 3: every read goes through the verified snapshot root (preflight has
     # already verified each file's sha against the manifest; the live data/ paths are
     # never touched).
-    root = Path(load_snapshot_manifest()["location"]["path"])
+    root = _resolve_root(load_snapshot_manifest())
     panel = pd.read_parquet(root / "panel.parquet",
                             columns=["ticker", "date", "fwd_20d_excess"])
     panel["date"] = pd.to_datetime(panel["date"])

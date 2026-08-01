@@ -86,7 +86,8 @@ def test_manifest_identity_check_fails_on_a_drifted_headline_digest(monkeypatch,
     drifted = tmp_path / "m.json"
     drifted.write_text(_json.dumps({
         "dataset_id": "momentum-prereg-inputs-20260801",
-        "location": {"path": str(tmp_path)},
+        "resolver": {"scheme": "content-addressed-v1",
+                     "candidate_roots": [{"path": str(tmp_path)}]},
         "combined_ohlcv_digest": {"value": "00" * 32},
         "files": {"panel.parquet": {"sha256": "00" * 32},
                   "ticker_sectors.json": {"sha256": "00" * 32}}}))
@@ -94,6 +95,28 @@ def test_manifest_identity_check_fails_on_a_drifted_headline_digest(monkeypatch,
     pre = R.verify_preconditions()
     assert not pre["ok"]
     assert any(c == "manifest_identity" for c in pre["unresolved_data"])
+
+
+def test_resolution_refuses_when_no_candidate_root_exists(monkeypatch, tmp_path):
+    """content-addressed-v1: identity digests can be perfect, but if no candidate
+    root carries the bytes the runner refuses (snapshot_root_resolves) rather than
+    falling back to any live path."""
+    import json as _json
+    man = tmp_path / "m.json"
+    man.write_text(_json.dumps({
+        "dataset_id": "momentum-prereg-inputs-20260801",
+        "resolver": {"scheme": "content-addressed-v1",
+                     "candidate_roots": [{"path": str(tmp_path / "nowhere")}]},
+        "combined_ohlcv_digest": {"value": R.FROZEN["ohlcv_combined_sha256"]},
+        "files": {"panel.parquet": {"sha256": R.FROZEN["panel_sha256"]},
+                  "ticker_sectors.json": {"sha256": R.FROZEN["sector_sha256"]}}}))
+    monkeypatch.setattr(R, "MANIFEST", man)
+    pre = R.verify_preconditions()
+    assert not pre["ok"]
+    assert "snapshot_root_resolves" in pre["unresolved_data"]
+    assert "manifest_identity" not in pre["unresolved_data"]
+    for dependent in ("panel_digest", "sector_digest"):
+        assert dependent not in pre["checks"]
 
 
 def test_cli_without_flags_is_usage_error():
