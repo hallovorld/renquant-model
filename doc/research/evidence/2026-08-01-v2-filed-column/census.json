@@ -1,0 +1,93 @@
+{
+  "candidates": [
+    {
+      "date_column": "filing_date",
+      "date_max": "2026-07-24",
+      "date_min": "2014-02-12",
+      "file": "filing_dates.parquet",
+      "key_columns": [
+        "ticker",
+        "period_end",
+        "form"
+      ],
+      "n_distinct_tickers": 831,
+      "n_null_dates": 0,
+      "n_rows": 36564
+    },
+    {
+      "date_column": "available_v2",
+      "date_max": "2026-07-21",
+      "date_min": "2014-02-19",
+      "file": "available_at_v2.parquet",
+      "key_columns": [
+        "ticker",
+        "fiscal_period_end",
+        "form"
+      ],
+      "n_distinct_tickers": 272,
+      "n_null_dates": 0,
+      "n_rows": 12361
+    },
+    {
+      "date_column": "avail",
+      "date_max": "2026-07-27",
+      "date_min": "2013-07-12",
+      "file": "asfiled_period_records.parquet",
+      "key_columns": [
+        "ticker",
+        "period_end"
+      ],
+      "n_distinct_tickers": 788,
+      "n_null_dates": 0,
+      "n_rows": 34629
+    }
+  ],
+  "missing": [],
+  "pairwise": [
+    {
+      "a": "filing_dates.parquet.filing_date",
+      "b": "available_at_v2.parquet.available_v2",
+      "delta_days_max": 1,
+      "delta_days_median": -1.0,
+      "delta_days_min": -634,
+      "frac_identical": 0.0854,
+      "join_keys": [
+        "ticker",
+        "form",
+        "period_end"
+      ],
+      "n_identical": 1056,
+      "n_joined": 12361
+    },
+    {
+      "a": "filing_dates.parquet.filing_date",
+      "b": "asfiled_period_records.parquet.avail",
+      "delta_days_max": 60,
+      "delta_days_median": -1.0,
+      "delta_days_min": -737,
+      "frac_identical": 0.0,
+      "join_keys": [
+        "ticker",
+        "period_end"
+      ],
+      "n_identical": 0,
+      "n_joined": 32411
+    },
+    {
+      "a": "available_at_v2.parquet.available_v2",
+      "b": "asfiled_period_records.parquet.avail",
+      "delta_days_max": 633,
+      "delta_days_median": 0.0,
+      "delta_days_min": -729,
+      "frac_identical": 0.8878,
+      "join_keys": [
+        "ticker",
+        "period_end"
+      ],
+      "n_identical": 9594,
+      "n_joined": 10807
+    }
+  ],
+  "root": "edgar_pit",
+  "scope_note": "This resolves the TBD by MEASUREMENT; it does not choose. A candidate covering fewer distinct tickers than the prereg's common support would silently shrink the B_v1_lag arm \u2014 the 'silently-wrong implementation' Amendment 2a was written to avoid. A systematic small positive delta is an availability CONVENTION, not a filing date. Choosing is an amendment to a frozen document and belongs there, argued against these numbers."
+}
