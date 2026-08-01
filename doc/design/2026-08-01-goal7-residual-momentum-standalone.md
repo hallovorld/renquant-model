@@ -65,7 +65,8 @@ Momentum is not one phenomenon. The literature decomposes it into distinct econo
 mechanisms, and the non-supportive record (§1) concerns only one *expression* of one of them —
 raw price trend, and even that under since-corrected inference. The family below assigns **one feature per mechanism**, chooses
 expressions none of the closed studies tested, and keeps every constant frozen from the
-literature so the zero-fitted-parameter property (and with it full-history OOS) survives.
+literature value so the zero-parameter-fitting property survives; what that property
+does and does not buy is governed by §2's pre-freeze caveat, not restated here.
 
 | id | mechanism | feature (exact) | reference |
 |---|---|---|---|
@@ -211,16 +212,6 @@ been — then MDE ≈ 2.23 × 0.0183 ≈ **0.041**, i.e. the illustrative bar an
 nearly coincide and power at a true IC of +0.04 would be ~50%. These figures exist to
 size the undertaking, not to support any bar: while the method is UNRESOLVED, no claim of
 valid test size is made for any constant here.
-
-**Power, stated honestly `[推导, conditional]`.** Per-date IC sd at N≈292 is ~0.1966
-`[早前实测, breadth memo, VERIFIED]`. Under pure-overlap MA(19) the variance inflation of
-the mean is ×20, so with ~2,300 eligible dates `n_eff ≈ 115`, `SE ≈ 0.018`, MDE at t=2 ≈
-**0.037** — the bar is detectable. If signal persistence doubles the inflation, MDE ≈
-0.052 and the bar is marginal. Both figures are conditional on the assumed dependence; the
-run must report the measured ρ₁ of its own IC series, and if implied MDE exceeds the bar
-the verdict is capped at UNRESOLVED-POWER, not read as evidence of absence. On a ~500-date
-corpus this design would be underpowered by construction — which is why full-history
-eligibility is part of the design, not an implementation detail.
 
 ## 4. Path to shadow — so a RETAIN cannot be inert scaffolding
 
