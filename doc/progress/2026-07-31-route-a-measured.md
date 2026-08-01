@@ -48,18 +48,46 @@ The ~20-month figure in §7.1 was right for `L = 20`. What it did not carry is t
 28-day freshness bar. The study would resolve a question about a checkpoint nobody would
 serve.
 
-**This is not an argument for abandoning route (a). It is an argument for stating what
-route (a) is:** either
+## CORRECTED 2026-07-31 — the subject was wrong: it is the SERVED PRIMARY
 
-* **a deliberately frozen research instrument** — the checkpoint is pinned *because* it
-  must not move, the staleness alarm for it is dispositioned with that reason and an
-  explicit expiry, and no one reads its scores as a live model; or
-* **a live shadow** — in which case it must be retrained, and every retrain **resets the
-  contiguous span to zero**, so `n_blocks` never grows and route (a) can never complete.
+An earlier version of this section framed a choice: the checkpoint is **either** a
+deliberately frozen research instrument **or** a live shadow. **Neither is true, and the
+framing hid the answer.**
 
-**These two cannot both be true of one artifact, and today it is being run as both.**
-That is the frozen-rule adjudication this lane has been waiting for, and it does not
-need any new statistics — only the two rates above.
+`[本次实测 2026-07-31 — live `RenQuant/backtesting/renquant_104/strategy_config.json`]`
+
+| | |
+|---|---|
+| `ranking.panel_scoring.kind` | **`hf_patchtst`**, `enabled: true` |
+| `ranking.panel_scoring.artifact_path` | `artifacts/patchtst_shadow/pt07_strict_trainfit_embargo60_20260522/seed_44/hf_patchtst_all_seed44_model.pt` |
+| declared `shadow_models` | **`xgb_alpha158_fund_previous_primary`** — the XGB is the shadow |
+| the config's own note | *"2026-06-05 operator-directed prod/shadow switch: HF PatchTST pt07 strict seed44 **promoted to primary scorer**; XGB moved to readonly shadow config."* |
+
+**That `artifact_path` is byte-identical to the one in the health rows above** — the
+checkpoint whose staleness this document measures at 621 → 625 days **is the model making
+live decisions.** The health log calls it `..._previous_primary`, which is a misleading
+name written into the data: the live config says it *is* primary.
+
+### So route (a) is not available at all
+
+*"Let it accumulate ~420 contiguous trading days behind a **stable** checkpoint"* would
+mean **deciding that the production primary is never retrained** — for roughly 19 months,
+finishing at ~1 212 days past a 28-day freshness bar.
+
+That is not a research trade-off to be weighed. **It is a proposal about the live book,
+and route (a) is withdrawn on that ground**, not on the arithmetic.
+
+**The arithmetic in this document stands unchanged.** Both measured rates — 4 scored
+dates, staleness +1 per scored day — are correct, and the ~420-day / ~1 212-day figures
+follow from them. What was wrong was the *subject*: I measured a property of the served
+primary and reasoned about it as though it were a research artifact.
+
+### What the closure line needs instead
+
+§7.1 asked *"what would raise `n_blocks`"*. With route (a) removed, the honest answer is
+that **no route which requires a frozen checkpoint is available while that checkpoint
+serves.** Routes (b) and (c) remain unmeasured; whether either survives this constraint
+is not assessed here.
 
 ## Two further measured facts, recorded without interpretation
 

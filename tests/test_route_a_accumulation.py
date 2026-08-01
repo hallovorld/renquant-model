@@ -67,3 +67,32 @@ def test_the_document_does_not_compute_a_closure_verdict():
     d = " ".join(doc.split())
     assert "no verdict is computed here" in d
     assert "remains **UNRESOLVED (underpowered)**" in d
+
+
+def test_the_document_names_the_checkpoint_as_the_SERVED_PRIMARY():
+    """CORRECTED 2026-07-31: the first version framed a choice between "frozen research
+    instrument" and "live shadow". Neither is true — the live config makes this
+    checkpoint the PRIMARY scorer, and that is what removes route (a).
+
+    Pinned because the correction is the finding: an arithmetic argument about a
+    research artifact reads very differently once its subject is the model making live
+    decisions.
+    """
+    doc = (pathlib.Path(__file__).resolve().parent.parent
+           / "doc/progress/2026-07-31-route-a-measured.md").read_text(encoding="utf-8")
+    d = " ".join(doc.split())
+    assert "the SERVED PRIMARY" in d
+    assert "route (a) is withdrawn on that ground" in d
+    assert "deciding that the production primary is never retrained" in d
+    # and the withdrawn either/or must not still read as a live choice
+    assert "The arithmetic in this document stands unchanged" in d
+
+
+def test_the_two_measured_rates_survive_the_correction():
+    """The subject changed; the measurements did not. Both must still be asserted."""
+    rows = _scored_admitted()
+    assert len({r["run_date"] for r in rows}) == 4
+    by_date = {}
+    for r in rows:
+        by_date.setdefault(r["run_date"], r["staleness_days"])
+    assert [by_date[d] for d in sorted(by_date)] == [621, 622, 623, 624]
