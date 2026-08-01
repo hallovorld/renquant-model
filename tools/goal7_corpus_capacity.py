@@ -18,13 +18,31 @@ model#147, applied across horizons instead of to one.
   h   scope            avail     need@20   verdict
 ===== ============== ========= ========== =========
    20  pre-burn          1 182        400  OK
-   60  pre-burn          1 142      1 200  SHORT
-  120  pre-burn          1 082      2 400  SHORT
-  120  whole corpus      2 287      2 400  SHORT
+   60  pre-burn          1 142      1 200  SHORT   @floor 20
+  120  pre-burn          1 082      2 400  SHORT   @floor 20
+  120  whole corpus      2 287      2 400  SHORT   @floor 20 — but OK @floor 10
 ===== ============== ========= ========== =========
 
-**`h = 120` cannot be rescued by data on this corpus.** Even discarding the registered
-burn boundary entirely and using every admissible date to 2026-07-29, it is still short.
+EVERY CELL ABOVE IS AT ONE FLOOR. The verdicts that survive the sweep are the only ones
+this tool asserts `[codex on model#148]`:
+
+  * **pre-burn `h = 120` is INFEASIBLE across all swept floors (10 / 20 / 30).** Robust.
+  * **whole-corpus `h = 120` is FLOOR_DEPENDENT** — short at 20 and 30, OK at 10 — and
+    **must not drive a design decision.**
+
+An earlier version of this docstring stated the whole-corpus result as an ABSOLUTE — that
+no amount of data could rescue `h = 120`. That is **withdrawn**: it contradicts this
+tool's own sweep, and it was still reachable through `--help` after the progress document
+had been corrected — the same retracted claim living on in a second user-facing surface.
+
+(The withdrawn sentence is described here rather than quoted. Quoting it would put the
+exact phrase back into `--help`, where a reader skimming for the conclusion finds the
+words and not the retraction — and it would defeat the regression below, which is how I
+noticed.)
+
+Addendum 2 makes the whole-corpus row weaker still, not stronger: the draws floor's
+stated rationale was refuted by measurement, so a verdict that flips with the floor rests
+on a convention that could not be justified.
 
 THE FLOOR IS MINE, SO ITS SENSITIVITY IS REPORTED. `draws_floor = 20` is a convention I
 chose in model#147, not a standard, so a verdict resting on it is only as good as the

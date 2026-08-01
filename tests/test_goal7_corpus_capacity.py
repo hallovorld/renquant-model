@@ -181,6 +181,40 @@ def test_the_h120_verdict_does_not_rest_on_the_floor(rep):
     assert set(rep["draws_floors_swept"]) == {10, 20, 30}
 
 
+def test_the_TOOL_DOCSTRING_carries_the_qualified_claim_too():
+    """`[codex on model#148]`: the progress doc was corrected while the tool docstring
+    still said "cannot be rescued by data" — and that string is `--help` output, so a
+    caller could still consume the withdrawn absolute as a design conclusion. One
+    surface being right is not the claim being withdrawn."""
+    import pathlib
+    src = (pathlib.Path(__file__).resolve().parent.parent / "tools"
+           / "goal7_corpus_capacity.py").read_text()
+    assert "cannot be rescued by data" not in src
+    assert "FLOOR_DEPENDENT" in src and "must not drive a design decision" in src
+    assert "INFEASIBLE across all swept floors" in src
+    # and the table cells must carry their floor rather than reading as absolutes
+    assert "@floor 20" in src and "OK @floor 10" in src
+
+
+def test_the_qualified_claim_SURVIVES_argparse_reflow():
+    """codex asked for the PRINTED explanatory text, not just the source. argparse's
+    default formatter collapses the docstring, so a phrase can be present in the file and
+    broken across lines in `--help`. Checked on whitespace-normalised output."""
+    import re
+    import subprocess
+    import sys
+    tool = (pathlib.Path(__file__).resolve().parent.parent / "tools"
+            / "goal7_corpus_capacity.py")
+    out = subprocess.run([sys.executable, str(tool), "--help"],
+                         capture_output=True, text=True).stdout
+    flat = re.sub(r"\s+", " ", out)
+    assert "cannot be rescued" not in flat
+    for phrase in ("INFEASIBLE across all swept floors",
+                   "must not drive a design decision",
+                   "FLOOR_DEPENDENT"):
+        assert phrase in flat, phrase
+
+
 def test_the_document_does_NOT_claim_h120_is_unrescuable_by_data(rep):
     """`[codex on model#148]`: the sensitivity table says whole-corpus h=120 is
     FLOOR_DEPENDENT (clears at 10, short at 20/30), which contradicts an unconditional
