@@ -1,44 +1,62 @@
 #!/usr/bin/env python3
-"""Amendment 4 pre-run validation: the replacement §4.4 gates are (a) satisfiable on
+"""Amendment 4 pre-run validation: the replacement SS4.4 gates are (a) satisfiable on
 a correct machine and (b) FAIL on deliberately corrupted machines.
 
-Subject: the committed positive-control fixture (iid N(0,1), n=756, sha ff859a68…)
-from model#169. The inference module is imported from the #169 branch worktree; its
-HEAD sha is recorded in the output. No real market data is touched anywhere here.
+SELF-CONTAINED (review round 1 on model#172): everything this script needs lives in
+its own directory or is regenerated from a committed seed --
+  * the inference implementation is the vendored ``goal7_momentum_inference_ref.py``
+    beside this file (byte-identical to the reviewed #169 module; its sha256 is
+    recorded in the output as ``inference_ref_sha256``);
+  * the positive-control fixture is REGENERATED from its committed recipe
+    (iid N(0,1), n=756, ``np.random.default_rng(20260801 + 7)``, Python-float repr
+    lines) and asserted against the pinned sha before use -- no cross-branch file
+    dependency.
+No real market data is touched anywhere here.
 
-Because every quantity is seeded and deterministic, the positive rows BELOW ARE the
-values the runner's control gate will reproduce at execution — predetermining a
+Reproduce:  python validate_gate_replacement.py            (rewrites the JSON)
+Verify:     python validate_gate_replacement.py --check    (re-runs, then requires
+            byte-identical agreement with the committed validation_output.json)
+
+Because every quantity is seeded and deterministic, the correct-machine rows ARE the
+values the runner's control gate will reproduce at execution -- predetermining a
 MACHINERY gate is the point: the machine is proven calibrated before the study runs.
 """
 import hashlib
 import importlib.util
+import io
 import json
-import subprocess
 import sys
 from pathlib import Path
 
-RUNNER_WT = Path("/Users/renhao/git/github/renquant-model-wt-momrun")
-INF_PATH = RUNNER_WT / "tools/goal7_momentum_inference.py"
-FIXTURE = RUNNER_WT / "tools/data/goal7_positive_control_noise.csv"
+HERE = Path(__file__).resolve().parent
+INF_PATH = HERE / "goal7_momentum_inference_ref.py"
 
-spec = importlib.util.spec_from_file_location("inf", INF_PATH)
+spec = importlib.util.spec_from_file_location("inf_ref", INF_PATH)
 INF = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(INF)
 
 import numpy as np  # noqa: E402
-import pandas as pd  # noqa: E402
 
-noise = pd.read_csv(FIXTURE, float_precision="round_trip")["x"].to_numpy()
-assert hashlib.sha256(FIXTURE.read_bytes()).hexdigest() == \
-    INF.FROZEN_INFERENCE["positive_control_sha256"]
+# --- regenerate the committed fixture from its recipe and pin-check it -----------
+rng_fix = np.random.default_rng(20260801 + 7)
+noise = rng_fix.standard_normal(756)
+buf = io.StringIO()
+buf.write("x\n")
+for v in noise:
+    buf.write(f"{float(v)!r}\n")
+fixture_sha = hashlib.sha256(buf.getvalue().encode()).hexdigest()
+assert fixture_sha == INF.FROZEN_INFERENCE["positive_control_sha256"], (
+    "regenerated fixture does not match the pinned sha -- recipe or pin drifted")
 
 cfg = dict(INF.FROZEN_INFERENCE)
 cfg["envelope_rule"] = "bootstrap_max"
-out = {"inference_module_head": subprocess.run(
-    ["git", "-C", str(RUNNER_WT), "rev-parse", "HEAD"],
-    capture_output=True, text=True).stdout.strip(),
-    "fixture_sha256": INF.FROZEN_INFERENCE["positive_control_sha256"],
-    "n": len(noise), "band": list(cfg["gate_band"])}
+out = {
+    "inference_ref_sha256": hashlib.sha256(INF_PATH.read_bytes()).hexdigest(),
+    "fixture_sha256": fixture_sha,
+    "fixture_recipe": "iid N(0,1), n=756, np.random.default_rng(20260801 + 7), "
+                      "header 'x' + Python-float repr lines",
+    "n": len(noise), "band": list(cfg["gate_band"]),
+}
 
 # --- positive arm: full-rep own-bar rates on a CORRECT machine -------------------
 cal = INF.calibrate_bar(noise, cfg)
@@ -56,7 +74,7 @@ out["correct_machine"] = {
 }
 
 # --- negative arms: corrupted machines must FAIL the replacement gate ------------
-NEG_REPS = 2000  # SE ≈ sqrt(.025*.975/2000) ≈ 0.0035; failures below are >> 3 SE
+NEG_REPS = 2000  # SE ~ sqrt(.025*.975/2000) ~ 0.0035; failures below are >> 3 SE
 var = float(noise.var())
 fit = INF.fit_ar(noise, cfg["ar_p_max"])
 
@@ -65,7 +83,7 @@ def rate(gen, bar, seed_off):
                                np.random.default_rng(cfg["seed"] + seed_off),
                                NEG_REPS, cfg["gate_band"])
 
-# corruption A: bar calibrated at the WRONG quantile (0.90) — bars too low
+# corruption A: bar calibrated at the WRONG quantile (0.90) -- bars too low
 cfg_q = {**cfg, "quantile": 0.90}
 cal_q = INF.calibrate_bar(noise, cfg_q)
 neg_a = {
@@ -82,7 +100,7 @@ neg_b = {"ar_draws_at_ma_bar": rate(
     cal["bars"]["overlap_ma"], 2)}
 neg_b["gate_ok"] = neg_b["ar_draws_at_ma_bar"]["ok"]
 
-# corruption C: mirror drift — bar calibrated with T at L=59, test statistic
+# corruption C: mirror drift -- bar calibrated with T at L=59, test statistic
 # computed at L=10 (under-corrects the MA(19) dependence, inflating |T|)
 def rate_L(gen, bar, seed_off, L):
     return INF._rejection_rate(gen, bar, L,
@@ -105,12 +123,20 @@ out["verdict"] = {
     "replacement_gate_fails_on_B": not neg_b["gate_ok"],
     "replacement_gate_fails_on_C": not neg_c["gate_ok"],
     "limitation_B": ("NO TEETH on this fixture: the two member bars sit within "
-                     "~0.1 of each other, so cross-member confusion moves the "
+                     "~0.17 of each other, so cross-member confusion moves the "
                      "rate too little to leave the band. Documented, not hidden; "
                      "disjoint seed sub-streams are enforced by code review, and "
                      "seed-stream REUSE is likewise band-invisible by construction "
                      "(rate == alpha exactly)."),
 }
-txt = json.dumps(out, indent=2, sort_keys=True)
-Path(__file__).parent.joinpath("validation_output.json").write_text(txt + "\n")
+txt = json.dumps(out, indent=2, sort_keys=True) + "\n"
+target = HERE / "validation_output.json"
+if "--check" in sys.argv:
+    committed = target.read_text()
+    if committed != txt:
+        print("MISMATCH: recomputed output differs from the committed JSON")
+        sys.exit(1)
+    print("VERIFIED: recomputed output is byte-identical to the committed JSON")
+    sys.exit(0)
+target.write_text(txt)
 print(txt)

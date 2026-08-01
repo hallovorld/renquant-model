@@ -73,11 +73,12 @@
     },
     "neg_reps": 2000
   },
+  "fixture_recipe": "iid N(0,1), n=756, np.random.default_rng(20260801 + 7), header 'x' + Python-float repr lines",
   "fixture_sha256": "ff859a68dd7f0bd73c428458575def9839d5670a860aa5ac323942107e48f8c5",
-  "inference_module_head": "93a785fc8b4446fb0c784037c287521062c6dc11",
+  "inference_ref_sha256": "38867d2cae967967faf935a636d7a67da9d00f41e103c0b2eb57f0355bfc17c0",
   "n": 756,
   "verdict": {
-    "limitation_B": "NO TEETH on this fixture: the two member bars sit within ~0.1 of each other, so cross-member confusion moves the rate too little to leave the band. Documented, not hidden; disjoint seed sub-streams are enforced by code review, and seed-stream REUSE is likewise band-invisible by construction (rate == alpha exactly).",
+    "limitation_B": "NO TEETH on this fixture: the two member bars sit within ~0.17 of each other, so cross-member confusion moves the rate too little to leave the band. Documented, not hidden; disjoint seed sub-streams are enforced by code review, and seed-stream REUSE is likewise band-invisible by construction (rate == alpha exactly).",
     "replacement_gate_fails_on_A": true,
     "replacement_gate_fails_on_B": false,
     "replacement_gate_fails_on_C": true,

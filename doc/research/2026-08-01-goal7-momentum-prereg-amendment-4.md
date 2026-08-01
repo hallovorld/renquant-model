@@ -32,8 +32,14 @@ A two-sided size band around α is satisfiable only against a matched null. (Pro
 
 ## Validation, EXECUTED before filing `[本次实测]`
 
-Committed: `doc/research/data/2026-08-01-goal7-a4-validation/` (script + verbatim JSON;
-inference module at model#169 HEAD `93a785f`, recorded in the output).
+Committed: `doc/research/data/2026-08-01-goal7-a4-validation/` — SELF-CONTAINED per
+review: the script imports the VENDORED `goal7_momentum_inference_ref.py` beside it
+(byte-identical to the reviewed #169 module, sha256 `38867d2c…` recorded in the JSON as
+`inference_ref_sha256`), regenerates the fixture from its committed seed recipe and
+pin-checks it, and uses no absolute path. Reproduce: `python
+validate_gate_replacement.py`; verify: `--check` (re-runs and requires byte-identical
+agreement with the committed JSON — VERIFIED at filing); fast bindings:
+`tests/test_goal7_amendment4_evidence.py` (4 tests).
 
 | machine | member rates | gate |
 |---|---|---|
