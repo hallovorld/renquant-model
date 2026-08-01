@@ -1,4 +1,4 @@
-# A gap-honest block test on these series has df = 3–4, and the frozen bar is a normal quantile
+# Feasibility: gap-separating these series leaves 4–5 blocks, which cannot support the intended prereg
 
 ## What was being attempted
 
@@ -9,30 +9,49 @@ was to build the dependence-preserving replacement and calibrate it.
 
 Building it surfaced something more basic than a calibration constant.
 
-## The finding [本次实测 2026-08-01]
+## Reframed after review `[codex on model#155]`
+
+> *"it still converts that necessary spacing condition into an independent-unit df and
+> Student critical value … df=3–4 and the 8.56/12.84 bars are conditional illustrations,
+> not valid inferential thresholds."*
+
+Correct, and it is the defect this programme keeps cataloguing, committed by me: I took a
+**necessary** condition (gap ≥ h) and spent it as though it were **sufficient**, deriving
+df and a Student bar from a block count. Removing shared label windows does not remove
+predictor persistence, common factor exposure, or longer-range dependence — my own "Not
+claimed" section said so and the table above it ignored it.
+
+So this is a **feasibility / power diagnostic**, not a gap-honest test, and the bracketed
+bars below are illustrative of what *would* follow *if* the blocks were independent —
+which is not shown.
+
+## The measurement [本次实测 2026-08-01]
 
 A gap of `h = 60` between blocks of length 60 consumes 120 trading days per independent
 unit. On the committed per-date series that leaves:
 
-| series | n dates | gap-separated blocks | df | t\*(.05) | t\*(Bonferroni 49) |
+| series | n dates | gap-separated blocks | *(if independent)* df | *(illustrative)* t\*(.05) | *(illustrative)* t\*(Bonf 49) |
 |---|---:|---:|---:|---:|---:|
 | selftest pure_noise | 640 | 5 | 4 | 2.78 | **8.56** |
 | inter142 certified_clf | 565 | 5 | 4 | 2.78 | **8.56** |
 | inter142 prod_XGB | 448 | 4 | 3 | 3.18 | **12.84** |
 | inter142 PatchTST | 565 | 5 | 4 | 2.78 | **8.56** |
 
-The prereg's **3.29** is `Φ⁻¹(1 − 0.05/(2·49)) = 3.2848` — a **normal** quantile. At the df
-a gap-honest scheme actually leaves, the corresponding Student bar is **8.56–12.84**, i.e.
-the frozen bar is understated by **2.6×–3.9×** `[推导 from the two columns]`.
+The load-bearing number is the middle column: **4–5 blocks**. That is how much material a
+scheme that merely removes direct label overlap would have to work with on the currently
+committed series.
 
-This is the "borrowed critical value on small n" shape: the block statistic is computed
-correctly and then compared to a large-sample bar that its own df does not support.
+The bracketed columns are **not thresholds**. They say what a Student bar would be if those
+4–5 blocks were independent, and nothing here establishes that they are. The prereg's
+**3.29** is `Φ⁻¹(1 − 0.05/(2·49)) = 3.2848`, a **normal** quantile; the honest statement is
+not "the right bar is 8.56" but **"no bar is currently justified, and there is very little
+material to justify one with."**
 
-## This is a POWER problem, not a threshold problem
+## This is a POWER problem, and not one a different threshold fixes
 
-Raising the bar to 8.56 does not rescue the design; it states its cost. A study with 4–5
-independent units cannot resolve a small IC difference at a family-wise α over 49 tests,
-whatever the bar is called. **That has to be on the record before anything is frozen**,
+Raising the bar does not rescue the design. Whatever null is eventually justified, it will
+be built on 4–5 gap-separated blocks, and a family-wise α over 49 tests on that much
+material cannot resolve a small IC difference. **That has to be on the record before anything is frozen**,
 because a prereg that fixes a method without stating its power is how an underpowered run
 becomes an "inconclusive" result that reads like evidence of absence.
 
@@ -61,7 +80,8 @@ estimand that does not require gap-separated daily blocks).
 ## Not claimed
 
 That the gap=0 procedure's true size is any particular number — I withheld mine and said
-why. That 8.56 is the right bar to adopt; it is what the *stated* family and α imply at
-the *available* df, which is an argument about the design, not a recommendation to run at
-that bar. That a gap of exactly `h` is sufficient — `lag_alignment.py` says gap ≥ h is
-necessary and not sufficient, and nothing here changes that.
+why. That 8.56/12.84 are applicable bars — they are illustrations of an independence
+assumption that is **not** established, kept only to show the order of magnitude the
+design would have to clear. That a gap of exactly `h` is sufficient — `lag_alignment.py` says gap ≥ h is
+necessary and not sufficient, and this document's first revision violated its own caveat
+on exactly that point.

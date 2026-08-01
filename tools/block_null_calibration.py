@@ -102,7 +102,8 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
 
     out = []
-    print(f"{'series':<40}{'n':>5}{'blocks':>8}{'df':>4}{'t*(.05)':>10}{'t*(Bonf49)':>12}")
+    print(f"{'series':<40}{'n':>5}{'gap-sep blocks':>16}"
+          f"{'[illustrative only] t if independent, .05 / Bonf'+str(a.family):>50}")
     for p in a.series:
         try:
             v = load(p, a.col)
@@ -113,10 +114,17 @@ def main(argv=None) -> int:
         df = k - 1
         t05 = _student(df, 0.05)
         tbf = _student(df, 0.05 / a.family)
-        print(f"{p.name[:39]:<40}{len(v):>5}{k:>8}{df:>4}{t05:>10}{tbf:>12}")
-    print(f"\n  A gap of {a.horizon} between blocks leaves single-digit independent units on")
-    print(f"  these series. The bar for a family of {a.family} at those df is the last column;")
-    print("  a NORMAL quantile (3.2848) is not that bar.\n")
+        print(f"{p.name[:39]:<40}{len(v):>5}{k:>16}{'('+str(t05)+' / '+str(tbf)+')':>50}")
+    print(f"\n  FEASIBILITY DIAGNOSTIC, NOT A TEST. The middle column is the count of")
+    print(f"  gap-separated blocks at gap = h = {a.horizon}: how much material a scheme that")
+    print("  removes direct label overlap would have to work with. That is all it is.")
+    print("\n  The bracketed values are what a Student bar WOULD be IF those blocks were")
+    print("  independent. They are ILLUSTRATIVE ONLY and are not applicable thresholds:")
+    print("  gap >= h removes shared label windows and nothing else. Predictor persistence,")
+    print("  common factor exposure and longer-range dependence all survive it, so the")
+    print("  retained blocks are not shown to be independent and no df follows from the")
+    print("  count. A valid bar requires a justified or calibrated null, which this tool")
+    print("  does not supply.\n")
     print(f"{'series':<44}{'n':>5}{'donors':>8}" + "".join(f"{'size@'+str(b):>11}" for b in a.bars))
     for p in a.series:
         try:
