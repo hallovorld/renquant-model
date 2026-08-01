@@ -28,15 +28,18 @@ today would be admitted by a gate blind to which member (or blend) it is serving
 Related decay of the evidence chain: the prod artifact's WF manifest and its override
 rollback both point at deleted `/tmp` paths (orch#726).
 
-### P3 — a valid evaluation instrument for "does combining help": **NOW EXISTS, UNUSED**
+### P3 — a valid evaluation instrument for "does combining help": **PROPOSED, NOT YET USABLE**
 
 The prior combiner evidence is E55: NGB-on **lost** a 27-month A/B by −3.78 APY pts /
 −0.14 Sharpe, and its written reactivation gate (`pure_alpha ≥ +0.04`) names a quantity
 with **zero producers** on any main; the whole `panel_ltr.ngboost` node is wired to
-nothing (three fields, three dead ends — orch#725/#729). Meanwhile the inference
-machinery an honest re-test needs was built this session: the #162 null-construction
-protocol (approved) and its #164 instantiation pattern. Nothing has applied them to an
-ensemble contrast yet.
+nothing (three fields, three dead ends — orch#725/#729). Meanwhile the inference machinery an honest re-test would need has been PROPOSED this
+session — the #162 null-construction protocol (an approved DISCUSSION draft: no frozen
+constants, no executable implementation) and the #164 freeze candidate (under review,
+validity unresolved). **Neither is a usable instrument today.** An ensemble contrast can
+be evaluated validly only after a consumer preregistration freezes the protocol's
+constants for that contrast AND a runner implementing it exists — the same two steps the
+momentum lane is itself still completing.
 
 ## The re-evaluated conclusion
 
@@ -46,10 +49,12 @@ measured; what is missing is a gate that can see members. Sequencing that follow
 1. **First (renquant-backtesting boundary):** candidate-artifact scoring in the WF gate —
    the `candidate_artifact_used=false` fix. Until it lands, an ensemble cannot even be
    *admitted* as itself, and Phase-0 outcomes could not alter what serves.
-2. **Second (this repo):** re-state the combiner question per #162/#164 machinery — a
-   paired contrast (blend vs best-single) with a worst-case calibrated bar, replacing
-   both the invalid inference that killed the earlier Phase-0 evidence and the
-   unfalsifiable `pure_alpha` gate (restate it in produced quantities, per orch#729).
+2. **Second (this repo):** draft, review and FREEZE an ensemble-contrast
+   preregistration instantiating #162 (paired blend-vs-best-single contrast, worst-case
+   calibrated bar), plus its runner — the two artifacts without which no valid
+   evaluation exists. This step also replaces the unfalsifiable `pure_alpha` gate with
+   produced quantities (orch#729). **Nothing in this assessment authorizes running it**;
+   it authorizes drafting it, after step 1's gate fix has an owner.
 3. **Not before either:** any new combiner training. E55's loss stands as the prior;
    `[早前实测]` and nothing here revisits it.
 
