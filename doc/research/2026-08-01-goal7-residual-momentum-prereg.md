@@ -31,9 +31,14 @@ since 2016-01-01 for 43/43, 0 query failures**. Same-vendor caveat, stated: this
 same vendor (yfinance) whose per-file `dividend` column the OHLCV store carries — no
 independent vendor exists locally (the TR study measured `adj close` 100% NaN for every
 watchlist name carrying it), so a vendor-wide omission would evade this check.
-**Precommitted handling:** should any evidence of payment for these names surface before
-execution, that name is EXCLUDED by a further visible amendment or the run is
-UNRESOLVED-DATA; no directional-bias argument is made (in a cross-sectional rank
+The verification is persisted as a versioned audit artifact —
+`doc/research/data/2026-08-01-goal7-nonpayer-verification/vendor_dividend_check.json`
+(query date 2026-08-01, range 2016-01-01..query date, per-ticker event counts and
+failure statuses), sha256 `268f21f1bee9b27335de63ca7ca7f458c492573b2907dd58bdf759e89b61ad87` — so the 43/43 claim is
+reproducible data, not prose. **Precommitted handling, closed:** any evidence of payment
+for any of these names surfacing before execution → the run is **UNRESOLVED-DATA**.
+There is no amendment path and no exclusion path: the study population cannot change
+after this freeze. No directional-bias argument is made (in a cross-sectional rank
 statistic the direction of such an error is not identifiable, per review). The sector map is
 `data/ticker_sectors.json`, snapshot `as_of 2026-05-18`; its sha256 is recorded by the
 runner at execution and the snapshot-PIT limitation is inherited as stated in #161.
