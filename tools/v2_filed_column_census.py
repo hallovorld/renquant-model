@@ -87,10 +87,39 @@ def census(root: str) -> dict:
             if aend is None or bend is None:
                 continue
             left = a["df"][shared + [aend, a["datecol"]]].rename(
-                columns={aend: "_pe"}).drop_duplicates(shared + ["_pe"])
+                columns={aend: "_pe"})
             right = b["df"][shared + [bend, b["datecol"]]].rename(
-                columns={bend: "_pe"}).drop_duplicates(shared + ["_pe"])
-            m = left.merge(right, on=shared + ["_pe"], how="inner")
+                columns={bend: "_pe"})
+            keys = shared + ["_pe"]
+            # DUPLICATE KEYS ARE AN AMBIGUITY, NOT A ROW TO DROP `[codex on model#146]`.
+            # The first version called `.drop_duplicates(keys)` here, which silently
+            # keeps whichever row pandas saw first when one key carries two DIFFERENT
+            # dates -- manufacturing the very deltas and coverage this census exists to
+            # report. A key whose rows disagree is reported and makes the census
+            # non-successful; a key whose rows agree is collapsed, because that is a
+            # representation detail rather than an ambiguity.
+            amb = []
+            for side, df, col in ((names[i], left, a["datecol"]),
+                                  (names[j], right, b["datecol"])):
+                g = df.groupby(keys, dropna=False)[col].nunique()
+                bad = g[g > 1]
+                if len(bad):
+                    amb.append({"side": side, "date_column": col,
+                                "n_keys_with_conflicting_dates": int(len(bad)),
+                                "example_keys": [list(map(str, k)) for k in
+                                                 list(bad.index[:3])]})
+            if amb:
+                pairs.append({"a": f"{names[i]}.{a['datecol']}",
+                              "b": f"{names[j]}.{b['datecol']}",
+                              "status": "AMBIGUOUS_KEYS",
+                              "ambiguities": amb,
+                              "note": "one or more join keys carry conflicting dates; "
+                                      "collapsing them would choose arbitrarily, so no "
+                                      "delta is reported for this pair"})
+                continue
+            left = left.drop_duplicates(keys)
+            right = right.drop_duplicates(keys)
+            m = left.merge(right, on=keys, how="inner")
             if m.empty:
                 pairs.append({"a": names[i], "b": names[j], "n_joined": 0,
                               "note": "no rows join on the shared keys"})
@@ -100,7 +129,8 @@ def census(root: str) -> dict:
                 "a": f"{names[i]}.{a['datecol']}",
                 "b": f"{names[j]}.{b['datecol']}",
                 "join_keys": shared + ["period_end"],
-                "n_joined": int(len(m)),
+                "status": "compared",
+            "n_joined": int(len(m)),
                 "n_identical": int((d == 0).sum()),
                 "frac_identical": round(float((d == 0).mean()), 4),
                 "delta_days_min": int(d.min()),
@@ -111,7 +141,15 @@ def census(root: str) -> dict:
     return {
         "root": os.path.basename(os.path.normpath(root)),
         "candidates": rows, "missing": missing, "pairwise": pairs,
+        "n_ambiguous_pairs": sum(1 for p in pairs
+                                 if p.get("status") == "AMBIGUOUS_KEYS"),
         "scope_note": (
+            "SEMANTICS ARE NOT ASSIGNED HERE. This reports each candidate's column NAME, "
+            "row count, ticker coverage and pairwise deltas. It does NOT establish which "
+            "column IS the filed date -- a name is not a contract, and inferring meaning "
+            "from `filing_date` would be the exact guess Amendment 2a refused to make. "
+            "That assignment needs SOURCE-SCHEMA evidence (how each table is produced), "
+            "which this census does not read. "
             "This resolves the TBD by MEASUREMENT; it does not choose. A candidate "
             "covering fewer distinct tickers than the prereg's common support would "
             "silently shrink the B_v1_lag arm — the 'silently-wrong implementation' "
@@ -146,7 +184,11 @@ def main(argv: list[str] | None = None) -> int:
         with open(a.out, "w", encoding="utf-8") as fh:
             json.dump(rep, fh, indent=2, sort_keys=True)
     # Non-zero while the candidates disagree: the TBD is unresolved until someone chooses.
-    return 1 if any(p.get("frac_identical", 0) < 1.0 for p in rep["pairwise"]) else 0
+    # Non-zero while the candidates disagree OR while any pair is ambiguous: an
+    # unresolvable key must not read as "the TBD is resolved".
+    return 1 if (rep["n_ambiguous_pairs"]
+                 or any(p.get("frac_identical", 1.0) < 1.0
+                        for p in rep["pairwise"])) else 0
 
 
 if __name__ == "__main__":

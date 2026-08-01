@@ -34,7 +34,15 @@ interchangeable.
 
 ## What the numbers say
 
-**`available_v2` and `avail` are availability stamps, not filing dates.** Against
+> **CORRECTION 2026-08-01 (codex on model#146): the semantic claims below are
+> withdrawn.** This section originally called `filing_dates.filing_date` *"the only
+> literal filed date"* and the others *"availability stamps"* — **inferred from column
+> names**. A name is not a contract, and inferring meaning from `filing_date` is the exact
+> guess Amendment 2a refused to make. Assigning semantics needs **source-schema
+> evidence** — how each table is produced — which this census does not read. What survives
+> is the arithmetic: names, row counts, ticker coverage, and pairwise deltas.
+
+**The deltas are systematic, and what that implies is left open.** Against
 `filing_date` they are systematically **one day later** — 8.5% and 0.0% identical with a
 median Δ of −1 day. A uniform +1 day is a **convention** (next-day availability), which is
 the correct thing for an availability column to be and the wrong thing for "the real
@@ -46,8 +54,9 @@ against it would have **shrunk the `B_v1_lag` arm below the registered support**
 every other arm kept 515 — the exact "silently-wrong implementation" 2a was written to
 avoid, and invisible in any summary that reports only ICs.
 
-`filing_dates.filing_date` is the only literal filed date and the only candidate whose
-coverage (831) exceeds the registered support.
+`filing_dates.filing_date` is the candidate whose coverage (831) exceeds the registered
+support. **Which column IS the filed date is not established here** — see the correction
+above.
 
 ## What this does NOT do
 
@@ -70,3 +79,30 @@ a script: the prereg's own EVIDENCE block records that the 90.37% / 77.6% / 515 
 were *"measured ad hoc, interactively"* with *"no committed script"*, and an unrepeatable
 number is an assertion with a citation attached — including when it is mine, and including
 when it is only off by a join key.
+
+
+---
+
+## ROUND 2 — the census could have manufactured its own evidence
+
+Reviewed `[codex on model#146]`: *"the census drops duplicate rows on the comparison key
+before joining, silently choosing an arbitrary date when a candidate has multiple facts
+with the same ticker/form/period_end. That can manufacture the pairwise deltas and
+coverage evidence used to inform Amendment 2a."*
+
+Correct. `.drop_duplicates(keys)` keeps whichever row pandas saw first, so a key carrying
+**two different dates** would have produced a delta computed from an arbitrary choice —
+inside the one document whose purpose is to stop an arbitrary choice being made.
+
+**Fixed:** a key whose rows carry **conflicting** dates is reported as `AMBIGUOUS_KEYS`,
+no delta is emitted for that pair, and `main` exits **non-zero** — an unresolvable key must
+never read as *"the TBD is resolved"*. A key whose rows **agree** is still collapsed: that
+is a representation detail, and flagging it would make the census unusable on any table
+with redundant rows.
+
+**Measured on the real corpus `[本次实测 2026-08-01]`: 0 ambiguous pairs.** So the concern
+was valid as a possibility and **did not occur here** — the published deltas were not
+manufactured. That is now **verified rather than assumed**, and a test asserts it.
+
+7 tests, including the conflicting-duplicate case named in review, its mirror (identical
+duplicates are *not* flagged), and the refusal to assign semantics.
