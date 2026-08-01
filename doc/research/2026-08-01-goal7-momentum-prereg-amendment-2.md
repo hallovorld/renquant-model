@@ -36,10 +36,21 @@ separate UNRESOLVED-METHOD outcome.
 (fresh seed ranges, fit + full gate per trial). Measured at B=300, M=50 per case
 `[本次实测 2026-08-01]`: false-failures **2/50, 2/50, 4/50** for (n=2150, φ=0.6),
 (n=2150, φ=0.9), (n=600, φ=0.5) — all consistent with the nominal 5% (MC SE ≈ 3.1%).
-The frozen acceptance criterion for the full validation (**M = 200, B = 500**, running
-at filing time; JSON to be committed to this PR before merge): per-case false-failure
-rate ≤ **0.10** = 0.05 + 3·√(0.05·0.95/200). A case exceeding it voids this amendment's
-replacement and the frozen rule question returns to review.
+**The full validation has EXECUTED and PASSED** `[本次实测 2026-08-01]` — M = 200
+independent perfect-specification trials per case, B = 500 bootstrap draws per trial,
+fresh seed ranges (50000+/90000+), against the frozen acceptance bar ≤ **0.10**
+(= 0.05 + 3·√(0.05·0.95/200)):
+
+| case | false failures | rate | verdict |
+|---|---|---|---|
+| n=2150, φ=0.6 | 6/200 | **0.030** | PASS |
+| n=2150, φ=0.9 | 10/200 | **0.050** | PASS |
+| n=600, φ=0.5 | 8/200 | **0.040** | PASS |
+
+All three sit at or below the nominal 5% itself. Raw record committed at
+`doc/research/data/2026-08-01-goal7-adequacy-validation/full_validation.json`,
+sha256 `d61e980360eb3bbc5395b78fc206e869f1bdb6a867f09bbb2f2d331150c978a1`. Had any case exceeded 0.10, this amendment's replacement would have been
+void by its own frozen criterion.
 
 ## What the first draft of this amendment got wrong, on the record
 
