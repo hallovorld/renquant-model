@@ -179,3 +179,19 @@ def test_the_h120_verdict_does_not_rest_on_the_floor(rep):
     the floor's rationale does not touch it."""
     assert rep["robust_verdict"]["h120/pre_burn"] == "INFEASIBLE"
     assert set(rep["draws_floors_swept"]) == {10, 20, 30}
+
+
+def test_the_document_does_NOT_claim_h120_is_unrescuable_by_data(rep):
+    """`[codex on model#148]`: the sensitivity table says whole-corpus h=120 is
+    FLOOR_DEPENDENT (clears at 10, short at 20/30), which contradicts an unconditional
+    "cannot be rescued by data". The robust claim is the PRE-BURN one; the whole-corpus
+    one is qualified. Pinned so the absolute wording cannot come back."""
+    import pathlib
+    doc = (pathlib.Path(__file__).resolve().parent.parent / "doc" / "progress"
+           / "2026-08-01-goal7-corpus-capacity.md").read_text()
+    assert "cannot be rescued by data.**" not in doc
+    assert "The absolute wording is withdrawn" in doc
+    assert "No design decision may consume the whole-corpus row" in doc
+    # and the verdict the prose must match
+    assert rep["robust_verdict"]["h120/pre_burn"] == "INFEASIBLE"
+    assert rep["robust_verdict"]["h120/whole_corpus"] == "FLOOR_DEPENDENT"

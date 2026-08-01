@@ -1,4 +1,4 @@
-# GOAL-7 — h=120 cannot have an identifiable bar on this corpus, and no amount of data fixes it
+# GOAL-7 — h=120 is infeasible PRE-BURN at every floor tested; the whole-corpus case is floor-dependent
 
 **Date:** 2026-08-01 · `renquant-model` · GOAL-7 Stage 1 (design capacity)
 
@@ -22,9 +22,18 @@ admissible (≥20 names)   2 407 dates   2016-12-29 → 2026-07-29
 | **120** | **pre-burn** | **1 082** | **2 400** | **SHORT** |
 | **120** | **whole corpus** | **2 287** | **2 400** | **SHORT** |
 
-**`h = 120` cannot be rescued by data.** Discarding the registered burn boundary entirely
-and using every admissible date through 2026-07-29 still leaves it short. That closes a
-design family on this corpus rather than deferring it.
+**`h = 120` is INFEASIBLE under the registered pre-burn boundary, at every floor tested
+(10 / 20 / 30).** That part is robust and does not depend on my convention.
+
+**The whole-corpus claim is weaker and is now stated as such** `[codex on model#148]`. An
+earlier version of this document said `h = 120` *"cannot be rescued by data"* — flatly,
+in the title and the summary. My own sensitivity table contradicts it: whole-corpus
+`h = 120` clears at floor **10** and is short at **20** and **30**, i.e.
+**FLOOR_DEPENDENT**. The absolute wording is withdrawn.
+
+And Addendum 2 makes it weaker still rather than stronger: the floor's stated rationale
+was **refuted**, so a whole-corpus verdict that flips with the floor rests on a convention
+I could not justify. **No design decision may consume the whole-corpus row.**
 
 ## The floor is mine, so its sensitivity is the finding's real strength
 
