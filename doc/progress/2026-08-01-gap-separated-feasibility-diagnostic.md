@@ -7,9 +7,12 @@ full series, or a differently precommitted estimand could do with the same data.
 
 ## Why this is a third PR, and it was not a content problem
 
-model#156 was closed with *"the requested method-scope correction was not applied. It
-still says the present series cannot support the intended preregistration."* That was true
-of what the reviewer could see and false of the branch.
+model#156 was closed with this reason:
+
+> the requested method-scope correction was not applied. It still says the present series
+> cannot support the intended preregistration.
+
+That was true of what the reviewer could see, and false of the branch.
 
 The correction **was** committed (`6829e36`) and pushed. What was not updated was the **PR
 description**: `gh pr create --body "$(cat <doc>)"` snapshots the file at creation time and
