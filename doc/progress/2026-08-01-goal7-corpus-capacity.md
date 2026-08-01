@@ -104,3 +104,49 @@ about my choices. That is the second convention in this document falsified rathe
 defended (the first being the draws floor).
 
 5 more tests (17 total). Suite: **1176 passed, 2 skipped**.
+
+
+---
+
+## Addendum 2 2026-08-01 — I tried to justify the draws floor empirically, and refuted my own rationale
+
+`draws_floor = 20` came from model#147 with a stated reason: below ~20 independent block
+draws a bootstrap "cannot estimate a 5% tail". That is a claim about **estimator
+stability**, and it is testable. Measured on the real per-date series (1 080 dates,
+`ρ₁ = 0.9408`), 8 independent replications of 4 000 bootstraps at each draw count
+`[本次实测 2026-08-01]`:
+
+| draws | `Lb` | mean size | **replication SD** |
+|--:|--:|--:|--:|
+| 5 | 216 | 0.0489 | **0.0020** |
+| 8 | 135 | 0.0929 | 0.0031 |
+| 10 | 108 | 0.1016 | 0.0023 |
+| 20 | 54 | 0.0858 | 0.0034 |
+| 30 | 36 | 0.0708 | 0.0057 |
+| 60 | 18 | 0.0594 | 0.0043 |
+| 90 | 12 | 0.0483 | 0.0033 |
+
+**Replication SD is 0.002–0.006 at every draw count from 5 to 90 and does not fall as
+draws rise.** The size estimate is *precisely* estimated everywhere. So the rationale I
+gave — "too few draws to estimate a tail" — **is wrong**, and it is withdrawn.
+
+### What the numbers actually show
+
+The mean size swings **0.048 → 0.102 → 0.048** across the range. Those differences are not
+noise; they are real, and they are driven by `Lb`, which is *tied* to the draw count by
+`Lb ≈ N / draws`. **Draws and block length are not independent knobs.** More draws means
+shorter blocks means less of the series' dependence preserved — so there is no "enough
+draws" threshold, only a tradeoff curve on which every point answers a different question.
+
+### What survives, and what does not
+
+**Withdrawn:** the estimator-stability justification for any particular floor.
+
+**Survives:** the `h = 120` verdict. It was reported INFEASIBLE at floors 10, 20 **and**
+30, and that invariance — not the floor's rationale — is what carries it. The `h = 60` cell
+was already reported `FLOOR_DEPENDENT` and stays so; this addendum removes the hope that
+measuring harder would settle it, because the floor is a choice about how much dependence
+to preserve, not a quantity to be discovered.
+
+**This is the second convention in this document tested rather than defended, and the
+first one to fail.**

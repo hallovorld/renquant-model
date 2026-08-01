@@ -156,3 +156,26 @@ def test_the_conclusion_names_all_three_foreclosed_remedies(rep):
     assert "Extending the window backwards recovers nothing" in c
     assert "the feature's own lookback" in c
     assert "ZERO dates" in c
+
+
+# ---------------------------------------------------------------------------
+# The draws-floor rationale, withdrawn 2026-08-01
+# ---------------------------------------------------------------------------
+def test_the_document_WITHDRAWS_the_estimator_stability_rationale():
+    """`draws_floor = 20` was justified by "too few draws to estimate a tail". Measured:
+    replication SD is 0.002-0.006 at EVERY draw count 5..90 and does not fall with more
+    draws. The rationale is withdrawn; the h=120 verdict survives on floor-invariance
+    instead, and this pins that the document says so."""
+    import pathlib
+    doc = (pathlib.Path(__file__).resolve().parent.parent / "doc" / "progress"
+           / "2026-08-01-goal7-corpus-capacity.md").read_text()
+    assert "is wrong**, and it is withdrawn" in doc
+    assert "not independent knobs" in doc
+    assert "INFEASIBLE at floors 10, 20 **and**\n30" in doc or "floors 10, 20" in doc
+
+
+def test_the_h120_verdict_does_not_rest_on_the_floor(rep):
+    """The load-bearing consequence: it is INFEASIBLE at every floor swept, so removing
+    the floor's rationale does not touch it."""
+    assert rep["robust_verdict"]["h120/pre_burn"] == "INFEASIBLE"
+    assert set(rep["draws_floors_swept"]) == {10, 20, 30}
