@@ -21,12 +21,21 @@ error message.
 
 ## The amendment (formula made precise; nothing else moves)
 
-F1 is the market-model **alpha t-statistic** over the formation window:
+F1 is the **EXACT intercept-OLS market-model alpha t-statistic** over the formation
+window (`t−273…t−21`; window 252, skip 21, min obs 200 — unchanged):
 
-* `β̂` by demeaned OLS of `r_i` on `r_m` over `t−273…t−21` (window 252, skip 21, min obs
-  200 — unchanged);
-* `ε_t = r_i,t − β̂·r_m,t` with the intercept **deliberately not removed**;
-* `F1 = mean(ε)/sd(ε)·√N`.
+* fit `r_i,t = α + β·r_m,t + ε_t` by OLS;
+* `s² = SSE/(n−2)`; `SE(α̂) = s·√(1/n + x̄²/Sxx)` where `x̄` is the market-return mean
+  and `Sxx = Σ(r_m,t − x̄)²`;
+* `F1 = α̂ / SE(α̂)`.
+
+Per the review of this amendment's first draft: `mean(ε)/sd(ε)·√N` omitted the
+`x̄²/Sxx` term and the `n−2` degrees of freedom and therefore was NOT the stated
+t-statistic for nonzero-mean market returns. The engine (model#167) implements the exact
+form above and carries the demanded hand-derived nonzero-`x̄` control (β = 2.3,
+α = −0.5, SSE = 0.30, t = −0.5/√0.225, asserted to 1e-12) plus a seeded
+nonzero-market-mean cross-check against an independent implementation to 1e-9 — the
+amendment and the engine freeze IDENTICAL mathematics.
 
 This is the standardized idiosyncratic drift — the quantity the mechanism (underreaction
 to firm-specific news) is about, and the engine's fixtures confirm it separates the
