@@ -13,6 +13,25 @@ from renquant_model_common.momentum_features import (
 RNG = np.random.default_rng(20260801)
 
 
+def test_f1_exact_alpha_t_matches_a_hand_derived_nonzero_xbar_case():
+    """The review's demanded control: x̄ ≠ 0, every quantity derived by hand.
+    x=[1,2,3,4], y=[2,4,6,9]: β=2.3, α=−0.5, SSE=0.30, s²=0.15,
+    SE(α)=√(0.15·(1/4+6.25/5))=√0.225, t=−0.5/√0.225=−1.05409…"""
+    x = np.array([1.0, 2.0, 3.0, 4.0])
+    y = np.array([2.0, 4.0, 6.0, 9.0])
+    v = f1_residual_momentum(y, x, min_obs=3)
+    assert v == pytest.approx(-0.5 / np.sqrt(0.225), rel=1e-12)
+
+
+def test_f1_agrees_with_scipy_linregress_intercept_t():
+    from scipy import stats
+    r_m = RNG.normal(0.0006, 0.01, 300)          # deliberately nonzero mean
+    r_i = 0.8 * r_m + 0.0004 + RNG.normal(0, 0.003, 300)
+    v = f1_residual_momentum(r_i, r_m, min_obs=200)
+    lr = stats.linregress(r_m, r_i)
+    assert v == pytest.approx(lr.intercept / lr.intercept_stderr, rel=1e-9)
+
+
 def test_f1_pure_beta_exposure_has_small_alpha_t():
     r_m = RNG.normal(0, 0.01, 300)
     r_i = 1.7 * r_m + RNG.normal(0, 0.002, 300)   # beta + noise, zero alpha

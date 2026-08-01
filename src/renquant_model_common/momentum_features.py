@@ -31,29 +31,36 @@ def _valid_pair(r_i: np.ndarray, r_m: np.ndarray) -> tuple[np.ndarray, np.ndarra
 
 
 def f1_residual_momentum(r_i: np.ndarray, r_m: np.ndarray, *, min_obs: int) -> float:
-    """Market-model ALPHA t-statistic: β̂ by demeaned OLS, then ε_t = r_i,t − β̂·r_m,t
-    with the intercept deliberately NOT removed; F1 = mean(ε)/std(ε)·√N.
+    """EXACT intercept-OLS market-model alpha t-statistic.
 
-    WHY THIS EXACT FORM. The naive reading — same-window OLS WITH intercept, then
-    Σε — is IDENTICALLY ZERO (the intercept absorbs the residual mean), and this
-    module's own analytic tests caught that degeneracy before the freeze. Keeping α
-    inside ε makes F1 the alpha t-stat over the formation window: the standardized
-    idiosyncratic drift the mechanism (underreaction) is about."""
+    `y = α + β·x + ε` fit by OLS; returns `t = α̂ / SE(α̂)` with
+    `SE(α̂) = s·√(1/n + x̄²/Sxx)`, `s² = SSE/(n−2)` — the full alpha standard error
+    including the nonzero-market-mean term and residual degrees of freedom
+    `[codex on model#167: mean(ε)/sd(ε)·√N omitted both and was not the stated
+    statistic]`. A same-window Σε with an intercept is identically zero (the degeneracy
+    the first version caught); the alpha t is the non-degenerate estimand of the
+    underreaction mechanism: standardized idiosyncratic drift."""
     x, y = _valid_pair(np.asarray(r_m, float), np.asarray(r_i, float))
     # (x = market, y = name; _valid_pair mirrors its args)
-    if len(x) < min_obs:
+    n = len(x)
+    if n < min_obs or n < 3:
         return float("nan")
-    vx = x - x.mean()
-    denom = float(vx @ vx)
-    if denom < _EPS:
+    xbar, ybar = float(x.mean()), float(y.mean())
+    vx = x - xbar
+    sxx = float(vx @ vx)
+    if sxx < _EPS:
         return float("nan")
-    beta = float(vx @ (y - y.mean())) / denom
-    eps = y - beta * x                    # alpha stays in ε
-    sd = float(eps.std(ddof=1))
-    if sd < _EPS:
+    beta = float(vx @ (y - ybar)) / sxx
+    alpha = ybar - beta * xbar
+    resid = y - alpha - beta * x
+    sse = float(resid @ resid)
+    s2 = sse / (n - 2)
+    if s2 < _EPS:
         return float("nan")
-    return float(eps.mean() / sd * np.sqrt(len(eps)))
-
+    se_alpha = float(np.sqrt(s2 * (1.0 / n + xbar * xbar / sxx)))
+    if se_alpha < _EPS:
+        return float("nan")
+    return float(alpha / se_alpha)
 
 def f2_information_discreteness(r_i: np.ndarray, *, min_obs: int) -> float:
     """sign(cumulative return) · (frac_pos_days − frac_neg_days): smooth trends score
