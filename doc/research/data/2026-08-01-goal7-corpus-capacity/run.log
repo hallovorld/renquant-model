@@ -1,0 +1,34 @@
+  corpus       3161 dates  2014-01-02 -> 2026-07-29
+  admissible   2407 dates  2016-12-29 -> 2026-07-29 (>= 20 names)
+
+   floor    h         scope   avail   need  verdict
+      10   20      pre_burn    1182    200  OK
+      10   20  whole_corpus    2387    200  OK
+      10   60      pre_burn    1142    600  OK
+      10   60  whole_corpus    2347    600  OK
+      10  120      pre_burn    1082   1200  SHORT
+      10  120  whole_corpus    2287   1200  OK
+      20   20      pre_burn    1182    400  OK
+      20   20  whole_corpus    2387    400  OK
+      20   60      pre_burn    1142   1200  SHORT
+      20   60  whole_corpus    2347   1200  OK
+      20  120      pre_burn    1082   2400  SHORT
+      20  120  whole_corpus    2287   2400  SHORT
+      30   20      pre_burn    1182    600  OK
+      30   20  whole_corpus    2387    600  OK
+      30   60      pre_burn    1142   1800  SHORT
+      30   60  whole_corpus    2347   1800  OK
+      30  120      pre_burn    1082   3600  SHORT
+      30  120  whole_corpus    2287   3600  SHORT
+
+  robust across every floor swept:
+    h20/pre_burn          FEASIBLE
+    h20/whole_corpus      FEASIBLE
+    h60/pre_burn          FLOOR_DEPENDENT
+    h60/whole_corpus      FEASIBLE
+    h120/pre_burn         INFEASIBLE
+    h120/whole_corpus     FLOOR_DEPENDENT
+
+  CAPACITY IS NOT POWER. Clearing this test means a bar COULD be calibrated, not that a design could detect anything — GOAL-6 Stage 0 measured that the shorter horizon buys no power (H2 NOT SUPPORTED). And the burn boundary is registered (A2.2); the whole_corpus rows BOUND the question, they do not license a design.
+
+wrote doc/research/data/2026-08-01-goal7-corpus-capacity/capacity.json
