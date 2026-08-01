@@ -11,6 +11,8 @@ import json
 import math
 import pathlib
 
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+
 RES = json.loads(
     (pathlib.Path(__file__).resolve().parent.parent
      / "doc/research/evidence/2026-07-31-g4-null-calibration/size_study_b35.json"
@@ -77,13 +79,31 @@ def test_the_band_is_still_reported_beside_the_registered_value():
     assert max(vals) - min(vals) > 0.02, vals
 
 
-def test_the_result_artifact_carries_its_input_and_code_provenance():
-    """codex on model#145: reported sizes are auditable only with the exact input bytes
-    and the producing revision recorded beside them."""
+def test_the_recorded_provenance_HASHES_MATCH_the_files_they_name():
+    """codex on model#145 round 2: presence and length are not verification.
+
+    The first version asserted `len(sha) == 64`, so an arbitrary 64-character string
+    would have passed — an unverified annotation dressed as provenance, in the test
+    written to make provenance evidence. This RECOMPUTES both digests from the files
+    the artifact names and requires equality.
+
+    It is deliberately brittle in one direction: editing the study tool without
+    re-emitting the artifact fails here, because the recorded sizes would then have been
+    produced by code that is no longer in the tree.
+    """
+    import hashlib
+
     pv = RES["provenance"]
-    assert len(pv["series_sha256"]) == 64
-    assert pv["series_bytes"] > 0
-    assert len(pv["tool_sha256"]) == 64
+    series = ROOT / pv["series_path"]
+    assert series.is_file(), f"recorded series_path does not resolve: {pv['series_path']}"
+    raw = series.read_bytes()
+    assert hashlib.sha256(raw).hexdigest() == pv["series_sha256"], "series digest mismatch"
+    assert len(raw) == pv["series_bytes"], "series byte count mismatch"
+
+    tool = ROOT / "tools" / "g4_null_size_study.py"
+    assert hashlib.sha256(tool.read_bytes()).hexdigest() == pv["tool_sha256"], (
+        "the artifact was produced by a different revision of the study tool than the "
+        "one in this tree — re-emit it")
     assert "code_revision" in pv and "code_revision_dirty" in pv
 
 
