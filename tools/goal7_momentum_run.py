@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
-"""Runner for the FROZEN residual-momentum prereg (model#164 + Amendment 1). (GOAL-7)
+"""Runner for the FROZEN residual-momentum prereg (model#164 + Amendments 1-2). (GOAL-7)
 
-STAGE A ONLY in this revision: precondition verification and data assembly. The
-inference stage (calibration, gates, H1/H2) lands in a follow-up revision of this same
-PR; `--execute` refuses until it exists. Nothing here computes an IC, a score
-statistic, or touches a label beyond schema checks.
+COMPLETE runner: precondition verification, data assembly, and the full inference
+stage (calibration, §4.4 rate gates, H1/H2 decision). `--execute` performs the real
+study — it is guarded by the §7 execution gate, not by a missing implementation.
 
 Execution gate (§7 of the prereg): may execute only after (a) the prereg merged
-unmodified, (b) Amendment 1 merged (the F1-degeneracy fix — this runner implements the
-AMENDED alpha-t form via `renquant_model_common.momentum_features` and therefore
-REFUSES to run on a tree where the amendment is absent), (c) this runner PR merged,
-(d) single invocation with verbatim-committed JSON output.
+unmodified, (b) Amendments 1 and 2 merged (F1 alpha-t form; bootstrap adequacy rule —
+this runner REFUSES to run on a tree where either amendment is absent), (c) this
+runner PR merged, (d) single invocation with verbatim-committed JSON output.
 
 Frozen inputs verified against the prereg's pinned digests BEFORE anything loads;
 any mismatch → UNRESOLVED-DATA and nothing else happens.
@@ -23,8 +21,8 @@ floor that no realized calendar window approaches — it can bind only for names
 substantial missing data, where a nan into the ≥3-of-5 composite rule is the designed
 outcome.
 
-Exit codes: 0 preflight clean / run complete; 2 usage; 3 UNRESOLVED-DATA; 4 stage
-not implemented.
+Exit codes: 0 preflight clean / run complete; 2 usage; 3 UNRESOLVED-DATA;
+5 UNRESOLVED-METHOD (a validation gate failed; the report says which).
 """
 from __future__ import annotations
 
@@ -287,25 +285,35 @@ def execute(json_out: Path | None) -> int:
                "why": f"HAC mirror mismatch: {t_mine} vs pinned {t_pinned}"}
         print(json.dumps(rep, indent=2)); return 3
 
+    realized_acf = [float(a) for a in INF.sample_acf(s, cfg["acf_envelope_lags"])]
     cal = INF.calibrate_bar(s, cfg)
     if cal["status"] != "calibrated":
+        # §4.4: bars and the realized ACF are published regardless of outcome.
         rep = {"status": "UNRESOLVED-METHOD", "calibration": cal,
+               "realized_acf": realized_acf,
                "n_dates": len(s), "dates_skipped": skipped}
         print(json.dumps(rep, indent=2, sort_keys=True, default=str)); return 5
 
-    # gates
-    noise = pd.read_csv(REPO / "doc/research/data/2026-07-29-clf-wf-closure-bundle/"
-                        "artifacts/corrected-eval/"
-                        "per_date_selftest_selftest_pure_noise_real.csv")["ic"].to_numpy()
-    t_noise = INF.bartlett_hac_t(noise, cfg["L"])
-    pos_ok = abs(t_noise) < cal["t_star"]
-    mach = INF.machinery_self_check(s, cal["t_star"], cfg)
+    # gates (§4.4) — both are 5,000-rep RATE checks against the frozen band, not
+    # single-statistic comparisons. The positive-control fixture is DEDICATED and
+    # content-pinned (no more borrowing an unrelated clf-bundle CSV).
+    pc_path = Path(__file__).resolve().parent / "data/goal7_positive_control_noise.csv"
+    pc_sha = hashlib.sha256(pc_path.read_bytes()).hexdigest()
+    if pc_sha != cfg["positive_control_sha256"]:
+        rep = {"status": "UNRESOLVED-DATA",
+               "why": f"positive-control fixture digest mismatch: {pc_sha} != "
+                      f"pinned {cfg['positive_control_sha256']}"}
+        print(json.dumps(rep, indent=2)); return 3
+    noise = pd.read_csv(pc_path, float_precision="round_trip")["x"].to_numpy()
+    pc = INF.positive_control(noise, cfg)
+    mach = INF.machinery_self_check(s, cal, cfg)
     se_hac = float(s.mean()) / t_mine if t_mine else float("nan")
     mde = cal["t_star"] * abs(se_hac)
-    if not (pos_ok and mach["ok"]):
+    if not (pc["ok"] and mach["ok"]):
         rep = {"status": "UNRESOLVED-METHOD",
-               "positive_control": {"t": t_noise, "ok": pos_ok},
-               "machinery": mach}
+               "positive_control": pc,
+               "machinery": mach,
+               "calibration": cal, "realized_acf": realized_acf}
         print(json.dumps(rep, indent=2, sort_keys=True, default=str)); return 5
 
     verdict = decide(float(s.mean()), t_mine, cal["t_star"],
@@ -319,7 +327,8 @@ def execute(json_out: Path | None) -> int:
            "t_delta": INF.bartlett_hac_t(d_ic, cfg["L"]),
            "placebo_mean_abs": float(np.nanmean(placebo_abs)),
            "mde": mde, "calibration": cal,
-           "positive_control_t": t_noise, "machinery": mach,
+           "positive_control": pc, "machinery": mach,
+           "realized_acf": realized_acf,
            "preflight": pre}
     txt = json.dumps(rep, indent=2, sort_keys=True, default=str)
     print(txt)
