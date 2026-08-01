@@ -1,0 +1,21 @@
+{
+  "B": 500,
+  "M": 200,
+  "cases": {
+    "n2150_phi0.6": {
+      "false_failures": 6,
+      "rate": 0.03,
+      "elapsed_s": 280
+    },
+    "n2150_phi0.9": {
+      "false_failures": 10,
+      "rate": 0.05,
+      "elapsed_s": 568
+    },
+    "n600_phi0.5": {
+      "false_failures": 8,
+      "rate": 0.04,
+      "elapsed_s": 674
+    }
+  }
+}
