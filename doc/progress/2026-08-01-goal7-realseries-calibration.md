@@ -94,3 +94,26 @@ reported and calibrates nothing, and an all-degenerate sweep returns `None` rath
 opposite of unknown, and a scheduled caller cannot tell a thrown exception from a
 deliberate alarm. Writing that test is what found the crash: `np.percentile` on an empty
 array raised `IndexError`.
+
+
+---
+
+## Addendum 2026-08-01 — the persisted series was not machine-readable
+
+The whole point of §7 is that the per-date series can be re-used. It could not be: the
+emitter wrote `f"{v!r}"` on a NumPy scalar, so under NumPy 2 every row read
+
+```
+2016-12-29,z,treatment_u,np.float64(0.4928851274964489)
+```
+
+`pd.read_csv(...)` returns that column as **object**, and `astype(float)` raises. I found
+it by crashing on my own evidence one round later.
+
+Fixed to `float(v)!r` — full double precision, no wrapper. Regenerated: **6 480 rows parse
+as `float64`**, and all **6 arm statistics still reproduce bit-identically** against the
+frozen `results.json`, so the fix touched the serialisation and nothing else.
+
+The lesson is narrow and worth keeping: *persisted* is not *reusable*. A file written for a
+future consumer should be read back by that consumer's parser in the same commit that
+writes it.

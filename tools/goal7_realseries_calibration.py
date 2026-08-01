@@ -310,7 +310,12 @@ def main(argv: list[str] | None = None) -> int:
     lines = ["date,label,arm,g"]
     for (lb, nm), g in series.items():
         for d, v in zip(used_dates, g[:n_blocks * G.BLOCK]):
-            lines.append(f"{d},{lb},{nm},{v!r}")
+            # `repr(np.float64)` writes `np.float64(0.49…)` under NumPy 2, which is not
+            # a number to any CSV reader -- the persisted series was unparseable by
+            # `pd.read_csv(...).astype(float)` and had to be discovered by a crash.
+            # `float(v)` gives full double precision without the wrapper; `repr` was only
+            # ever there for precision, and it costs none.
+            lines.append(f"{d},{lb},{nm},{float(v)!r}")
     (a.out_dir / "per_date_g_real.csv").write_text("\n".join(lines) + "\n")
     R["per_date_series"] = {
         "path": "per_date_g_real.csv", "n_series": len(series),
