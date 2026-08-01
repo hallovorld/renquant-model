@@ -77,7 +77,8 @@ DRAWS_FLOORS = (10, 20, 30)
 HORIZONS = (20, 60, 120)
 
 
-def admissible_calendar(matrix: Path) -> tuple[pd.DatetimeIndex, pd.DatetimeIndex]:
+def admissible_calendar(matrix: Path) -> tuple[pd.DatetimeIndex, pd.DatetimeIndex,
+                                               pd.DataFrame]:
     """(corpus calendar, admissible dates). Admissible = the §2A rule, not a guess."""
     m = pd.read_parquet(matrix, columns=["date", "ticker", *FEATURE_COLS])
     m["date"] = pd.to_datetime(m["date"])
@@ -85,7 +86,7 @@ def admissible_calendar(matrix: Path) -> tuple[pd.DatetimeIndex, pd.DatetimeInde
     elig = m.dropna(subset=list(FEATURE_COLS))
     cnt = elig.groupby("date").size()
     adm = pd.DatetimeIndex(np.sort(cnt[cnt >= MIN_NAMES].index))
-    return cal, adm
+    return cal, adm, m
 
 
 def last_usable_t(cal: pd.DatetimeIndex, h: int, pre_burn: bool) -> pd.Timestamp | None:
@@ -101,8 +102,51 @@ def last_usable_t(cal: pd.DatetimeIndex, h: int, pre_burn: bool) -> pd.Timestamp
     return cal[max(ok)] if ok else None
 
 
+def admissibility_loss(cal, adm, m) -> dict:
+    """WHY the admissible window starts where it does — asked because #148's verdict is
+    only meaningful if the shortfall is the corpus and not a conservative rule.
+
+    Splits every inadmissible date into the two causes that can produce one, and tests the
+    obvious third suspect (the name floor) by re-running it at lower thresholds.
+    """
+    import numpy as np  # noqa: PLC0415
+    rows = m.groupby("date").size()
+    both = m.dropna(subset=list(FEATURE_COLS)).groupby("date").size()
+    df = pd.DataFrame({"rows": rows, "both": both}).fillna(0).astype(int)
+    lost = df[df["both"] < MIN_NAMES]
+    empty = lost[lost["rows"] < MIN_NAMES]
+    warm = lost[lost["rows"] >= MIN_NAMES]
+    first20 = df[df["rows"] >= MIN_NAMES].index[0]
+    firstadm = df[df["both"] >= MIN_NAMES].index[0]
+    warm_sessions = int((df.index >= first20).sum() - (df.index >= firstadm).sum())
+    # The name floor as a suspect, falsified rather than argued.
+    by_floor = {f: int((both >= f).sum()) for f in (5, 10, 20)}
+    return {
+        "n_inadmissible": int(len(lost)),
+        "corpus_has_under_min_names": {
+            "n": int(len(empty)),
+            "first": str(empty.index[0].date()) if len(empty) else None,
+            "last": str(empty.index[-1].date()) if len(empty) else None},
+        "feature_warmup": {
+            "n": int(len(warm)),
+            "first": str(warm.index[0].date()) if len(warm) else None,
+            "last": str(warm.index[-1].date()) if len(warm) else None,
+            "sessions_between_first_20_names_and_first_admissible": warm_sessions,
+            "note": ("mom_12_1_tr needs 12 months of history, so a ~250-session gap "
+                     "between 'names exist' and 'the feature is computable' is the "
+                     "FEATURE's definition, not a defect to be tuned away.")},
+        "admissible_dates_by_name_floor": by_floor,
+        "name_floor_is_not_binding": len({v for v in by_floor.values()}) == 1,
+        "conclusion": (
+            "The shortfall behind h=120 is the CORPUS, not a conservative admissibility "
+            "rule. Extending the window backwards recovers nothing (those dates have no "
+            "names), the warm-up is exactly the feature's own lookback, and relaxing the "
+            "name floor from 20 to 10 to 5 recovers ZERO dates."),
+    }
+
+
 def capacity(matrix: Path) -> dict:
-    cal, adm = admissible_calendar(matrix)
+    cal, adm, m_for_loss = admissible_calendar(matrix)
     rows = []
     for floor in DRAWS_FLOORS:
         for h in HORIZONS:
@@ -134,7 +178,9 @@ def capacity(matrix: Path) -> dict:
                 # The honest third value. A verdict that flips with the floor rests on my
                 # convention, not on the corpus, and must not be reported either way.
                 "FLOOR_DEPENDENT")
+    loss = admissibility_loss(cal, adm, m_for_loss)
     return {
+        "admissibility_loss": loss,
         "corpus_calendar_dates": len(cal),
         "corpus_first": str(cal[0].date()), "corpus_last": str(cal[-1].date()),
         "admissible_dates": len(adm),

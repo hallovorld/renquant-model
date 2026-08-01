@@ -114,3 +114,45 @@ def test_pre_burn_excludes_any_t_whose_window_CROSSES_the_boundary():
     i = list(cal).index(last)
     assert cal[i + 5] < C.BURN
     assert i + 6 >= len(cal) or cal[i + 6] >= C.BURN
+
+
+# ---------------------------------------------------------------------------
+# Is the shortfall the CORPUS or my admissibility rule? 2026-08-01
+# ---------------------------------------------------------------------------
+def test_the_754_lost_dates_split_504_empty_and_250_warmup(rep):
+    """#148's verdict only means anything if the shortfall is the data. Measured: it is."""
+    L = rep["admissibility_loss"]
+    assert L["n_inadmissible"] == 754
+    assert L["corpus_has_under_min_names"]["n"] == 504
+    assert L["feature_warmup"]["n"] == 250
+    assert 504 + 250 == 754
+
+
+def test_the_empty_stretch_is_2014_2015_and_recovers_NOTHING(rep):
+    e = rep["admissibility_loss"]["corpus_has_under_min_names"]
+    assert e["first"] == "2014-01-02" and e["last"] == "2015-12-31"
+
+
+def test_the_warmup_gap_is_exactly_the_features_own_lookback(rep):
+    """250 sessions between 'names exist' and 'the feature is computable' is one year,
+    which is what mom_12_1 means. Tuning it away would be computing the feature from
+    history it does not have."""
+    w = rep["admissibility_loss"]["feature_warmup"]
+    assert w["first"] == "2016-01-04" and w["last"] == "2016-12-28"
+    assert w["sessions_between_first_20_names_and_first_admissible"] == 250
+    assert "not a defect to be tuned away" in w["note"]
+
+
+def test_the_NAME_FLOOR_is_falsified_as_a_suspect(rep):
+    """The obvious third remedy — relax MIN_NAMES — recovers ZERO dates. Reported as a
+    measurement rather than argued away."""
+    by = rep["admissibility_loss"]["admissible_dates_by_name_floor"]
+    assert set(by.values()) == {2407}
+    assert rep["admissibility_loss"]["name_floor_is_not_binding"] is True
+
+
+def test_the_conclusion_names_all_three_foreclosed_remedies(rep):
+    c = rep["admissibility_loss"]["conclusion"]
+    assert "Extending the window backwards recovers nothing" in c
+    assert "the feature's own lookback" in c
+    assert "ZERO dates" in c

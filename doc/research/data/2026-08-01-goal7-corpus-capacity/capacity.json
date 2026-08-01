@@ -1,4 +1,26 @@
 {
+  "admissibility_loss": {
+    "admissible_dates_by_name_floor": {
+      "5": 2407,
+      "10": 2407,
+      "20": 2407
+    },
+    "conclusion": "The shortfall behind h=120 is the CORPUS, not a conservative admissibility rule. Extending the window backwards recovers nothing (those dates have no names), the warm-up is exactly the feature's own lookback, and relaxing the name floor from 20 to 10 to 5 recovers ZERO dates.",
+    "corpus_has_under_min_names": {
+      "first": "2014-01-02",
+      "last": "2015-12-31",
+      "n": 504
+    },
+    "feature_warmup": {
+      "first": "2016-01-04",
+      "last": "2016-12-28",
+      "n": 250,
+      "note": "mom_12_1_tr needs 12 months of history, so a ~250-session gap between 'names exist' and 'the feature is computable' is the FEATURE's definition, not a defect to be tuned away.",
+      "sessions_between_first_20_names_and_first_admissible": 250
+    },
+    "n_inadmissible": 754,
+    "name_floor_is_not_binding": true
+  },
   "admissible_dates": 2407,
   "admissible_first": "2016-12-29",
   "admissible_last": "2026-07-29",

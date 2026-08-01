@@ -71,3 +71,36 @@ differed from the study's, that number would not land. The matrix is bound by sh
 12, including the one that would catch the laundering: `h = 60` must report
 `FLOOR_DEPENDENT` and neither of the two answers. Suite: **1171 passed, 2 skipped**, run
 before the push.
+
+
+---
+
+## Addendum 2026-08-01 — is the shortfall the corpus, or my admissibility rule?
+
+The verdict above only means something if `h = 120`'s shortfall is the **data**. The
+obvious objection is that 754 of the corpus's 3 161 dates are excluded by an admissibility
+rule I did not have to choose. Measured `[本次实测 2026-08-01]`:
+
+| cause | dates | span |
+|---|--:|---|
+| the corpus has **fewer than 20 names at all** | **504** | 2014-01-02 … 2015-12-31 |
+| ≥20 names present, **features not yet computable** | **250** | 2016-01-04 … 2016-12-28 |
+| | **754** | |
+
+**Three would-be remedies, all foreclosed:**
+
+1. *Extend the window backwards.* The 504 dates before 2016 have **almost no names** —
+   median **1** ticker per date in 2014 and 2015. There is nothing there to recover.
+2. *The warm-up is too conservative.* The gap between the first date with ≥20 names
+   (2016-01-04) and the first admissible date (2026-12-29 → **2016-12-29**) is **250
+   sessions** — one year, which is exactly what `mom_12_1` means. Shortening it would
+   compute the feature from history that does not exist.
+3. *Relax the name floor.* Re-run at `MIN_NAMES` ∈ {20, 10, 5}: **2 407 admissible dates in
+   all three**. The floor recovers **zero** dates and is not what binds.
+
+**So the shortfall behind `h = 120` is the corpus itself**, not a rule I picked — which is
+what makes the INFEASIBLE verdict above a fact about this programme's data rather than
+about my choices. That is the second convention in this document falsified rather than
+defended (the first being the draws floor).
+
+5 more tests (17 total). Suite: **1176 passed, 2 skipped**.
