@@ -28,32 +28,51 @@ The band is reported beside the registered value because §4 of the prereg requi
 (`L60 gap0`) and **0.0542** (`L20 gap60`). The machinery is right; what follows is the
 data's dependence.
 
-## The registered verdict, applied
+## The registered verdict, applied — with the Monte Carlo uncertainty it needs
 
-| geometry | crossing | n_blocks | size @ b=35 | z vs the 0.06 bar | **registered verdict** |
-|---|---:|---:|---:|---:|---|
-| **`L=60, gap=0`** — Phase-0's own | **1.00** | 8 | **0.0783** | **+4.30** | **NOT CALIBRATED** |
-| `L=60, gap=60` | 0.00 | 4 | 0.0635 | +0.91 | **NOT CALIBRATED** |
-| `L=30, gap=60` | 0.00 | 6 | 0.0678 | +1.95 | **NOT CALIBRATED** |
-| `L=20, gap=60` | 0.00 | 7 | 0.0568 | −0.89 | **within the band** |
+**Corrected after codex on model#145.** The first version of this section compared point
+estimates to the 0.06 bar and licensed one geometry. **That was wrong in both
+directions**, and the licensing direction is the dangerous one.
 
-**So, by the rule registered before the number was seen:**
+At 4 000 draws the MC standard error is ~0.0037–0.0042. A **one-sided 95% bound**
+(`p ± 1.645·SE`) is what the comparison actually supports:
 
-> **Phase-0's own geometry (`L = h = 60`, `gap = 0`, crossing 1.00) is NOT CALIBRATED,
-> and no GOAL-4 member verdict may cite a block-`t` computed on it.**
+| geometry | crossing | size @ b=35 | SE | one-sided 95% band | **verdict** |
+|---|---:|---:|---:|---|---|
+| **`L=60, gap=0`** — Phase-0's own | **1.00** | 0.0783 | 0.0042 | [0.0714, 0.0853] | **NOT CALIBRATED** — bound excludes 0.06 |
+| `L=30, gap=60` | 0.00 | 0.0678 | 0.0040 | [0.0612, 0.0743] | **NOT CALIBRATED** — bound excludes 0.06 |
+| `L=60, gap=60` | 0.00 | 0.0635 | 0.0039 | [0.0571, **0.0698**] | **INCONCLUSIVE** — straddles 0.06 |
+| `L=20, gap=60` | 0.00 | 0.0568 | 0.0037 | [0.0507, **0.0628**] | **INCONCLUSIVE** — straddles 0.06 |
 
-That is not a close call: **+4.30 MC standard errors** above the bar, ~1.6× the nominal
-rate. `L60 gap60` and `L30 gap60` also fail, though at +0.91 and +1.95 they are near the
-boundary and a larger draw count could move them.
+> **NO GEOMETRY IS LICENSED.** Two fail decisively; two are inconclusive at this draw
+> count. **`L = 20, gap = 60` is NOT calibrated** — its point estimate sits **less than
+> one MC standard error inside the bar**, and a one-sided 95% upper bound of **0.0628
+> exceeds 0.06**.
 
-**Exactly one geometry survives:** `L = 20, gap = 60` at **0.0568** (−0.89 SE inside the
-bar). It is the only one on which a block-`t` may be cited, and even it sits in the upper
-half of the band.
+**What the prereg did and did not authorise.** §4 registered what to report when a point
+estimate falls **outside** the band. It registered **no precision rule**, so it cannot be
+read as licensing an estimate that is marginally inside. Treating 0.0568 as calibration
+was me supplying a decision rule after seeing the number — the exact move the whole
+registration exists to prevent, committed in the document that executes it.
+
+**Symmetrically:** my first version also called `L=60, gap=60` (0.0635) *"NOT
+CALIBRATED"*. On the same standard that is **inconclusive** too. Codex flagged only the
+licensing direction; the same bar applies to the negative one, and both are corrected.
+
+**What would resolve the two inconclusive cases**, stated so it cannot be chosen after
+the fact: a **pre-specified** precision rule and draw count. At `p ≈ 0.0568`, a one-sided
+95% upper bound falls below 0.06 only at **B ≥ ~25 000** `[推导]` (B=10 000 still gives
+0.0606). **That run is NOT performed here** — choosing a sample size after seeing which
+way an estimate leans is sample-size-after-peeking, and it would need its own frozen
+amendment first.
 
 ## What this settles and what it does not
 
-**Settles:** the instrument to use, if GOAL-4 ever computes a block-`t` — `L = 20`,
-`gap = 60`, `b = 35`. And it retires the geometry the Phase-0 screen actually used.
+**Settles:** that **Phase-0's own geometry is not usable** — `L = h = 60`, `gap = 0`,
+crossing 1.00, size bound excluding 0.06. That retirement is decisive and is the finding.
+
+**Does NOT settle: which geometry to use instead.** Two candidates are inconclusive at
+this draw count and **none is licensed**.
 
 **Does NOT settle:** any member verdict. No member's `t` is recomputed here, and the
 model#136 freeze rests on prior discipline — *the premise is unmeasured* — not on any

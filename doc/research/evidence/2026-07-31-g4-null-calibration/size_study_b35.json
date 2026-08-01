@@ -21,6 +21,15 @@
   },
   "mean": -0.008550393526757342,
   "n": 508,
+  "provenance": {
+    "code_revision": "439af70dae08264a8c459486f7fa691a9da21870",
+    "code_revision_dirty": true,
+    "note": "`code_revision_dirty` true means the tree had uncommitted changes, so `code_revision` alone does NOT reproduce this run.",
+    "series_bytes": 16244,
+    "series_path": "doc/research/evidence/2026-07-31-g4-null-calibration/per_date_g_real_copy.csv",
+    "series_sha256": "ecffdfac19aa3e730a609aaf7a91910a9bf9b83852b7fd8f9e0b67cf31ecc56b",
+    "tool_sha256": "96e37cea471e66245ee072a055d5768f8984dcdf5935b49160d5b34fdeff37e8"
+  },
   "sd": 0.054845658280159075,
   "seed": 20260731,
   "size_by_geometry_and_boot_block": {

@@ -83,8 +83,17 @@ def test_the_prereg_COMMIT_PRECEDES_the_result_commit():
         "doc/research/evidence/2026-07-31-g4-null-calibration/size_study_b35.json")
     if prereg is None:
         pytest.skip("prereg commit not resolvable (shallow clone or git unavailable)")
+    exec_doc = ROOT / "doc/progress/2026-07-31-g4-registered-block-length-executed.md"
     if result is None:
-        return                                # the run has not happened yet: nothing to order
+        # CORRECTED (codex on model#145): I claimed this guard "cannot be satisfied by
+        # deleting evidence". FALSE — deleting the result made `added_in` return None
+        # and the test returned successfully. Once the execution document exists, a
+        # missing result artifact is a FAILURE, not a pass; only a genuinely unrun
+        # prereg (no execution doc) may return clean.
+        assert not exec_doc.exists(), (
+            "the execution document exists but the result artifact it reports has no "
+            "adding commit — evidence was deleted or never committed")
+        return
     anc = subprocess.run(
         ["git", "-C", str(ROOT), "merge-base", "--is-ancestor", prereg, result],
         capture_output=True, text=True, timeout=30)
