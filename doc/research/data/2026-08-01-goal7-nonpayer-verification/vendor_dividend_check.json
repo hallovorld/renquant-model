@@ -1,0 +1,270 @@
+{
+  "purpose": "verification artifact for the 43 no-dividend-column names frozen in the residual-momentum prereg",
+  "vendor": "yfinance Ticker.dividends (same vendor as the OHLCV store's dividend column; NOT an independent source \u2014 stated in the prereg)",
+  "query_date": "2026-08-01",
+  "range": "2016-01-01..query_date",
+  "n_tickers": 43,
+  "n_zero_events": 43,
+  "n_with_events": 0,
+  "n_failures": 0,
+  "results": [
+    {
+      "ticker": "ABNB",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "ADBE",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "AFRM",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "AMD",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "AMZN",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "ANET",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "APP",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "BSX",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "CMG",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "COHR",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "COIN",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "CRWD",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "DDOG",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "DOCU",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "ESTC",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "EW",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "FTNT",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "GLD",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "HUBS",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "ISRG",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "LITE",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "MDB",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "NET",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "NFLX",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "NOW",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "OKTA",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "ON",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "PANW",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "PCTY",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "PLTR",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "RBLX",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "SHOP",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "SMCI",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "SNOW",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "SOFI",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "SPOT",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "TEAM",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "TSLA",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "VEEV",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "VRTX",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "WDAY",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "ZM",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    },
+    {
+      "ticker": "ZS",
+      "n_dividend_events_since_2016": 0,
+      "first_event": null,
+      "status": "ok"
+    }
+  ]
+}
