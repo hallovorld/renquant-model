@@ -31,6 +31,7 @@ adversarial review to fill the section.
 | T10 | confusing "the score is stale" with "the signal is long-horizon" | |
 | T11 | cross-lag statistics on a drifting sample (`Y.shift(-lag)` nulls the NEWEST rows) | |
 | T12 | paired arms drawn from different score windows (era term measured at 19–28%) | |
+| T17 | a candidate compared to a naive baseline but never orthogonalised **both ways**, so shared variation is never separated from the candidate's own contribution (§5c) | |
 | T18 | **contiguous blocks under an overlapping label** — blocking is treated as discharging T2, but the crossing fraction is `min(1, h/L)` and equals **1.00 whenever `L ≤ h`**; a 60-day block under a 120-day label voided a whole study on 2026-07-30. **Disclosing the residual is not a remedy**, and **a gap is not independence** — it removes label-window overlap only; §4a requires that plus an inference method whose validity covers what survives | |
 | **T13** | **the estimand named only after seeing which one gives the preferred answer — HARKing.** Cost a retracted CLOSE. | |
 | **T14** | **a control that cannot fail.** A bare sign-count control passed 37.5% of the time on signal-free input; zero-skill AR scores 50–55%. | |
@@ -232,6 +233,52 @@ cross-sectional column ordering exists.
 **Not satisfiable retroactively.** Adding baselines after seeing the subject's
 number and choosing which to report is T13 wearing a lab coat. Name them in the
 frozen text.
+
+## 5c. ORTHOGONALISATION ASYMMETRY — a shared-variation diagnostic (T17)
+
+§5b asks whether a naive baseline **matches** the candidate. That is not enough: two
+correlated statistics can each look strong beside the other while the payoff is carried by
+what they share. Registering the residualisation in **both** directions, in advance, is a
+precommitted diagnostic against that.
+
+Register, for candidate `C` and naive baseline `B`, per date, OLS with intercept:
+
+1. `C ⊥ B` — the candidate residualised on the baseline;
+2. `B ⊥ C` — the baseline residualised on the candidate;
+3. `B` alone, unresidualised.
+
+**PRECONDITION — this section is inert without it.** The four rules below are stated
+**conditionally on a valid, separately specified dependence-aware inferential design**
+(see **T18/§4a**). Whether an arm "clears" is meaningless if the inferential unit is
+invalid, and a comparison between two arms computed on an invalid unit does not become
+valid because one is larger. **If the design has not discharged §4a, §5c produces no
+verdict at all.**
+
+Given a valid design, the reading is fixed in advance:
+
+| `C ⊥ B` clears | `B ⊥ C` clears | reading |
+|---|---|---|
+| yes | no | the candidate's contribution survives the baseline; the baseline's does not survive the candidate |
+| **no** | **yes** | **the candidate's contribution does NOT survive the baseline while the baseline's does.** The hypothesis is NOT supported, whatever `C` scores raw |
+| yes | yes | both retain something beyond the shared component; report both, claim neither as the other |
+| no | no | neither survives; the shared component carries it and neither is identified |
+
+**What this does NOT establish, stated so the table is not over-read.** An asymmetry is
+**not** a causal identification. `B` surviving while `C` does not is consistent with `C`
+being a noisy proxy for `B`, with both being proxies for a third unmeasured factor, and
+with the two arms simply having different measurement error — none of which this test
+separates. The cell names an **admissibility** outcome for the registered hypothesis, not a
+statement about which variable is "the signal".
+
+**Registered as a KILL condition, not a diagnostic to weigh later.** In the `no / yes`
+cell the raw arm's own significance **may not be cited against the verdict**. Making it a
+decision rule rather than a caveat is the point: a caveat gets narrated around.
+
+**Choosing `B`.** Prior work on this programme has repeatedly found a volatility axis
+underneath apparent cross-sectional effects, so a volatility statistic is the default
+baseline unless a reason to prefer another is stated. That is a **prior about where to
+look**, not an established finding — no study on this panel has yet demonstrated it under
+a design that discharges §4a, and this template must not be read as asserting one.
 
 ## 6. Decision rule
 
