@@ -57,12 +57,29 @@ FROZEN = {
 MIN_SIDE_OBS = 30
 
 AMENDMENT_1 = REPO / "doc/research/2026-08-01-goal7-momentum-prereg-amendment-1.md"
+AMENDMENT_3 = REPO / "doc/research/2026-08-01-goal7-momentum-prereg-amendment-3.md"
 PREREG = REPO / "doc/research/2026-08-01-goal7-residual-momentum-prereg.md"
 HAC_SE = RQ / ".subrepo_runtime/repos/renquant-common/src/renquant_common/metrics/hac_se.py"
+#: Amendment 3: §2 inputs resolve THROUGH the base-data fingerprint manifest
+#: (renquant-base-data#59) — verify-then-read, and NO fallback to the live data/
+#: paths under any condition (they refresh daily; the frozen digests stopped
+#: resolving there within 24h of the freeze).
+MANIFEST = Path("/Users/renhao/git/github/renquant-base-data/manifests/"
+                "momentum-prereg-inputs-20260801.json")
 
 
 def _sha(p: Path) -> str:
     return hashlib.sha256(p.read_bytes()).hexdigest()
+
+
+def load_snapshot_manifest() -> dict | None:
+    """The Amendment-3 resolution root, or None (= UNRESOLVED-DATA, never a fallback)."""
+    if not MANIFEST.is_file():
+        return None
+    man = json.loads(MANIFEST.read_text())
+    if man.get("dataset_id") != "momentum-prereg-inputs-20260801":
+        return None
+    return man
 
 
 def _load_tr_builder():
@@ -86,25 +103,44 @@ def verify_preconditions() -> dict:
     check("prereg_present", PREREG.is_file(), str(PREREG))
     check("amendment_1_present", AMENDMENT_1.is_file(),
           "runner implements the AMENDED F1; refuses on a pre-amendment tree")
-    panel = RQ / "data/alpha158_291_fundamental_dataset.parquet"
-    check("panel_digest", panel.is_file() and _sha(panel) == FROZEN["panel_sha256"])
-    sect = RQ / "data/ticker_sectors.json"
-    check("sector_digest", sect.is_file() and _sha(sect) == FROZEN["sector_sha256"])
+    check("amendment_3_present", AMENDMENT_3.is_file(),
+          "resolution-through-manifest IS Amendment-3 semantics; refuses without it")
+    man = load_snapshot_manifest()
+    check("snapshot_manifest_present", man is not None,
+          f"{MANIFEST} — no live-path fallback exists by design")
     check("hac_se_digest", HAC_SE.is_file() and _sha(HAC_SE) == FROZEN["hac_se_sha256"])
-    if panel.is_file():
-        tickers = sorted(pd.read_parquet(panel, columns=["ticker"])["ticker"].unique())
-        h = hashlib.sha256()
-        missing = []
-        for t in tickers:
-            f = RQ / f"data/ohlcv/{t}/1d.parquet"
-            if not f.is_file():
-                missing.append(t)
-                continue
-            h.update(f"{t}:{_sha(f)}\n".encode())
-        check("ohlcv_combined_digest",
-              not missing and h.hexdigest() == FROZEN["ohlcv_combined_sha256"],
-              f"missing={missing[:5]}" if missing else "")
-        out["n_tickers"] = len(tickers)
+    if man is not None:
+        check("manifest_identity",
+              man["files"]["panel.parquet"]["sha256"] == FROZEN["panel_sha256"]
+              and man["files"]["ticker_sectors.json"]["sha256"] == FROZEN["sector_sha256"]
+              and man["combined_ohlcv_digest"]["value"] == FROZEN["ohlcv_combined_sha256"],
+              "manifest headline digests must equal the frozen §2 pins byte-for-byte")
+        root = Path(man["location"]["path"])
+        panel = root / "panel.parquet"
+        check("panel_digest", panel.is_file() and _sha(panel) == FROZEN["panel_sha256"])
+        sect = root / "ticker_sectors.json"
+        check("sector_digest", sect.is_file() and _sha(sect) == FROZEN["sector_sha256"])
+        if panel.is_file():
+            tickers = sorted(pd.read_parquet(panel, columns=["ticker"])["ticker"].unique())
+            h = hashlib.sha256()
+            missing, per_file_mismatch = [], []
+            for t in tickers:
+                f = root / f"ohlcv/{t}/1d.parquet"
+                if not f.is_file():
+                    missing.append(t)
+                    continue
+                d = _sha(f)
+                h.update(f"{t}:{d}\n".encode())
+                entry = man["files"].get(f"ohlcv/{t}/1d.parquet")
+                if entry is None or entry["sha256"] != d:
+                    per_file_mismatch.append(t)
+            check("ohlcv_combined_digest",
+                  not missing and h.hexdigest() == FROZEN["ohlcv_combined_sha256"],
+                  f"missing={missing[:5]}" if missing else "")
+            check("ohlcv_per_file_vs_manifest", not per_file_mismatch,
+                  f"mismatch={per_file_mismatch[:5]}" if per_file_mismatch
+                  else "every file read verified against its manifest sha256")
+            out["n_tickers"] = len(tickers)
     out["prereg_sha256_at_run"] = _sha(PREREG) if PREREG.is_file() else None
     out["ok"] = not out["unresolved_data"]
     return out
@@ -223,16 +259,20 @@ def execute(json_out: Path | None) -> int:
     spec.loader.exec_module(INF)
     tr_close = _load_tr_builder()
 
-    panel = pd.read_parquet(RQ / "data/alpha158_291_fundamental_dataset.parquet",
+    # Amendment 3: every read goes through the verified snapshot root (preflight has
+    # already verified each file's sha against the manifest; the live data/ paths are
+    # never touched).
+    root = Path(load_snapshot_manifest()["location"]["path"])
+    panel = pd.read_parquet(root / "panel.parquet",
                             columns=["ticker", "date", "fwd_20d_excess"])
     panel["date"] = pd.to_datetime(panel["date"])
     sector_of = {t: v.get("sector") for t, v in
-                 json.loads((RQ / "data/ticker_sectors.json").read_text()).items()}
+                 json.loads((root / "ticker_sectors.json").read_text()).items()}
 
     tickers = sorted(panel["ticker"].unique())
     tr_returns, volumes = {}, {}
     for t in tickers + ["SPY"]:
-        f = RQ / f"data/ohlcv/{t}/1d.parquet"
+        f = root / f"ohlcv/{t}/1d.parquet"
         raw = pd.read_parquet(f)
         tr = tr_close(raw["close"], raw.get("dividend",
                                             pd.Series(0.0, index=raw.index)))

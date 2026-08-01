@@ -59,6 +59,43 @@ def test_execute_gates_on_the_amendment_before_touching_anything(monkeypatch, tm
     assert "UNRESOLVED-DATA" in out
 
 
+def test_preflight_refuses_when_the_snapshot_manifest_is_absent(monkeypatch):
+    """Amendment 3: §2 resolves THROUGH the base-data manifest; a missing manifest is
+    UNRESOLVED-DATA, and there is deliberately NO fallback to the live data/ paths."""
+    monkeypatch.setattr(R, "MANIFEST", Path("/nonexistent/manifest.json"))
+    pre = R.verify_preconditions()
+    assert not pre["ok"]
+    assert "snapshot_manifest_present" in pre["unresolved_data"]
+    # the resolution-dependent checks never ran — nothing read a live path instead
+    for dependent in ("panel_digest", "sector_digest", "ohlcv_combined_digest"):
+        assert dependent not in pre["checks"]
+
+
+def test_manifest_loader_rejects_a_wrong_dataset_id(monkeypatch, tmp_path):
+    import json as _json
+    bogus = tmp_path / "m.json"
+    bogus.write_text(_json.dumps({"dataset_id": "something-else", "files": {}}))
+    monkeypatch.setattr(R, "MANIFEST", bogus)
+    assert R.load_snapshot_manifest() is None
+
+
+def test_manifest_identity_check_fails_on_a_drifted_headline_digest(monkeypatch, tmp_path):
+    """A manifest whose headline digests differ from the frozen §2 pins must fail
+    manifest_identity — the manifest never overrides the prereg, it only locates it."""
+    import json as _json
+    drifted = tmp_path / "m.json"
+    drifted.write_text(_json.dumps({
+        "dataset_id": "momentum-prereg-inputs-20260801",
+        "location": {"path": str(tmp_path)},
+        "combined_ohlcv_digest": {"value": "00" * 32},
+        "files": {"panel.parquet": {"sha256": "00" * 32},
+                  "ticker_sectors.json": {"sha256": "00" * 32}}}))
+    monkeypatch.setattr(R, "MANIFEST", drifted)
+    pre = R.verify_preconditions()
+    assert not pre["ok"]
+    assert any(c == "manifest_identity" for c in pre["unresolved_data"])
+
+
 def test_cli_without_flags_is_usage_error():
     r = subprocess.run([sys.executable, str(REPO / "tools" / "goal7_momentum_run.py")],
                        capture_output=True, text=True)
