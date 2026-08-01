@@ -45,15 +45,18 @@ def test_assemble_day_counts_and_min_features(monkeypatch):
     assert out["n_scored"] == sum(np.isfinite(v) for v in out["scores"].values())
 
 
-def test_cli_execute_gates_on_the_amendment_before_touching_anything():
-    """UPDATED: stage B exists now, so --execute runs the preflight — and on this
-    branch base (which predates Amendment 2's merge) it must stop at UNRESOLVED-DATA
-    with the amendment named, before any data loads."""
-    r = subprocess.run([sys.executable, str(REPO / "tools" / "goal7_momentum_run.py"),
-                        "--execute"], capture_output=True, text=True)
-    assert r.returncode == 3
-    assert "amendment_2_present" in r.stdout
-    assert "UNRESOLVED-DATA" in r.stdout
+def test_execute_gates_on_the_amendment_before_touching_anything(monkeypatch, tmp_path, capsys):
+    """UPDATED again: with Amendment 2 merged the real tree is fully provisioned, so a
+    subprocess --execute would RUN THE STUDY — which no test may do (§7: single
+    post-merge invocation). The gate is exercised in-process instead, with the
+    amendment path pointed at nothing: execute() must stop at UNRESOLVED-DATA naming
+    it, before loading any data."""
+    monkeypatch.setattr(R, "AMENDMENT_2", tmp_path / "absent.md")
+    rc = R.execute(None)
+    out = capsys.readouterr().out
+    assert rc == 3
+    assert "amendment_2_present" in out
+    assert "UNRESOLVED-DATA" in out
 
 
 def test_cli_without_flags_is_usage_error():
