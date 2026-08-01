@@ -1,69 +1,64 @@
-# GOAL-6 Stage 0 — Amendment 2 (visible, pre-run): the H2(c) clear-violation band
+# GOAL-6 Stage 0 — Amendment 2 (visible, PRE-RUN): label vintage and block geometry
 
-**Amends `doc/research/2026-07-28-goal6-stage0-prereg.md` §5 H2(c) only. Filed BEFORE
-any Stage-0 run (the prereg's own progress doc records "no run yet"), per the visible-
-correction precedent this prereg already carries (Amendment 1; long-term-agreements
-entry 10 — no silent overwrites).**
+**Amends exactly two clauses of the frozen Stage-0 prereg
+(`2026-07-28-goal6-stage0-prereg.md`). Filed before any execution; Stage 0 has not
+run. Both defects were found by measurement, not taste, and both follow the momentum
+chain's precedent: a frozen rule that measurement shows defective gets a visible
+amendment, never a runner-level reinterpretation.**
 
-## What §5 H2(c) actually uses SE_HAC for — narrower than model#163 framed it
+## Defect 1: the design is silent on label VINTAGE, and the two candidate sources disagree
 
-`SE_HAC` (NW/Bartlett, `L = h_min − 1 = 19`) appears in the decision path exactly once:
-H2 is **REFUTED** when the effect-size condition (c) *"fails by more than one `SE_HAC`
-of the smaller sample (a clear violation, not a rounding tie)"*; anything nearer is
-**INCONCLUSIVE**. It is a tie-discriminator band, **not** a rejection test at a normal
-quantile — so the size-probe finding does not invalidate a test here; it mis-widths a
-boundary. model#163's "amend / caveat / downgrade the veto" framing overstated the
-exposure; this amendment corrects the record and the band together.
+§2 freezes "Labels: `fwd_20d_excess` and `fwd_60d_excess`, both already present" —
+present on the PANEL. The corpus (`data/exp/oos_pick_table_recipe_v2.parquet`, frozen
+2026-07-03) carries its own `fwd_60d_excess` and NO 20d column, so the 20d arm must
+read the panel regardless. Measured `[实测 2026-08-01, model#160 thread]`: corpus vs
+today's panel on all 147,066 (date,name) pairs — **58.5% differ beyond 1e-9**
+(byte-equal 41.5%, corr 0.999579, max |Δ| = 1.87 on INTC; all 292 tickers affected in
+every period). The corpus labels are a stale vintage of the same estimand: silently
+mixing them with panel labels would put two label vintages inside one paired test —
+the exact shape of the fund-freshness clip bug. Also measured today: the two candidate
+panels (`transformer_v4_wl200_clean`, `alpha158_291_fundamental_dataset`) agree
+**byte-for-byte** on `fwd_60d_excess` over their full 354,258-row intersection
+(max |Δ| = 0.0), so "the panel" is well-defined for labels.
 
-## The measured defect `[早前实测 + 独立审计 UPHELD]`
+**Amended rule:** ALL decision-statistic labels — both horizons, both model arms, and
+every null — are read from ONE panel file in ONE pass at execution:
+`data/transformer_v4_wl200_clean.parquet` (the file §2 already names), whose sha256 is
+recorded in the run output at read time. The corpus supplies ONLY
+`score`/`decile_rank`/`regime`. The corpus's own `fwd_60d_excess` is demoted to a
+DIAGNOSTIC (its divergence from the panel label may be reported as a data-vintage
+observation; it decides nothing).
 
-For the overlap dependence a 20-day label induces by construction, the Bartlett
-estimator at L=19 captures **66.75%** of the true long-run variance (closed form;
-audit's Route B), so `SE_HAC` **understates** the honest SE by a factor of
-√0.6675 ≈ **0.817**. The (c) band is therefore ~**18% too narrow**: outcomes that are
-honestly near-ties get classified as "clear violations" → REFUTED instead of
-INCONCLUSIVE. Direction: biased toward REFUTED (against H2 support) — safe for
-promotion, wrong for the record.
+## Defect 2: §4's block construction is the L = h geometry the program's own erratum rules unsupported
 
-## The amendment (one sentence changes)
+§4 freezes `block length = ceil(h / rebalance spacing) = h` with non-overlapping
+h-day blocks. The 2026-07-30 erratum (`doc/research/2026-07-30-erratum-block-length-
+equals-horizon.md`) measured exactly this scheme: adjacent h-blocks of dates still
+share label windows (boundary crossing ≈ 1.0), and the realized size at nominal 0.05
+was **0.2162 / 0.1034** on the two measured designs; the repaired scheme (a GAP ≥ h
+between consecutive blocks) measured **0.047–0.051**. The Stage-0 prereg was frozen
+2026-07-28, two days BEFORE the erratum — it inherited the defect, and yesterday's
+independent audit flagged the same geometry riding the corrected-eval bundle.
 
-§5 H2 REFUTED clause, replace:
+**Amended rule:** block-level decision statistics use gap-separated blocks — length
+`h` trading days with a GAP of `h` trading days between consecutive blocks (so no two
+blocks share any label window); `n_eff` is the gapped block count and every table
+states it. The no-gap L = h numbers may be published as diagnostics only, clearly
+labelled. The already-frozen `SE_HAC` estimator (Newey-West, Bartlett, lag = h_min−1)
+is untouched.
 
-> (c) fails by more than one `SE_HAC` of the smaller sample
+## Not amended
 
-with:
-
-> a failure of (c) is graded **INCONCLUSIVE, never REFUTED**, until a clear-violation
-> band calibrated under a separately justified and frozen dependence family exists for
-> this series. The `SE_HAC`-width discriminator is SUSPENDED: its width is not
-> identified — the audited 1.224 de-bias covers only the pure-overlap MA(19) component,
-> and the AR-like persistence this document itself names has **no measured upper
-> bound**, so no hand-chosen widening can be called conservative `[per review]`.
-
-(c) itself is untouched: it remains a hard SUPPORTED gate on the point comparison
-`d_20d ≤ d_60d`. What is suspended is only the band that promoted a (c) failure from
-INCONCLUSIVE to REFUTED.
-
-No other constant, statistic, hypothesis, or gate changes. `SE_HAC`'s formula and
-`L = 19` are untouched — the amendment corrects the BAND's width where the estimator is
-consumed, not the estimator.
-
-## Why suspension rather than the alternatives
-
-* **A widened band (this amendment's own first draft, 1.25×)**: rejected on review —
-  the 1.224 factor is exact only for pure overlap; with no upper bound on the AR-like
-  component, any hand-chosen constant can still be anti-conservative on a hard outcome.
-* **Recalibrate per model#162 now**: the valid path, and the suspension names it as the
-  condition for reinstatement; building it is real work with its own frozen DGP
-  argument, and grading (c) failures INCONCLUSIVE meanwhile loses nothing decidable.
-* **Downgrade (c) entirely**: removes the hard SUPPORTED gate too — more change than
-  the defect requires; the point comparison stays.
+Everything else: the 3×2 statistic/horizon grid, both nulls (within-date permutation;
+persistence-matched control with its frozen alignment rules), the paired contrast with
+Holm-Bonferroni, H2's hard numeric gate, the T1–T8 trap checklist, XGB-only scope with
+PatchTST out of scope, and the separate-results-PR rule (§6).
 
 ## Not claimed
 
-That the suspension is costless — H2 loses its ability to hard-REFUTE via (c) until the
-calibrated band exists; outcomes that would have been REFUTED are held at INCONCLUSIVE,
-which is the refusing-to-overclaim direction and is stated as the price. That any other
-SE_HAC use exists in the prereg (the frozen text says "used only for §5 H2's effect-size
-veto (c)"; grep confirms). That this amendment licenses running Stage 0 — the runner
-remains unbuilt and the #163 record should note this amendment as the executed decision.
+That either defect changed any published number — Stage 0 has never run, which is why
+these are amendments and not errata. That the corpus's stale labels are WRONG — they
+were correct at build time; the panel has since been recomputed from revised prices
+(attribution to a specific data change is NOT established). That gap-separated blocks
+are optimal — they are the erratum's measured-safe repair, chosen over per-study
+bootstrap calibration to keep this amendment surgical.
