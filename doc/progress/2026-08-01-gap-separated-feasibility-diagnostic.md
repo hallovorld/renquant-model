@@ -5,6 +5,21 @@ much material a scheme that spaces blocks by at least the label horizon would re
 says nothing about what a validated HAC estimator, a dependence-preserving bootstrap on the
 full series, or a differently precommitted estimand could do with the same data.
 
+## Why this is a third PR, and it was not a content problem
+
+model#156 was closed with *"the requested method-scope correction was not applied. It
+still says the present series cannot support the intended preregistration."* That was true
+of what the reviewer could see and false of the branch.
+
+The correction **was** committed (`6829e36`) and pushed. What was not updated was the **PR
+description**: `gh pr create --body "$(cat <doc>)"` snapshots the file at creation time and
+subsequent pushes do not refresh it. So the commit said one thing and the PR body said the
+superseded thing, and the PR body is what gets read first.
+
+I had verified the pushed *file* before reporting — the right object for a different
+question. Recording it here because "the artifact I fixed is not the artifact under review"
+is the same shape as the defects this document is about.
+
 ## Review history, because each round narrowed a real overreach
 
 `[codex on model#155]` — the first version converted a **necessary** spacing condition into
