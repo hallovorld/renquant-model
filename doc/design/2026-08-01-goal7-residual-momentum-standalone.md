@@ -51,6 +51,53 @@ out-of-sample by construction.** The evaluation can use the panel's full ~2,594-
 history instead of the ~500-date corpora that made every recent small-effect test
 underpowered (model#157: gap-separated blocks = 4–5 on those series).
 
+## 2b. The feature FAMILY — five mechanisms, one composite, zero fitted parameters
+
+Momentum is not one phenomenon. The literature decomposes it into distinct economic
+mechanisms, and the local kill list (§1) killed only one *expression* of one of them —
+raw price trend. The family below assigns **one feature per mechanism**, chooses
+expressions none of the closed studies tested, and keeps every constant frozen from the
+literature so the zero-fitted-parameter property (and with it full-history OOS) survives.
+
+| id | mechanism | feature (exact) | reference |
+|---|---|---|---|
+| **F1** | underreaction to firm-specific news | residual momentum t-stat: OLS of daily TR on SPY-TR over `t−273…t−21` (≥200 obs), `F1 = mean(ε)/σ(ε)·√N` | Blitz–Huij–Martens 2011 |
+| **F2** | gradual diffusion / information discreteness | frog-in-the-pan: `F2 = sign(r_form) · (frac_pos_days − frac_neg_days)` over the same window — smooth trends continue, jumpy ones revert | Da–Gurun–Warachka 2014 |
+| **F3** | industry-level momentum | equal-weight sector formation TR over `t−273…t−21`, assigned to each member: `F3_i = r_sector(i)` | Moskowitz–Grinblatt 1999 |
+| **F4** | volume confirmation | signed-volume agreement: `F4 = (Σ vol·1[r>0] − Σ vol·1[r<0]) / Σ vol` over the formation window | Lee–Swaminathan 2000 lineage |
+| **F5** | crash asymmetry | downside-beta penalty: `F5 = −(β⁻ − β⁺)`, betas vs SPY conditional on SPY down/up days, same window | Ang–Chen–Xing 2006; Daniel–Moskowitz 2016 |
+
+**Composite (the only decision-bearing signal):** per date, cross-sectional z each
+available feature, then `S = mean(z(F1)…z(F5))` with **equal weights, frozen here**. A
+name missing a feature contributes the available subset (require ≥3 of 5, else unscored
+and counted); coverage per feature per date is reported. No fitted weights anywhere —
+equal-weighting is the deliberately dumb, deliberately unfittable combiner.
+
+**Excluded, with reasons stated now:** 52-week-high nearness (measured dead locally —
+canonical study `[早前实测]`); calendar seasonality (underpowered at n=292 names);
+MAX/lottery effect (largely overlaps F2's discreteness); **fundamental momentum is
+DIAGNOSTIC-ONLY** — a fundmom retrain was already rejected (`[早前实测]` #177-era), so it
+may be reported alongside but never enters `S`.
+
+**Tier B (exploratory, clearly fenced):** a small walk-forward-fitted combiner
+(logistic or shallow XGB on F1…F5, expanding window, embargo ≥ h) may be computed as a
+*diagnostic upper bound* on what learned weights could add. It is **never a decision
+input** at this stage: it forfeits the zero-fit power advantage, and it would inherit the
+WF-gate recipe-hash admission problem (orch#735) that this lane exists to avoid.
+
+### Known limitations, declared before any number exists
+
+* **Sector map PIT**: F3 needs a GICS-style map; if only a current-date map exists, its
+  application to history is `[假设]` (reclassification is rare but real) and the frozen
+  version must name the map's vintage and fingerprint it.
+* **Universe PIT**: the panel universe is today's 292 names — survivorship-tilted, like
+  every study on this panel. Absolute ICs are inflated by it; the design therefore reads
+  only *differences and bars on the same universe*, never absolute levels as truth.
+* **Label**: `fwd_20d_excess` is price-return-based (dividends omitted inside the
+  window) and per-date z-scored — Spearman IC is invariant to the z-scoring, and the
+  dividend omission is a small anti-payer tilt recorded as a limitation (PR #161 AC4
+  comment).
+
 ## 3. Evaluation protocol — the part the closed PRs demand
 
 * **Estimand E1 (primary):** mean per-date cross-sectional Spearman IC of the score vs
@@ -73,10 +120,19 @@ underpowered (model#157: gap-separated blocks = 4–5 on those series).
 * **Placebo (centring only, never width, never a decision input):** within-date label
   permutation, 5 draws — model#153 measured that permutation destroys the dependence
   (real ρ₁ 0.82–0.975 vs permuted ≈0), so its spread must not be used as a null width.
-* **Candidate decision bar** (to be locked at freeze; stated in quantities that HAVE
-  producers, mirroring the E52 gate form): mean IC ≥ **+0.04** with HAC-t ≥ **2.0** AND
-  placebo |IC| < 0.01 → RETAIN-to-shadow; anything else → **KILL** (or
-  UNRESOLVED-METHOD per above).
+* **Decision structure (two hypotheses, one decision signal):**
+  * **H1 (primary, 1 test):** mean per-date IC of the composite `S` ≥ **+0.04** with
+    HAC-t ≥ **2.0** AND placebo |IC| < 0.01 → RETAIN-to-shadow; anything else → **KILL**
+    (or UNRESOLVED-METHOD / UNRESOLVED-POWER per above). The composite is the ONLY
+    decision-bearing statistic, so the decision faces no family-wise erosion.
+  * **H2 (parsimony test, 1 test):** `ΔIC = IC(S) − IC(F1)` as a paired per-date
+    difference series, HAC on the differences. If H1 passes and H2 does not (the family
+    adds nothing over the core), **the deployed instrument is F1 alone** — the simpler
+    lane wins by preregistered rule, not by taste.
+  * **Per-feature diagnostics (5 tests, Bonferroni α/5):** each feature's own IC,
+    reported to attribute where the composite's behaviour comes from — diagnostics,
+    never decision inputs. The feature-by-feature rank-correlation matrix is reported so
+    redundancy is visible rather than argued.
 
 **Power, stated honestly `[推导, conditional]`.** Per-date IC sd at N≈292 is ~0.1966
 `[早前实测, breadth memo, VERIFIED]`. Under pure-overlap MA(19) the variance inflation of
@@ -123,6 +179,9 @@ orch#727 (n_scored and n_candidates drawn from different name sets).
    watchlist it was validated on. If only 145, the design runs on the covered subset and
    says so, or extends coverage first.
 4. α and the exact bar constants.
+5. Sector map: source, vintage, coverage of the 292 — being measured; F3 drops from the
+   composite (family becomes 4-of-4-minimum-3) if no defensible map exists.
+6. Volume data quality across the 292 (F4 needs it) — being measured.
 
 ## Not claimed
 
