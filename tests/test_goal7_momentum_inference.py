@@ -52,11 +52,13 @@ def test_frozen_envelope_is_DEGENERATE_and_the_max_test_is_not():
     frozen = M.adequacy_check(series, fit, dict(M.FROZEN_INFERENCE,
                                                 envelope_rule="frozen_2se"),
                               np.random.default_rng(4))
-    principled = M.adequacy_check(series, fit, dict(M.FROZEN_INFERENCE,
-                                                    envelope_rule="max_test_bartlett"),
-                                  np.random.default_rng(4))
+    boot = M.adequacy_check(series, fit, dict(M.FROZEN_INFERENCE,
+                                              envelope_rule="bootstrap_max",
+                                              adequacy_boot_reps=120),
+                            np.random.default_rng(4))
     assert not frozen["ok"], "the degenerate frozen rule unexpectedly passed"
-    assert principled["ok"], principled
+    assert boot["ok"], boot
+    assert boot["bootstrap_threshold"] > boot["max_abs_dev"]
 
 
 def test_calibrate_returns_UNRESOLVED_METHOD_when_ar_cannot_express_the_series():
@@ -75,7 +77,8 @@ def test_calibrate_succeeds_on_an_ar_series_and_takes_the_max_bar():
     rng = np.random.default_rng(6)
     v = M.gen_ar_resample(rng, 600, np.array([0.5]), rng.standard_normal(400))
     cfg = dict(M.FROZEN_INFERENCE); cfg["reps"] = 200
-    cfg["envelope_rule"] = "max_test_bartlett"      # the Amendment-2 rule
+    cfg["envelope_rule"] = "bootstrap_max"          # the Amendment-2 rule
+    cfg["adequacy_boot_reps"] = 120
     cal = M.calibrate_bar(v, cfg)
     assert cal["status"] == "calibrated", cal
     assert cal["t_star"] == pytest.approx(max(cal["bars"].values()))

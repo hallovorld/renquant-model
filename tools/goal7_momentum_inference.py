@@ -130,9 +130,29 @@ def adequacy_check(series: np.ndarray, fit: dict, cfg: dict,
     imp = ar_implied_acf(fit["phi"], fit["resid"], lags, len(series), rng)
     n = len(series)
     rule = cfg.get("envelope_rule", "frozen_2se")
+    cfg = dict(cfg); cfg["_fit"] = fit
     dev = np.abs(emp - imp)
     if rule == "frozen_2se":
         env = np.full(lags, cfg["acf_envelope_se_mult"] / np.sqrt(n))
+    elif rule == "bootstrap_max":
+        # [codex on model#170] Calibrate the max-deviation statistic's threshold by a
+        # precommitted parametric bootstrap UNDER THE FITTED NULL: simulate B series
+        # from the fit, compute each one's own D_b = max_k |acf_b − implied| against
+        # the SAME implied curve, take the (1−α) quantile as the gate threshold. This
+        # assesses the GATE's threshold, not whether AR is the right real-series null —
+        # the separate UNRESOLVED-METHOD safeguard is untouched.
+        B = int(cfg.get("adequacy_boot_reps", 500))
+        alpha = float(cfg.get("adequacy_alpha", 0.05))
+        fit = cfg["_fit"]                       # injected by adequacy_check wrapper
+        d_boot = np.empty(B)
+        for b in range(B):
+            sim = gen_ar_resample(rng, n, fit["phi"], fit["resid"])
+            d_boot[b] = float(np.nanmax(np.abs(sample_acf(sim, lags) - imp)))
+        thresh = float(np.quantile(d_boot, 1.0 - alpha))
+        d_real = float(np.nanmax(dev))
+        return {"ok": bool(d_real <= thresh), "rule": rule,
+                "max_abs_dev": d_real, "bootstrap_threshold": thresh,
+                "boot_reps": B, "alpha": alpha}
     elif rule == "max_test_bartlett":
         from scipy import stats as _st
         z = float(_st.norm.ppf(1 - 0.05 / (2 * lags)))
