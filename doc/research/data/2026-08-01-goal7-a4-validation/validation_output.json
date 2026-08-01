@@ -1,0 +1,86 @@
+{
+  "band": [
+    0.0184,
+    0.0316
+  ],
+  "correct_machine": {
+    "ar_p": 6,
+    "ar_resample": {
+      "bar": 2.5434089619704325,
+      "hits": 137,
+      "ok": true,
+      "rate": 0.0274,
+      "reps": 5000
+    },
+    "bars": {
+      "ar_resample": 2.5434089619704325,
+      "overlap_ma": 2.7118695280973473
+    },
+    "gate_ok": true,
+    "iid_vs_t_star_diagnostic": {
+      "bar": 2.7118695280973473,
+      "hits": 82,
+      "ok": false,
+      "rate": 0.0164,
+      "reps": 5000
+    },
+    "overlap_ma": {
+      "bar": 2.7118695280973473,
+      "hits": 118,
+      "ok": true,
+      "rate": 0.0236,
+      "reps": 5000
+    },
+    "t_star": 2.7118695280973473
+  },
+  "corrupted_machines": {
+    "A_wrong_quantile_0.90": {
+      "ar_resample": {
+        "bar": 1.8760494095481437,
+        "hits": 193,
+        "ok": false,
+        "rate": 0.0965,
+        "reps": 2000
+      },
+      "gate_ok": false,
+      "overlap_ma": {
+        "bar": 1.9348417140126115,
+        "hits": 189,
+        "ok": false,
+        "rate": 0.0945,
+        "reps": 2000
+      }
+    },
+    "B_cross_member_bar_confusion": {
+      "ar_draws_at_ma_bar": {
+        "bar": 2.7118695280973473,
+        "hits": 44,
+        "ok": true,
+        "rate": 0.022,
+        "reps": 2000
+      },
+      "gate_ok": true
+    },
+    "C_mirror_drift_L10_test_vs_L59_bar": {
+      "gate_ok": false,
+      "ma_draws_tested_at_L10": {
+        "bar": 2.7118695280973473,
+        "hits": 153,
+        "ok": false,
+        "rate": 0.0765,
+        "reps": 2000
+      }
+    },
+    "neg_reps": 2000
+  },
+  "fixture_sha256": "ff859a68dd7f0bd73c428458575def9839d5670a860aa5ac323942107e48f8c5",
+  "inference_module_head": "93a785fc8b4446fb0c784037c287521062c6dc11",
+  "n": 756,
+  "verdict": {
+    "limitation_B": "NO TEETH on this fixture: the two member bars sit within ~0.1 of each other, so cross-member confusion moves the rate too little to leave the band. Documented, not hidden; disjoint seed sub-streams are enforced by code review, and seed-stream REUSE is likewise band-invisible by construction (rate == alpha exactly).",
+    "replacement_gate_fails_on_A": true,
+    "replacement_gate_fails_on_B": false,
+    "replacement_gate_fails_on_C": true,
+    "replacement_gate_passes_on_correct_machine": true
+  }
+}
