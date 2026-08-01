@@ -39,7 +39,8 @@ keeps guarding against tamper and loss, and stops encoding a hidden deadline.
 ## Not claimed
 
 That the daily refresh is wrong — it is the pipeline working. That the clf bundle's
-fidelity NO VERDICT is discharged — the opposite: it is now **permanently unverifiable
-as committed** (its pinned panel bytes no longer exist anywhere), which is recorded here
+fidelity NO VERDICT is discharged — the opposite: it is now **unverifiable as
+committed on the live tree** (its pinned panel bytes are gone from the pinned path and
+the bundle committed no copy; other backups were not searched), which is recorded here
 as the cost of pinning moving paths without snapshotting, and is exactly what this
 amendment prevents for the momentum study.
