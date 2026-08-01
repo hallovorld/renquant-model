@@ -29,11 +29,18 @@ frozen statistic pipeline `T` (e.g. HAC-t at a frozen L):
 
 1. **Measure the dependence, don't assume it.** Sample ACF of the demeaned series to lag
    `3h`, with plug-in standard errors. Committed with the run.
-2. **Fit an H0 generator by frozen rule.** AR(p) with `p` chosen by AIC, `p ≤ h`, on the
-   demeaned series; innovations resampled i.i.d. from the fitted residuals (so heavy
-   tails survive). **Adequacy gate:** the fitted model's implied ACF must match the
-   sample ACF within a frozen envelope (max abs deviation over lags 1..2h ≤ 2 plug-in
-   SEs). Fail → **UNRESOLVED-METHOD**, stated, no fallback improvised at run time.
+2. **Fit a CANDIDATE SENSITIVITY MODEL by frozen rule.** AR(p) with `p` chosen by AIC,
+   `p ≤ h`, on the demeaned series; innovations resampled i.i.d. from the fitted
+   residuals (so heavy tails survive). **Adequacy gate:** the fitted model's implied ACF
+   must match the sample ACF within a frozen envelope (max abs deviation over lags
+   1..2h ≤ 2 plug-in SEs). Fail → **UNRESOLVED-METHOD**, stated, no fallback improvised
+   at run time. **Per review, passing this gate does NOT make the fit a validated
+   null**: an AR(p) matched on second moments can miss nonlinear or regime-switching
+   dependence entirely, and its own adequacy gate cannot see what its family cannot
+   express. A real-series VERDICT additionally requires a separately justified DGP
+   argument — frozen by the consuming preregistration — for why this family covers the
+   dependence that matters; absent that argument, the protocol's output is sensitivity
+   evidence, not authorization.
 3. **Calibrate.** Simulate ≥ 5,000 seeded series of length n from the fitted generator
    with mean forced to 0; push each through the IDENTICAL pipeline `T`; the empirical
    (1−α) quantile of |T| is the decision bar `t*`. Committed record: series digest,
@@ -45,10 +52,19 @@ frozen statistic pipeline `T` (e.g. HAC-t at a frozen L):
      through the full protocol, must reject at α within a frozen tolerance (this checks
      the plumbing, not the model);
    * **mis-specification stress** — size under the ALTERNATIVE family (overlap-MA(h−1)
-     matched to the same variance) is reported; if it exceeds 1.5α, the verdict must be
-     published with both bars side by side rather than the friendlier one.
+     matched to the same variance). **Per review, reporting cannot substitute for error
+     control**: if the alternative-family size exceeds 1.5α, the outcome is
+     **UNRESOLVED-METHOD** — unless the consuming preregistration has PRECOMMITTED the
+     conservative rule `t* = max(t*_fitted, t*_alternative)` (the worst-case bar over
+     the admissible generator family), in which case the decision proceeds at that bar
+     and at that bar only. Publishing both bars remains mandatory either way, as
+     disclosure — never as the decision mechanism.
 5. **Output discipline.** `t*` is series-specific and α-specific; nothing generalizes
    across series, and reusing a bar across series is a protocol violation by definition.
+   And per the two review points above: what steps 1–4 yield is a calibrated
+   SENSITIVITY instrument plus disclosure obligations; verdict authority comes only
+   from the consumer's frozen DGP argument and (on stress failure) its precommitted
+   worst-case rule.
 
 ## The honest weak point, named up front
 
