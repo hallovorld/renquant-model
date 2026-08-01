@@ -24,13 +24,19 @@ A freeze that pins a moving path pins a deadline, not an input.
    build). Digests NORMATIVE; location ADVISORY (currently the umbrella experiment
    area, PROVISIONAL pending orch#742 — the snapshot write is self-reported there for
    operator disposition; RELOCATE changes only the manifest's location field).
-2. **This amendment** — §2's inputs are henceforth resolved THROUGH that manifest:
-   the runner must load `manifests/momentum-prereg-inputs-20260801.json` (content
-   sha256 `2912983593782edd52f432d706933ed81041fe97b8e3b670fe30e6b4f6cb71ed` as of
-   base-data#59; a reviewed location-only revision may change the file, in which case
-   the runner takes the merged base-data main as authoritative), verify every file it
-   reads against the manifest's sha256, and treat mismatch or absence as
-   UNRESOLVED-DATA. No fallback to the live `data/` paths under any condition.
+2. **This amendment** — §2's inputs are henceforth resolved THROUGH that manifest.
+   The NORMATIVE identity pin is `dataset_id = momentum-prereg-inputs-20260801` plus
+   the three §2 digests themselves (panel `55811f63…`, sector `ec26bb1e…`, combined
+   OHLCV `4d4638a9…`) — the runner's `manifest_identity` check requires the manifest's
+   headline digests to equal these byte-for-byte, so NO revision of the manifest file
+   can substitute a different dataset. The manifest file's content sha at the time of
+   this filing is `ac52b4287cbfc295fb48be3bd56bc09c8e85def55e1e298c93dc8484f0343144`
+   (recorded for audit only; the merged base-data main is authoritative for the file).
+   The runner must resolve a root via the manifest's content-addressed resolver,
+   verify every file it reads against the manifest's per-file sha256, and treat
+   mismatch or absence as UNRESOLVED-DATA. No fallback to the live `data/` paths
+   under any condition. Resolution prefers the PINNED runtime base-data copy over any
+   developer checkout, and the runner records which copy it read.
 3. **The runner (#169)** — revised in its own PR to implement exactly that
    verify-then-read resolution before this amendment's chain is mergeable end-to-end.
 
