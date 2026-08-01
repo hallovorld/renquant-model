@@ -140,7 +140,7 @@ def assemble_day(day_panel: pd.DataFrame, tr_returns: dict[str, pd.Series],
         formation[t] = float(np.prod(1.0 + ri) - 1.0) if len(ri) else float("nan")
     feats["f3"] = f3_industry_momentum(formation, sector_of)
     scores, n_used = composite_scores(feats, min_features=FROZEN["min_features"])
-    return {"scores": scores, "n_used": n_used,
+    return {"scores": scores, "n_used": n_used, "_f1": dict(feats["f1"]),
             "n_scored": sum(1 for s in scores.values() if np.isfinite(s)),
             "n_names": int(len(day_panel))}
 
@@ -149,12 +149,12 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--preflight", action="store_true",
                     help="verify every precondition and print the JSON verdict")
-    ap.add_argument("--execute", action="store_true")
+    ap.add_argument("--execute", action="store_true",
+                    help="§7 gate: single post-merge invocation; output committed verbatim")
+    ap.add_argument("--json-out", default=None)
     a = ap.parse_args(argv)
     if a.execute:
-        print("execute: the inference stage is not implemented in this revision; "
-              "refusing (exit 4).", file=sys.stderr)
-        return 4
+        return execute(Path(a.json_out) if a.json_out else None)
     if not a.preflight:
         print("nothing to do: pass --preflight (this revision) or --execute (later).",
               file=sys.stderr)
@@ -162,6 +162,171 @@ def main(argv=None) -> int:
     rep = verify_preconditions()
     print(json.dumps(rep, indent=2, sort_keys=True))
     return 0 if rep["ok"] else 3
+
+
+
+
+# ===================================================================== stage B ====
+# Execution orchestration. Frozen decisions only; every constant restated from the
+# prereg + amendments, none invented here.
+
+AMENDMENT_2 = REPO / "doc/research/2026-08-01-goal7-momentum-prereg-amendment-2.md"
+
+
+def _spearman_ic(scores: dict[str, float], labels: pd.Series) -> float | None:
+    """Per-date cross-sectional Spearman IC over names scored AND labelled."""
+    common = [t for t, s in scores.items()
+              if np.isfinite(s) and t in labels.index and np.isfinite(labels[t])]
+    if len(common) < FROZEN["names_per_date_floor"]:
+        return None
+    a = pd.Series({t: scores[t] for t in common}).rank()
+    b = labels[common].rank()
+    return float(np.corrcoef(a, b)[0, 1])
+
+
+def decide(h1_ic_mean: float, h1_t: float, t_star: float, placebo_mean_abs: float,
+           d_ic_t: float, f1_ic_mean: float, f1_t: float,
+           mde: float) -> dict:
+    """The frozen decision map (§4.5 + Amendment-1-consistent H2). Pure function."""
+    if mde > 0.06:
+        return {"verdict": "UNRESOLVED-POWER",
+                "why": f"realized MDE {mde:.4f} exceeds the frozen 0.06 ceiling"}
+    h1_pass = (h1_ic_mean >= 0.04) and (abs(h1_t) >= t_star) and (placebo_mean_abs < 0.01)
+    if not h1_pass:
+        return {"verdict": "KILL",
+                "why": (f"H1 failed: mean IC {h1_ic_mean:.4f} (bar 0.04), |t| "
+                        f"{abs(h1_t):.2f} (bar {t_star:.2f}), placebo "
+                        f"{placebo_mean_abs:.4f} (bar 0.01)")}
+    f1_pass = (f1_ic_mean >= 0.04) and (abs(f1_t) >= t_star)
+    if abs(d_ic_t) < t_star and f1_pass:
+        return {"verdict": "RETAIN-F1",
+                "why": "composite adds nothing over F1 AND F1 independently clears H1"}
+    return {"verdict": "RETAIN-S",
+            "why": ("composite clears H1; family adds value or F1 does not "
+                    "independently clear the bar")}
+
+
+def execute(json_out: Path | None) -> int:
+    import importlib.util as _ilu
+
+    pre = verify_preconditions()
+    for extra, path in (("amendment_2_present", AMENDMENT_2),):
+        pre["checks"][extra] = {"ok": path.is_file(), "detail": str(path)}
+        if not path.is_file():
+            pre["unresolved_data"].append(extra)
+    if pre["unresolved_data"]:
+        rep = {"status": "UNRESOLVED-DATA", "preflight": pre}
+        print(json.dumps(rep, indent=2, sort_keys=True))
+        return 3
+
+    spec = _ilu.spec_from_file_location(
+        "goal7_momentum_inference", REPO / "tools" / "goal7_momentum_inference.py")
+    INF = _ilu.module_from_spec(spec)
+    spec.loader.exec_module(INF)
+    tr_close = _load_tr_builder()
+
+    panel = pd.read_parquet(RQ / "data/alpha158_291_fundamental_dataset.parquet",
+                            columns=["ticker", "date", "fwd_20d_excess"])
+    panel["date"] = pd.to_datetime(panel["date"])
+    sector_of = {t: v.get("sector") for t, v in
+                 json.loads((RQ / "data/ticker_sectors.json").read_text()).items()}
+
+    tickers = sorted(panel["ticker"].unique())
+    tr_returns, volumes = {}, {}
+    for t in tickers + ["SPY"]:
+        f = RQ / f"data/ohlcv/{t}/1d.parquet"
+        raw = pd.read_parquet(f)
+        tr = tr_close(raw["close"], raw.get("dividend",
+                                            pd.Series(0.0, index=raw.index)))
+        r = tr.pct_change()
+        (tr_returns if True else None)[t] = r
+        volumes[t] = raw["volume"]
+    spy_tr = tr_returns.pop("SPY")
+
+    ic_s, ic_f1, dates_used, skipped = [], [], [], {"thin": 0, "infeasible": 0}
+    rng_placebo = np.random.default_rng(FROZEN["seed"])
+    placebo_abs = []
+    all_dates = sorted(panel["date"].unique())
+    for asof in all_dates:
+        day = panel[panel["date"] == asof]
+        labels = day.set_index("ticker")["fwd_20d_excess"]
+        out = assemble_day(day, tr_returns, spy_tr, volumes, sector_of,
+                           pd.Timestamp(asof))
+        ic = _spearman_ic(out["scores"], labels)
+        if ic is None:
+            skipped["thin"] += 1
+            continue
+        f1_scores = {t: v for t, v in out.get("_f1", {}).items()}
+        ic1 = _spearman_ic(f1_scores, labels) if f1_scores else None
+        if ic1 is None:
+            skipped["infeasible"] += 1
+            continue
+        # placebo: 5 seeded within-date label permutations, centring only
+        pl = []
+        for _ in range(5):
+            perm = pd.Series(rng_placebo.permutation(labels.to_numpy()),
+                             index=labels.index)
+            p_ic = _spearman_ic(out["scores"], perm)
+            if p_ic is not None:
+                pl.append(abs(p_ic))
+        placebo_abs.append(float(np.mean(pl)) if pl else np.nan)
+        ic_s.append(ic); ic_f1.append(ic1); dates_used.append(str(pd.Timestamp(asof).date()))
+
+    s = np.array(ic_s); f1 = np.array(ic_f1)
+    d_ic = s - f1
+    cfg = dict(INF.FROZEN_INFERENCE)
+    cfg["envelope_rule"] = "bootstrap_max"
+
+    # HAC mirror cross-check against the PINNED implementation
+    sys.path.insert(0, str(HAC_SE.parent.parent.parent))
+    from renquant_common.metrics.hac_se import newey_west_se
+    t_mine = INF.bartlett_hac_t(s, cfg["L"])
+    t_pinned = float(s.mean()) / newey_west_se(s, lag=cfg["L"])
+    if not np.isclose(t_mine, t_pinned, rtol=1e-9):
+        rep = {"status": "UNRESOLVED-DATA",
+               "why": f"HAC mirror mismatch: {t_mine} vs pinned {t_pinned}"}
+        print(json.dumps(rep, indent=2)); return 3
+
+    cal = INF.calibrate_bar(s, cfg)
+    if cal["status"] != "calibrated":
+        rep = {"status": "UNRESOLVED-METHOD", "calibration": cal,
+               "n_dates": len(s), "dates_skipped": skipped}
+        print(json.dumps(rep, indent=2, sort_keys=True, default=str)); return 5
+
+    # gates
+    noise = pd.read_csv(REPO / "doc/research/data/2026-07-29-clf-wf-closure-bundle/"
+                        "artifacts/corrected-eval/"
+                        "per_date_selftest_selftest_pure_noise_real.csv")["ic"].to_numpy()
+    t_noise = INF.bartlett_hac_t(noise, cfg["L"])
+    pos_ok = abs(t_noise) < cal["t_star"]
+    mach = INF.machinery_self_check(s, cal["t_star"], cfg)
+    se_hac = float(s.mean()) / t_mine if t_mine else float("nan")
+    mde = cal["t_star"] * abs(se_hac)
+    if not (pos_ok and mach["ok"]):
+        rep = {"status": "UNRESOLVED-METHOD",
+               "positive_control": {"t": t_noise, "ok": pos_ok},
+               "machinery": mach}
+        print(json.dumps(rep, indent=2, sort_keys=True, default=str)); return 5
+
+    verdict = decide(float(s.mean()), t_mine, cal["t_star"],
+                     float(np.nanmean(placebo_abs)),
+                     INF.bartlett_hac_t(d_ic, cfg["L"]),
+                     float(f1.mean()), INF.bartlett_hac_t(f1, cfg["L"]), mde)
+    rep = {"status": "COMPLETED", "verdict": verdict,
+           "n_dates": len(s), "dates_skipped": skipped,
+           "mean_ic_S": float(s.mean()), "t_S": t_mine, "t_star": cal["t_star"],
+           "mean_ic_F1": float(f1.mean()), "t_F1": INF.bartlett_hac_t(f1, cfg["L"]),
+           "t_delta": INF.bartlett_hac_t(d_ic, cfg["L"]),
+           "placebo_mean_abs": float(np.nanmean(placebo_abs)),
+           "mde": mde, "calibration": cal,
+           "positive_control_t": t_noise, "machinery": mach,
+           "preflight": pre}
+    txt = json.dumps(rep, indent=2, sort_keys=True, default=str)
+    print(txt)
+    if json_out:
+        json_out.parent.mkdir(parents=True, exist_ok=True)
+        json_out.write_text(txt + "\n")
+    return 0
 
 
 if __name__ == "__main__":
