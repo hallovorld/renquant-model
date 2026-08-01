@@ -74,6 +74,24 @@ are untouched by this measurement and remain open.
 **No power claim is made.** Assessing whether any family size can resolve a difference
 requires a defined effect size and a valid null, and this document has neither.
 
+## The resampling pass, after `[codex on model#157]`
+
+The document was accepted in scope while **the tool still overstated**: its docstring
+claimed to measure calibration and empirical rejection, `size_under_h0` returned
+`status: measured` at 4–5 donors, and the CLI described deviation from a nominal level as
+a property of the statistic. Fixed in the executable, not just described here:
+
+* it is a **resampling sensitivity** pass — it describes one resampling scheme's
+  behaviour and does not estimate how often the statistic rejects a true null;
+* `--min-donors` is **required and has no default**. This tool cannot justify a minimum,
+  so the caller states and owns one; `--resample` without it exits 2 rather than picking
+  a number;
+* below that threshold the result is `UNRESOLVED_INSUFFICIENT_DONORS` with the reason,
+  and **no fraction is emitted**. Verified `[本次实测]`: at `--min-donors 20`, the
+  4-donor `prod_XGB` series returns UNRESOLVED at both bars.
+
+The gap-separated count is unchanged and is the mergeable part.
+
 ## My own size numbers are withheld
 
 The tool can also measure the empirical size of the naive `gap = 0` block-t by resampling
