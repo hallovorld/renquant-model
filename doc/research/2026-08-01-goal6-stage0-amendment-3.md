@@ -1,6 +1,6 @@
 # GOAL-6 Stage 0 — Amendment 3 (visible, PRE-RUN): label vintage and block geometry
 
-**Amends exactly two clauses of the frozen Stage-0 prereg
+**Amends exactly three clauses of the frozen Stage-0 prereg
 (`2026-07-28-goal6-stage0-prereg.md`). Filed before any execution; Stage 0 has not
 run. Amendments 1 and 2 (the H2(c) band suspension) are untouched and compatible:
 this amendment shares no clause with either. Both defects were found by measurement, not taste, and both follow the momentum
@@ -47,6 +47,23 @@ blocks share any label window); `n_eff` is the gapped block count and every tabl
 states it. The no-gap L = h numbers may be published as diagnostics only, clearly
 labelled. The already-frozen `SE_HAC` estimator (Newey-West, Bartlett, lag = h_min−1)
 is untouched.
+
+## Defect 3: arm (b) has no scores in the corpus §2 points both arms at
+
+§2 freezes "Both score against the existing corpus
+`data/exp/oos_pick_table_recipe_v2.parquet`" — measured `[实测 2026-08-01]`: that
+table's manifest records its `score` column as the XGB prod recipe's output ONLY;
+the certified top-decile classifier has no scores there. As frozen, arm (b) is
+unexecutable. The classifier's out-of-sample scores DO exist, committed in this repo:
+
+**Amended rule:** arm (b)'s scoring table is
+`doc/research/data/2026-07-29-clf-wf-closure-bundle/artifacts/clf-wf/clf_wf_scores.parquet`
+(committed; sha256 `1da3fcfab06af1e597ac0eb83dff4741ed3dd027de8b8a6b4d58979f5bc4efe4`), score column **`cal`**
+(the calibrated output the blend leg serves; `raw` may be reported as a diagnostic),
+restricted to the 508-date Stage-0 window — coverage measured: **508/508 dates ×
+292/292 names per date** (the file spans 625 OOS dates; the intersection is complete).
+Its own `fwd_60d_excess` column is demoted to a diagnostic exactly as Defect 1 demotes
+the XGB corpus's — all decision labels come from the single panel read.
 
 ## Not amended
 
