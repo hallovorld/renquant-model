@@ -1,0 +1,234 @@
+{
+  "admissibility_loss": {
+    "admissible_dates_by_name_floor": {
+      "5": 2407,
+      "10": 2407,
+      "20": 2407
+    },
+    "conclusion": "The shortfall behind h=120 is the CORPUS, not a conservative admissibility rule. Extending the window backwards recovers nothing (those dates have no names), the warm-up is exactly the feature's own lookback, and relaxing the name floor from 20 to 10 to 5 recovers ZERO dates.",
+    "corpus_has_under_min_names": {
+      "first": "2014-01-02",
+      "last": "2015-12-31",
+      "n": 504
+    },
+    "feature_warmup": {
+      "first": "2016-01-04",
+      "last": "2016-12-28",
+      "n": 250,
+      "note": "mom_12_1_tr needs 12 months of history, so a ~250-session gap between 'names exist' and 'the feature is computable' is the FEATURE's definition, not a defect to be tuned away.",
+      "sessions_between_first_20_names_and_first_admissible": 250
+    },
+    "n_inadmissible": 754,
+    "name_floor_is_not_binding": true
+  },
+  "admissible_dates": 2407,
+  "admissible_first": "2016-12-29",
+  "admissible_last": "2026-07-29",
+  "burn_boundary": "2021-10-08",
+  "corpus_calendar_dates": 3161,
+  "corpus_first": "2014-01-02",
+  "corpus_last": "2026-07-29",
+  "draws_floors_swept": [
+    10,
+    20,
+    30
+  ],
+  "horizons": [
+    20,
+    60,
+    120
+  ],
+  "matrix_sha256": "85c27fc1d5a56a4c585c03db22dc8be0123badfc83ef23e46cdd358c704eb35a",
+  "min_names": 20,
+  "robust_verdict": {
+    "h120/pre_burn": "INFEASIBLE",
+    "h120/whole_corpus": "FLOOR_DEPENDENT",
+    "h20/pre_burn": "FEASIBLE",
+    "h20/whole_corpus": "FEASIBLE",
+    "h60/pre_burn": "FLOOR_DEPENDENT",
+    "h60/whole_corpus": "FEASIBLE"
+  },
+  "rows": [
+    {
+      "available": 1182,
+      "draws_floor": 10,
+      "feasible": true,
+      "horizon": 20,
+      "last_usable_t": "2021-09-09",
+      "needed": 200,
+      "scope": "pre_burn",
+      "status": "checked"
+    },
+    {
+      "available": 2387,
+      "draws_floor": 10,
+      "feasible": true,
+      "horizon": 20,
+      "last_usable_t": "2026-06-30",
+      "needed": 200,
+      "scope": "whole_corpus",
+      "status": "checked"
+    },
+    {
+      "available": 1142,
+      "draws_floor": 10,
+      "feasible": true,
+      "horizon": 60,
+      "last_usable_t": "2021-07-14",
+      "needed": 600,
+      "scope": "pre_burn",
+      "status": "checked"
+    },
+    {
+      "available": 2347,
+      "draws_floor": 10,
+      "feasible": true,
+      "horizon": 60,
+      "last_usable_t": "2026-05-01",
+      "needed": 600,
+      "scope": "whole_corpus",
+      "status": "checked"
+    },
+    {
+      "available": 1082,
+      "draws_floor": 10,
+      "feasible": false,
+      "horizon": 120,
+      "last_usable_t": "2021-04-19",
+      "needed": 1200,
+      "scope": "pre_burn",
+      "status": "checked"
+    },
+    {
+      "available": 2287,
+      "draws_floor": 10,
+      "feasible": true,
+      "horizon": 120,
+      "last_usable_t": "2026-02-04",
+      "needed": 1200,
+      "scope": "whole_corpus",
+      "status": "checked"
+    },
+    {
+      "available": 1182,
+      "draws_floor": 20,
+      "feasible": true,
+      "horizon": 20,
+      "last_usable_t": "2021-09-09",
+      "needed": 400,
+      "scope": "pre_burn",
+      "status": "checked"
+    },
+    {
+      "available": 2387,
+      "draws_floor": 20,
+      "feasible": true,
+      "horizon": 20,
+      "last_usable_t": "2026-06-30",
+      "needed": 400,
+      "scope": "whole_corpus",
+      "status": "checked"
+    },
+    {
+      "available": 1142,
+      "draws_floor": 20,
+      "feasible": false,
+      "horizon": 60,
+      "last_usable_t": "2021-07-14",
+      "needed": 1200,
+      "scope": "pre_burn",
+      "status": "checked"
+    },
+    {
+      "available": 2347,
+      "draws_floor": 20,
+      "feasible": true,
+      "horizon": 60,
+      "last_usable_t": "2026-05-01",
+      "needed": 1200,
+      "scope": "whole_corpus",
+      "status": "checked"
+    },
+    {
+      "available": 1082,
+      "draws_floor": 20,
+      "feasible": false,
+      "horizon": 120,
+      "last_usable_t": "2021-04-19",
+      "needed": 2400,
+      "scope": "pre_burn",
+      "status": "checked"
+    },
+    {
+      "available": 2287,
+      "draws_floor": 20,
+      "feasible": false,
+      "horizon": 120,
+      "last_usable_t": "2026-02-04",
+      "needed": 2400,
+      "scope": "whole_corpus",
+      "status": "checked"
+    },
+    {
+      "available": 1182,
+      "draws_floor": 30,
+      "feasible": true,
+      "horizon": 20,
+      "last_usable_t": "2021-09-09",
+      "needed": 600,
+      "scope": "pre_burn",
+      "status": "checked"
+    },
+    {
+      "available": 2387,
+      "draws_floor": 30,
+      "feasible": true,
+      "horizon": 20,
+      "last_usable_t": "2026-06-30",
+      "needed": 600,
+      "scope": "whole_corpus",
+      "status": "checked"
+    },
+    {
+      "available": 1142,
+      "draws_floor": 30,
+      "feasible": false,
+      "horizon": 60,
+      "last_usable_t": "2021-07-14",
+      "needed": 1800,
+      "scope": "pre_burn",
+      "status": "checked"
+    },
+    {
+      "available": 2347,
+      "draws_floor": 30,
+      "feasible": true,
+      "horizon": 60,
+      "last_usable_t": "2026-05-01",
+      "needed": 1800,
+      "scope": "whole_corpus",
+      "status": "checked"
+    },
+    {
+      "available": 1082,
+      "draws_floor": 30,
+      "feasible": false,
+      "horizon": 120,
+      "last_usable_t": "2021-04-19",
+      "needed": 3600,
+      "scope": "pre_burn",
+      "status": "checked"
+    },
+    {
+      "available": 2287,
+      "draws_floor": 30,
+      "feasible": false,
+      "horizon": 120,
+      "last_usable_t": "2026-02-04",
+      "needed": 3600,
+      "scope": "whole_corpus",
+      "status": "checked"
+    }
+  ],
+  "scope_note": "CAPACITY IS NOT POWER. Clearing this test means a bar COULD be calibrated, not that a design could detect anything \u2014 GOAL-6 Stage 0 measured that the shorter horizon buys no power (H2 NOT SUPPORTED). And the burn boundary is registered (A2.2); the whole_corpus rows BOUND the question, they do not license a design."
+}

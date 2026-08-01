@@ -1,0 +1,20 @@
+series 1080 dates  rho1=0.9408  bar=2.1098
+
+  draws    Lb  mean size   rep SD   spread
+      5   216     0.0489   0.0020   0.0062
+      6   180     0.0565   0.0033   0.0098
+      8   135     0.0929   0.0031   0.0090
+     10   108     0.1016   0.0023   0.0060
+     12    90     0.0923   0.0028   0.0070
+     15    72     0.0923   0.0053   0.0160
+     20    54     0.0858   0.0034   0.0095
+     25    44     0.0782   0.0040   0.0110
+     30    36     0.0708   0.0057   0.0158
+     40    27     0.0653   0.0028   0.0092
+     60    18     0.0594   0.0043   0.0130
+     90    12     0.0483   0.0033   0.0090
+
+rep SD = run-to-run noise of the size estimate at that draw count.
+>>> smallest draw count whose estimate is stable to SD<=0.005: 5 (Lb=216)
+    mean size at <=10 draws: 0.0750
+    mean size at >=30 draws: 0.0610
