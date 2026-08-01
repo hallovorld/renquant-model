@@ -5,19 +5,23 @@ frozen after review.** This addresses the reopen condition on model#124/#128/#13
 *"specify the inferential method and calibration without converting N/h into degrees of
 freedom"* — in §3, before proposing any run.
 
-## 1. Why THIS candidate — the map of what is already dead
+## 1. Why THIS candidate — the map of prior NON-SUPPORTIVE results
 
 The operator's goal is a standalone momentum model deployed to shadow. The local evidence
 so far is unfavourable and must steer the candidate, not be argued with:
 
 | already measured | verdict | source |
 |---|---|---|
-| mom_12_1, mom_6_1, reversal, MA200, 52wk-high on the 104 universe | **all fail** the 20/60d bar | `[早前实测]` canonical price-trend study (closed) |
+| mom_12_1, mom_6_1, reversal, MA200, 52wk-high on the 104 universe | **non-supportive** (bars predate the overlapping-label inference corrections) | `[早前实测]` canonical price-trend study (closed) |
 | dividend-adjusted TR series construction | **validated** — ex-div gap −66.6bp → −4.8bp (t=−1.55), fixed-effects −3.2bp; negative control bitwise 0.0 on 34 non-payers | `[早前实测]` model#110-era, VERIFIED in the frozen TR prereg |
-| raw momentum re-scored on the corrected TR series | **WORSE at all 4 horizons** than on price series | `[早前实测]` frozen TR study, verdict UNRESOLVED |
+| raw momentum re-scored on the corrected TR series | point estimates worse at all 4 horizons; study verdict **UNRESOLVED** | `[早前实测]` frozen TR study, verdict UNRESOLVED |
 | h=120 evaluation | infeasible PRE-BURN at every floor | `[早前实测]` model#148 |
 
-So raw price momentum and raw TR momentum are dead here. The one classic variant with
+So no prior expression of raw price or raw TR momentum has support here — and, per the
+review of this document, that is the full width of the claim: the canonical bars predate
+the overlapping-label inference corrections, and the TR study's own verdict is
+**UNRESOLVED**. "Non-supportive or unresolved" is what the record says; "dead" is wider
+than the record and is withdrawn. The one classic variant with
 literature support that none of the closed studies tested is **residual momentum**
 (Blitz–Huij–Martens 2011): momentum computed on *idiosyncratic* returns — the component
 orthogonal to the market — standardized by idiosyncratic volatility. The economic reason
@@ -54,8 +58,8 @@ underpowered (model#157: gap-separated blocks = 4–5 on those series).
 ## 2b. The feature FAMILY — five mechanisms, one composite, zero fitted parameters
 
 Momentum is not one phenomenon. The literature decomposes it into distinct economic
-mechanisms, and the local kill list (§1) killed only one *expression* of one of them —
-raw price trend. The family below assigns **one feature per mechanism**, chooses
+mechanisms, and the non-supportive record (§1) concerns only one *expression* of one of them —
+raw price trend, and even that under since-corrected inference. The family below assigns **one feature per mechanism**, chooses
 expressions none of the closed studies tested, and keeps every constant frozen from the
 literature so the zero-fitted-parameter property (and with it full-history OOS) survives.
 
@@ -73,8 +77,8 @@ name missing a feature contributes the available subset (require ≥3 of 5, else
 and counted); coverage per feature per date is reported. No fitted weights anywhere —
 equal-weighting is the deliberately dumb, deliberately unfittable combiner.
 
-**Excluded, with reasons stated now:** 52-week-high nearness (measured dead locally —
-canonical study `[早前实测]`); calendar seasonality (underpowered at n=292 names);
+**Excluded, with reasons stated now:** 52-week-high nearness (non-supportive locally —
+canonical study `[早前实测]`, same inference caveat); calendar seasonality (underpowered at n=292 names);
 MAX/lottery effect (largely overlaps F2's discreteness); **fundamental momentum is
 DIAGNOSTIC-ONLY** — a fundmom retrain was already rejected (`[早前实测]` #177-era), so it
 may be reported alongside but never enters `S`.
@@ -121,10 +125,13 @@ WF-gate recipe-hash admission problem (orch#735) that this lane exists to avoid.
   permutation, 5 draws — model#153 measured that permutation destroys the dependence
   (real ρ₁ 0.82–0.975 vs permuted ≈0), so its spread must not be used as a null width.
 * **Decision structure (two hypotheses, one decision signal):**
-  * **H1 (primary, 1 test):** mean per-date IC of the composite `S` ≥ **+0.04** with
-    HAC-t ≥ **2.0** AND placebo |IC| < 0.01 → RETAIN-to-shadow; anything else → **KILL**
-    (or UNRESOLVED-METHOD / UNRESOLVED-POWER per above). The composite is the ONLY
-    decision-bearing statistic, so the decision faces no family-wise erosion.
+  * **H1 (primary, 1 test):** mean per-date IC of the composite `S` against a bar and a
+    test level that are **BOTH UNRESOLVED until freeze** (Open Question 4). The numbers
+    +0.04 and t ≥ 2.0 appear in this document only as **illustrative magnitudes** for the
+    power arithmetic — they are not a candidate bar, and per review nothing in a
+    discussion draft may be called one. Outcomes: RETAIN-to-shadow / KILL /
+    UNRESOLVED-METHOD / UNRESOLVED-POWER. The composite is the ONLY decision-bearing
+    statistic, so the decision faces no family-wise erosion.
   * **H2 (parsimony test, 1 test):** `ΔIC = IC(S) − IC(F1)` as a paired per-date
     difference series, HAC on the differences. If H1 passes and H2 does not (the family
     adds nothing over the core), **the deployed instrument is F1 alone** — the simpler
@@ -157,16 +164,20 @@ Three facts this settles:
    triangle down-weighting precisely the lags that carry the dependence.
 2. **No bandwidth in the grid rescues the nominal bar** — the overlap shape plateaus at
    ~0.078–0.082 for L ≥ 39. Widening L alone is not the fix.
-3. **The empirically calibrated bar is the fix**, and it is cheap and reproducible:
-   at L = 59 the seeded 5% critical value is **t\* = 2.23** for the overlap shape
-   (2.54 / 3.10 if the real series turns out AR-like at ρ = 0.95 / 0.975).
+3. **A calibrated bar is a candidate direction, not a validation.** At L = 59 the seeded
+   5% critical value is t\* = 2.23 for the overlap shape (2.54 / 3.10 for AR(1)
+   ρ = 0.95 / 0.975). Per review: these generators can **falsify** a procedure (and did),
+   but they cannot **validate** size for the real series' actual, unknown, non-AR
+   dependence. **The method therefore remains UNRESOLVED-METHOD** until a null calibrated
+   against the real series — its construction and acceptance criteria separately frozen —
+   supports it. The table above is the machinery such a calibration would use, nothing
+   more.
 
-**Proposed amendment (for review, not adopted unilaterally):** primary test becomes HAC
-at **L = 59** against an **empirically calibrated bar**: baseline t\* = 2.23 (overlap
-generator, this probe's seed); at run time the real IC series' ACF is measured, and if
-its tail beyond lag h exceeds a frozen envelope the bar recalibrates against an
-AR-matched generator by the same seeded machinery (the table above is exactly that
-mapping). Secondary confirmation: a dependence-preserving block bootstrap of the real
+**Direction for the successor prereg (explicitly NOT adopted here):** HAC at L = 59
+against a bar calibrated by a **separately frozen** null-construction protocol that is
+matched to the real IC series (measured ACF → generator family → seeded critical value),
+with its own acceptance criteria and its own positive control. Until that protocol exists
+and is frozen, the honest status of the primary test is **UNRESOLVED-METHOD**. Secondary confirmation: a dependence-preserving block bootstrap of the real
 series — feasible HERE because at h = 20 over ~2,150 dates the gap-separated donor count
 is ≈ **54** `[推导]`, not the 4–5 that made the h=60 corpora degenerate (model#157).
 

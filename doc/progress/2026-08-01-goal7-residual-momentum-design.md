@@ -1,8 +1,9 @@
 # Progress: GOAL-7 residual-momentum standalone model — design opened for discussion
 
 WHAT: `doc/design/2026-08-01-goal7-residual-momentum-standalone.md` — the candidate the
-dead ends point at. Raw price momentum and raw TR momentum are both measured dead on this
-universe (canonical study; TR study "worse at all 4 horizons"); residual momentum
+non-supportive record points at. Prior raw price and raw TR momentum results are non-supportive or unresolved here
+(canonical bars predate the overlapping-label corrections; the TR study ended
+UNRESOLVED with worse point estimates at all 4 horizons); residual momentum
 (Blitz–Huij–Martens 2011) is the one classic variant untested here, and its zero-fitted-
 parameter form makes the panel's full ~2,594-date history out-of-sample by construction —
 which is what rescues power (MDE ≈ 0.037 at the +0.04 bar, conditional, vs hopeless on
