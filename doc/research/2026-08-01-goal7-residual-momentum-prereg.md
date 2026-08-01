@@ -25,9 +25,16 @@ score = `Σε/(σ_ε·√N)`; per-date cross-sectional z. Feature family F1–F5
 (§2b), composite `S` = equal-weight z-mean over available features, **≥3 of 5** required,
 ETFs carry no F3.
 
-**The 43 no-dividend-column names (frozen verbatim in §2) are DECLARED non-payers `[假设, frozen]`.** Direction
-of error if false for any name: its TR and hence its momentum is understated — a bias
-AGAINST the candidate, acceptable to freeze. The sector map is
+**The 43 no-dividend-column names (frozen verbatim in §2) are VERIFIED non-payers
+`[本次实测 2026-08-01]`:** the vendor's dividend endpoint returns **zero dividend events
+since 2016-01-01 for 43/43, 0 query failures**. Same-vendor caveat, stated: this is the
+same vendor (yfinance) whose per-file `dividend` column the OHLCV store carries — no
+independent vendor exists locally (the TR study measured `adj close` 100% NaN for every
+watchlist name carrying it), so a vendor-wide omission would evade this check.
+**Precommitted handling:** should any evidence of payment for these names surface before
+execution, that name is EXCLUDED by a further visible amendment or the run is
+UNRESOLVED-DATA; no directional-bias argument is made (in a cross-sectional rank
+statistic the direction of such an error is not identifiable, per review). The sector map is
 `data/ticker_sectors.json`, snapshot `as_of 2026-05-18`; its sha256 is recorded by the
 runner at execution and the snapshot-PIT limitation is inherited as stated in #161.
 
@@ -65,7 +72,11 @@ grants.
 
 1. **Statistic pipeline `T`:** HAC-t (Bartlett, **L = 59**) on the per-date series, via
    `renquant_common.metrics.hac_se.hac_t_stat(lag=59)` (measured equal to the frozen
-   SE_HAC formula; model#159).
+   SE_HAC formula; model#159), **pinned to the implementation that will execute**: the
+   PINNED runtime copy `.subrepo_runtime/repos/renquant-common/src/renquant_common/metrics/hac_se.py`,
+   sha256 `c568ed51428b642c936eda865779b57e0282814f170bb1528e86be2ba9f9b8bc`. The runner
+   verifies this digest BEFORE computing anything; mismatch → **UNRESOLVED-DATA** — a
+   shared-library change after this merge cannot silently alter the frozen statistic.
 2. **Admissible generator family (the frozen DGP argument):** the momentum IC series'
    dependence has two named sources — label overlap (MA(19) **by construction** of a
    20-day forward label) and signal persistence (a 252-day formation window advancing
