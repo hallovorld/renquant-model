@@ -62,7 +62,7 @@ def test_execute_gates_on_the_amendment_before_touching_anything(monkeypatch, tm
 def test_preflight_refuses_when_the_snapshot_manifest_is_absent(monkeypatch):
     """Amendment 3: §2 resolves THROUGH the base-data manifest; a missing manifest is
     UNRESOLVED-DATA, and there is deliberately NO fallback to the live data/ paths."""
-    monkeypatch.setattr(R, "MANIFEST", Path("/nonexistent/manifest.json"))
+    monkeypatch.setattr(R, "MANIFEST_CANDIDATES", (Path("/nonexistent/manifest.json"),))
     pre = R.verify_preconditions()
     assert not pre["ok"]
     assert "snapshot_manifest_present" in pre["unresolved_data"]
@@ -75,7 +75,7 @@ def test_manifest_loader_rejects_a_wrong_dataset_id(monkeypatch, tmp_path):
     import json as _json
     bogus = tmp_path / "m.json"
     bogus.write_text(_json.dumps({"dataset_id": "something-else", "files": {}}))
-    monkeypatch.setattr(R, "MANIFEST", bogus)
+    monkeypatch.setattr(R, "MANIFEST_CANDIDATES", (bogus,))
     assert R.load_snapshot_manifest() is None
 
 
@@ -91,7 +91,7 @@ def test_manifest_identity_check_fails_on_a_drifted_headline_digest(monkeypatch,
         "combined_ohlcv_digest": {"value": "00" * 32},
         "files": {"panel.parquet": {"sha256": "00" * 32},
                   "ticker_sectors.json": {"sha256": "00" * 32}}}))
-    monkeypatch.setattr(R, "MANIFEST", drifted)
+    monkeypatch.setattr(R, "MANIFEST_CANDIDATES", (drifted,))
     pre = R.verify_preconditions()
     assert not pre["ok"]
     assert any(c == "manifest_identity" for c in pre["unresolved_data"])
@@ -110,7 +110,7 @@ def test_resolution_refuses_when_no_candidate_root_exists(monkeypatch, tmp_path)
         "combined_ohlcv_digest": {"value": R.FROZEN["ohlcv_combined_sha256"]},
         "files": {"panel.parquet": {"sha256": R.FROZEN["panel_sha256"]},
                   "ticker_sectors.json": {"sha256": R.FROZEN["sector_sha256"]}}}))
-    monkeypatch.setattr(R, "MANIFEST", man)
+    monkeypatch.setattr(R, "MANIFEST_CANDIDATES", (man,))
     pre = R.verify_preconditions()
     assert not pre["ok"]
     assert "snapshot_root_resolves" in pre["unresolved_data"]

@@ -58,14 +58,23 @@ MIN_SIDE_OBS = 30
 
 AMENDMENT_1 = REPO / "doc/research/2026-08-01-goal7-momentum-prereg-amendment-1.md"
 AMENDMENT_3 = REPO / "doc/research/2026-08-01-goal7-momentum-prereg-amendment-3.md"
+AMENDMENT_4 = REPO / "doc/research/2026-08-01-goal7-momentum-prereg-amendment-4.md"
 PREREG = REPO / "doc/research/2026-08-01-goal7-residual-momentum-prereg.md"
 HAC_SE = RQ / ".subrepo_runtime/repos/renquant-common/src/renquant_common/metrics/hac_se.py"
 #: Amendment 3: §2 inputs resolve THROUGH the base-data fingerprint manifest
 #: (renquant-base-data#59) — verify-then-read, and NO fallback to the live data/
 #: paths under any condition (they refresh daily; the frozen digests stopped
-#: resolving there within 24h of the freeze).
-MANIFEST = Path("/Users/renhao/git/github/renquant-base-data/manifests/"
-                "momentum-prereg-inputs-20260801.json")
+#: resolving there within 24h of the freeze). Resolution prefers the PINNED runtime
+#: copy (what deploys actually consume) over the developer checkout; the chosen
+#: source is recorded in the preflight output, and the manifest_identity check binds
+#: whichever copy is read to the frozen §2 digests, so a stale or divergent copy
+#: cannot substitute a different dataset.
+MANIFEST_CANDIDATES = (
+    RQ / ".subrepo_runtime/repos/renquant-base-data/manifests/"
+         "momentum-prereg-inputs-20260801.json",
+    Path("/Users/renhao/git/github/renquant-base-data/manifests/"
+         "momentum-prereg-inputs-20260801.json"),
+)
 
 
 def _sha(p: Path) -> str:
@@ -73,13 +82,19 @@ def _sha(p: Path) -> str:
 
 
 def load_snapshot_manifest() -> dict | None:
-    """The Amendment-3 resolution manifest, or None (= UNRESOLVED-DATA, no fallback)."""
-    if not MANIFEST.is_file():
-        return None
-    man = json.loads(MANIFEST.read_text())
-    if man.get("dataset_id") != "momentum-prereg-inputs-20260801":
-        return None
-    return man
+    """The Amendment-3 resolution manifest, or None (= UNRESOLVED-DATA, no fallback).
+
+    The winning candidate's path is recorded under the non-identity key
+    ``_manifest_source`` for the preflight report."""
+    for cand in MANIFEST_CANDIDATES:
+        if not cand.is_file():
+            continue
+        man = json.loads(cand.read_text())
+        if man.get("dataset_id") != "momentum-prereg-inputs-20260801":
+            continue
+        man["_manifest_source"] = str(cand)
+        return man
+    return None
 
 
 def _resolve_root(man: dict) -> Path | None:
@@ -118,9 +133,14 @@ def verify_preconditions() -> dict:
           "runner implements the AMENDED F1; refuses on a pre-amendment tree")
     check("amendment_3_present", AMENDMENT_3.is_file(),
           "resolution-through-manifest IS Amendment-3 semantics; refuses without it")
+    check("amendment_4_present", AMENDMENT_4.is_file(),
+          "the gates implement Amendment-4 definitions; refuses without it")
     man = load_snapshot_manifest()
     check("snapshot_manifest_present", man is not None,
-          f"{MANIFEST} — no live-path fallback exists by design")
+          f"candidates {[str(c) for c in MANIFEST_CANDIDATES]} — "
+          "no live-path fallback exists by design")
+    if man is not None:
+        out["manifest_source"] = man.get("_manifest_source")
     check("hac_se_digest", HAC_SE.is_file() and _sha(HAC_SE) == FROZEN["hac_se_sha256"])
     if man is not None:
         check("manifest_identity",
