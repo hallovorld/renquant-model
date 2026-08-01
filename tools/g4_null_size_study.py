@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 
 import numpy as np
 from scipy import stats
@@ -85,9 +86,39 @@ def main(argv: list[str] | None = None) -> int:
     centred = g - g.mean()
 
     geometries = [(60, 0), (60, H), (30, H), (20, H)]
-    boot_blocks = [20, 40, 60, 90, 120]
+    # 35 is the REGISTERED value (model#144: first zero crossing of the sample ACF).
+    # The other five are model#143's sensitivity band, reported beside it as the prereg
+    # requires -- the registered value never replaces the band.
+    boot_blocks = [20, 35, 40, 60, 90, 120]
+
+    # PROVENANCE (codex on model#145): the reported sizes are auditable only if the
+    # exact input bytes and the producing code revision are recorded beside them.
+    import hashlib as _h, subprocess as _sp
+    _series_bytes = open(a.series, "rb").read()
+    _here = os.path.abspath(__file__)
+    def _rev():
+        try:
+            r = _sp.run(["git", "-C", os.path.dirname(_here), "rev-parse", "HEAD"],
+                        capture_output=True, text=True, timeout=20)
+            d = _sp.run(["git", "-C", os.path.dirname(_here), "status", "--porcelain"],
+                        capture_output=True, text=True, timeout=20)
+            return (r.stdout.strip() if r.returncode == 0 else f"rc={r.returncode}",
+                    (bool(d.stdout.strip()) if d.returncode == 0 else None))
+        except Exception as exc:  # noqa: BLE001
+            return (f"unavailable: {type(exc).__name__}", None)
+    _code_rev, _dirty = _rev()
 
     out = {
+        "provenance": {
+            "series_path": os.path.relpath(a.series, os.path.dirname(os.path.dirname(_here))),
+            "series_sha256": _h.sha256(_series_bytes).hexdigest(),
+            "series_bytes": len(_series_bytes),
+            "tool_sha256": _h.sha256(open(_here, "rb").read()).hexdigest(),
+            "code_revision": _code_rev,
+            "code_revision_dirty": _dirty,
+            "note": ("`code_revision_dirty` true means the tree had uncommitted changes, "
+                     "so `code_revision` alone does NOT reproduce this run."),
+        },
         "n": len(g),
         "mean": float(g.mean()),
         "sd": float(g.std(ddof=1)),
