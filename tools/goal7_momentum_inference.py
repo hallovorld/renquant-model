@@ -173,9 +173,10 @@ def calibrate_bar(series: np.ndarray, cfg: dict) -> dict:
     out["ar_fit"] = {"p": fit["p"], "adequacy": adq}
     if not adq["ok"]:
         return {**out, "status": "UNRESOLVED-METHOD",
-                "why": f"AR adequacy failed: max dev {adq['max_abs_dev']:.4f} > "
-                       f"envelope {adq['envelope']:.4f} — per the reviewed rule there "
-                       f"is NO collapse to the MA member"}
+                "why": f"AR adequacy failed under rule {adq['rule']!r}: max dev "
+                       f"{adq['max_abs_dev']:.4f}, worst lag {adq['worst_lag']} "
+                       f"(envelope there {adq['envelope_at_worst']:.4f}) — per the "
+                       f"reviewed rule there is NO collapse to the MA member"}
     out["bars"]["ar_resample"] = bar_under(
         lambda r: gen_ar_resample(r, n, fit["phi"], fit["resid"]))
     out["t_star"] = max(out["bars"].values())
