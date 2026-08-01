@@ -1,0 +1,638 @@
+{
+  "frozen_results": "doc/research/data/2026-07-30-goal7-stage1-two-sided-tail/results.json",
+  "derived_input_pins": {
+    "matrix": {
+      "sha256": "85c27fc1d5a56a4c585c03db22dc8be0123badfc83ef23e46cdd358c704eb35a",
+      "pin": "85c27fc1d5a56a4c585c03db22dc8be0123badfc83ef23e46cdd358c704eb35a",
+      "match": true
+    },
+    "tr": {
+      "sha256": "8c23496ee351757ec1f953597f9705168542f67cc16f209385091bb60d741ac9",
+      "pin": "8c23496ee351757ec1f953597f9705168542f67cc16f209385091bb60d741ac9",
+      "match": true
+    }
+  },
+  "upstream_provenance": {
+    "raw_input_manifest_verifies": false,
+    "note": "`goal7_stage1_two_sided_run.py` ABORTS today because the raw OHLCV corpus fingerprint moved since 2026-07-30. The guard is not bypassed here; this tool never reads the raw corpus. The identity warrant is the bit-identical reproduction below, NOT the upstream pin."
+  },
+  "reproduction": {
+    "fields": [
+      "mean_per_date",
+      "block_mean",
+      "block_sd",
+      "t",
+      "abs_t",
+      "n_blocks"
+    ],
+    "arms": {
+      "z/treatment_u": {
+        "identical": true,
+        "divergent_fields": {}
+      },
+      "z/treatment_u_residualised": {
+        "identical": true,
+        "divergent_fields": {}
+      },
+      "z/reference_z_mom": {
+        "identical": true,
+        "divergent_fields": {}
+      },
+      "raw/treatment_u": {
+        "identical": true,
+        "divergent_fields": {}
+      },
+      "raw/treatment_u_residualised": {
+        "identical": true,
+        "divergent_fields": {}
+      },
+      "raw/reference_z_mom": {
+        "identical": true,
+        "divergent_fields": {}
+      }
+    },
+    "all_identical": true,
+    "n_compared": 6
+  },
+  "per_date_series": {
+    "path": "per_date_g_real.csv",
+    "n_series": 6,
+    "dates_per_series": 1080,
+    "rows": 6480,
+    "first_date": "2016-12-29",
+    "last_date": "2021-04-15",
+    "note": "BLOCK-COVERED dates only: the \u00a73 estimator drops the 2-date remainder, so these are exactly the dates a calibration of THAT estimator may use."
+  },
+  "calibration": {
+    "z/treatment_u": {
+      "bar": 2.1098,
+      "n_boot": 4000,
+      "by_block_length": {
+        "1": {
+          "realised_size": 0.0505,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 1080,
+          "usable_for_a_size_claim": true,
+          "p95_abs_t": 2.1119221138853916
+        },
+        "5": {
+          "realised_size": 0.052,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 216,
+          "usable_for_a_size_claim": true,
+          "p95_abs_t": 2.13614001246572
+        },
+        "10": {
+          "realised_size": 0.05975,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 108,
+          "usable_for_a_size_claim": true,
+          "p95_abs_t": 2.205350151511768
+        },
+        "20": {
+          "realised_size": 0.05475,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 54,
+          "usable_for_a_size_claim": true,
+          "p95_abs_t": 2.16420485963599
+        },
+        "30": {
+          "realised_size": 0.04275,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 36,
+          "usable_for_a_size_claim": true,
+          "p95_abs_t": 2.0500087251513235
+        },
+        "60": {
+          "realised_size": 0.05575,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 18,
+          "usable_for_a_size_claim": false,
+          "p95_abs_t": 2.162839023489108
+        },
+        "120": {
+          "realised_size": 0.08025,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 9,
+          "usable_for_a_size_claim": false,
+          "p95_abs_t": 2.376366606927332
+        },
+        "180": {
+          "realised_size": 0.0645,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 6,
+          "usable_for_a_size_claim": false,
+          "p95_abs_t": 2.2544724143439483
+        },
+        "240": {
+          "realised_size": 0.03375,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 5,
+          "usable_for_a_size_claim": false,
+          "p95_abs_t": 1.9127014249139207
+        }
+      },
+      "iid_baseline_size": 0.0505,
+      "usable_Lb": [
+        1,
+        5,
+        10,
+        20,
+        30
+      ],
+      "spread_over_usable_Lb": 0.016999999999999994,
+      "min_Lb_preserving_the_label_horizon": 120,
+      "draws_at_that_Lb": 9,
+      "dependence_and_bootstrap_requirements_overlap": false,
+      "dates_required_for_an_identifiable_bar": 2400,
+      "dates_available": 1080,
+      "identified": false,
+      "lag1_autocorr": 0.940817282545691
+    },
+    "z/treatment_u_residualised": {
+      "bar": 2.1098,
+      "n_boot": 4000,
+      "by_block_length": {
+        "1": {
+          "realised_size": 0.049,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 1080,
+          "usable_for_a_size_claim": true,
+          "p95_abs_t": 2.10426675567513
+        },
+        "5": {
+          "realised_size": 0.05175,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 216,
+          "usable_for_a_size_claim": true,
+          "p95_abs_t": 2.1211722682514567
+        },
+        "10": {
+          "realised_size": 0.0565,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 108,
+          "usable_for_a_size_claim": true,
+          "p95_abs_t": 2.1703011184010186
+        },
+        "20": {
+          "realised_size": 0.04925,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 54,
+          "usable_for_a_size_claim": true,
+          "p95_abs_t": 2.0979734377974792
+        },
+        "30": {
+          "realised_size": 0.0485,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 36,
+          "usable_for_a_size_claim": true,
+          "p95_abs_t": 2.082858229622377
+        },
+        "60": {
+          "realised_size": 0.06275,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 18,
+          "usable_for_a_size_claim": false,
+          "p95_abs_t": 2.232094463419099
+        },
+        "120": {
+          "realised_size": 0.08675,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 9,
+          "usable_for_a_size_claim": false,
+          "p95_abs_t": 2.4523471804614516
+        },
+        "180": {
+          "realised_size": 0.06275,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 6,
+          "usable_for_a_size_claim": false,
+          "p95_abs_t": 2.26195665854686
+        },
+        "240": {
+          "realised_size": 0.0375,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 5,
+          "usable_for_a_size_claim": false,
+          "p95_abs_t": 1.940932412985576
+        }
+      },
+      "iid_baseline_size": 0.049,
+      "usable_Lb": [
+        1,
+        5,
+        10,
+        20,
+        30
+      ],
+      "spread_over_usable_Lb": 0.008,
+      "min_Lb_preserving_the_label_horizon": 120,
+      "draws_at_that_Lb": 9,
+      "dependence_and_bootstrap_requirements_overlap": false,
+      "dates_required_for_an_identifiable_bar": 2400,
+      "dates_available": 1080,
+      "identified": false,
+      "lag1_autocorr": 0.9380499760452895
+    },
+    "z/reference_z_mom": {
+      "bar": 2.1098,
+      "n_boot": 4000,
+      "by_block_length": {
+        "1": {
+          "realised_size": 0.052,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 1080,
+          "usable_for_a_size_claim": true,
+          "p95_abs_t": 2.1343854264415194
+        },
+        "5": {
+          "realised_size": 0.0565,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 216,
+          "usable_for_a_size_claim": true,
+          "p95_abs_t": 2.1698835954476845
+        },
+        "10": {
+          "realised_size": 0.04575,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 108,
+          "usable_for_a_size_claim": true,
+          "p95_abs_t": 2.0554433973454524
+        },
+        "20": {
+          "realised_size": 0.04675,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 54,
+          "usable_for_a_size_claim": true,
+          "p95_abs_t": 2.073296965265418
+        },
+        "30": {
+          "realised_size": 0.05275,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 36,
+          "usable_for_a_size_claim": true,
+          "p95_abs_t": 2.153292991943338
+        },
+        "60": {
+          "realised_size": 0.05425,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 18,
+          "usable_for_a_size_claim": false,
+          "p95_abs_t": 2.1703356450105016
+        },
+        "120": {
+          "realised_size": 0.10425,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 9,
+          "usable_for_a_size_claim": false,
+          "p95_abs_t": 2.5735200357965886
+        },
+        "180": {
+          "realised_size": 0.076,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 6,
+          "usable_for_a_size_claim": false,
+          "p95_abs_t": 2.367929286743691
+        },
+        "240": {
+          "realised_size": 0.034,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 5,
+          "usable_for_a_size_claim": false,
+          "p95_abs_t": 1.9375718394264188
+        }
+      },
+      "iid_baseline_size": 0.052,
+      "usable_Lb": [
+        1,
+        5,
+        10,
+        20,
+        30
+      ],
+      "spread_over_usable_Lb": 0.010750000000000003,
+      "min_Lb_preserving_the_label_horizon": 120,
+      "draws_at_that_Lb": 9,
+      "dependence_and_bootstrap_requirements_overlap": false,
+      "dates_required_for_an_identifiable_bar": 2400,
+      "dates_available": 1080,
+      "identified": false,
+      "lag1_autocorr": 0.97134878993472
+    },
+    "raw/treatment_u": {
+      "bar": 2.1098,
+      "n_boot": 4000,
+      "by_block_length": {
+        "1": {
+          "realised_size": 0.0555,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 1080,
+          "usable_for_a_size_claim": true,
+          "p95_abs_t": 2.1698417839673447
+        },
+        "5": {
+          "realised_size": 0.04725,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 216,
+          "usable_for_a_size_claim": true,
+          "p95_abs_t": 2.0625972598335722
+        },
+        "10": {
+          "realised_size": 0.04275,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 108,
+          "usable_for_a_size_claim": true,
+          "p95_abs_t": 2.0516770662407287
+        },
+        "20": {
+          "realised_size": 0.052,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 54,
+          "usable_for_a_size_claim": true,
+          "p95_abs_t": 2.1412768879631403
+        },
+        "30": {
+          "realised_size": 0.052,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 36,
+          "usable_for_a_size_claim": true,
+          "p95_abs_t": 2.127796542123016
+        },
+        "60": {
+          "realised_size": 0.054,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 18,
+          "usable_for_a_size_claim": false,
+          "p95_abs_t": 2.153389098386331
+        },
+        "120": {
+          "realised_size": 0.11075,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 9,
+          "usable_for_a_size_claim": false,
+          "p95_abs_t": 2.8048010732028135
+        },
+        "180": {
+          "realised_size": 0.1185,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 6,
+          "usable_for_a_size_claim": false,
+          "p95_abs_t": 2.7828444772954004
+        },
+        "240": {
+          "realised_size": 0.097,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 5,
+          "usable_for_a_size_claim": false,
+          "p95_abs_t": 2.6035149794193932
+        }
+      },
+      "iid_baseline_size": 0.0555,
+      "usable_Lb": [
+        1,
+        5,
+        10,
+        20,
+        30
+      ],
+      "spread_over_usable_Lb": 0.012749999999999997,
+      "min_Lb_preserving_the_label_horizon": 120,
+      "draws_at_that_Lb": 9,
+      "dependence_and_bootstrap_requirements_overlap": false,
+      "dates_required_for_an_identifiable_bar": 2400,
+      "dates_available": 1080,
+      "identified": false,
+      "lag1_autocorr": 0.9374784638286802
+    },
+    "raw/treatment_u_residualised": {
+      "bar": 2.1098,
+      "n_boot": 4000,
+      "by_block_length": {
+        "1": {
+          "realised_size": 0.0495,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 1080,
+          "usable_for_a_size_claim": true,
+          "p95_abs_t": 2.0936634636074256
+        },
+        "5": {
+          "realised_size": 0.0545,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 216,
+          "usable_for_a_size_claim": true,
+          "p95_abs_t": 2.1520750080499282
+        },
+        "10": {
+          "realised_size": 0.05625,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 108,
+          "usable_for_a_size_claim": true,
+          "p95_abs_t": 2.189240281587722
+        },
+        "20": {
+          "realised_size": 0.06,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 54,
+          "usable_for_a_size_claim": true,
+          "p95_abs_t": 2.2215758736149493
+        },
+        "30": {
+          "realised_size": 0.056,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 36,
+          "usable_for_a_size_claim": true,
+          "p95_abs_t": 2.1805223763059938
+        },
+        "60": {
+          "realised_size": 0.07175,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 18,
+          "usable_for_a_size_claim": false,
+          "p95_abs_t": 2.401309649969443
+        },
+        "120": {
+          "realised_size": 0.1105,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 9,
+          "usable_for_a_size_claim": false,
+          "p95_abs_t": 2.8331956821906408
+        },
+        "180": {
+          "realised_size": 0.10775,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 6,
+          "usable_for_a_size_claim": false,
+          "p95_abs_t": 2.885344995357696
+        },
+        "240": {
+          "realised_size": 0.097,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 5,
+          "usable_for_a_size_claim": false,
+          "p95_abs_t": 2.7669489059097874
+        }
+      },
+      "iid_baseline_size": 0.0495,
+      "usable_Lb": [
+        1,
+        5,
+        10,
+        20,
+        30
+      ],
+      "spread_over_usable_Lb": 0.010499999999999995,
+      "min_Lb_preserving_the_label_horizon": 120,
+      "draws_at_that_Lb": 9,
+      "dependence_and_bootstrap_requirements_overlap": false,
+      "dates_required_for_an_identifiable_bar": 2400,
+      "dates_available": 1080,
+      "identified": false,
+      "lag1_autocorr": 0.9427645927294412
+    },
+    "raw/reference_z_mom": {
+      "bar": 2.1098,
+      "n_boot": 4000,
+      "by_block_length": {
+        "1": {
+          "realised_size": 0.05225,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 1080,
+          "usable_for_a_size_claim": true,
+          "p95_abs_t": 2.131702791666952
+        },
+        "5": {
+          "realised_size": 0.05125,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 216,
+          "usable_for_a_size_claim": true,
+          "p95_abs_t": 2.116033760264413
+        },
+        "10": {
+          "realised_size": 0.04925,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 108,
+          "usable_for_a_size_claim": true,
+          "p95_abs_t": 2.106179065298844
+        },
+        "20": {
+          "realised_size": 0.049,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 54,
+          "usable_for_a_size_claim": true,
+          "p95_abs_t": 2.1002725267573705
+        },
+        "30": {
+          "realised_size": 0.0485,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 36,
+          "usable_for_a_size_claim": true,
+          "p95_abs_t": 2.096720996539134
+        },
+        "60": {
+          "realised_size": 0.053,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 18,
+          "usable_for_a_size_claim": false,
+          "p95_abs_t": 2.15141912369369
+        },
+        "120": {
+          "realised_size": 0.10525,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 9,
+          "usable_for_a_size_claim": false,
+          "p95_abs_t": 2.644091565774796
+        },
+        "180": {
+          "realised_size": 0.0935,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 6,
+          "usable_for_a_size_claim": false,
+          "p95_abs_t": 2.5093059198519616
+        },
+        "240": {
+          "realised_size": 0.05325,
+          "n_usable": 4000,
+          "n_degenerate": 0,
+          "n_blocks_drawn_per_resample": 5,
+          "usable_for_a_size_claim": false,
+          "p95_abs_t": 2.133884687323287
+        }
+      },
+      "iid_baseline_size": 0.05225,
+      "usable_Lb": [
+        1,
+        5,
+        10,
+        20,
+        30
+      ],
+      "spread_over_usable_Lb": 0.0037499999999999964,
+      "min_Lb_preserving_the_label_horizon": 120,
+      "draws_at_that_Lb": 9,
+      "dependence_and_bootstrap_requirements_overlap": false,
+      "dates_required_for_an_identifiable_bar": 2400,
+      "dates_available": 1080,
+      "identified": false,
+      "lag1_autocorr": 0.9720483632606755
+    }
+  },
+  "verdict": {
+    "any_series_identified": false,
+    "dates_required_for_an_identifiable_bar": 2400,
+    "dates_available": 1080,
+    "note": "`identified` requires BOTH that the realised size has stopped moving where the bootstrap is usable (spread <= 0.01) AND that an Lb preserving the label horizon leaves >= 20 draws. A drifting or unusable curve licenses 'not identified', never 'inflated to X'."
+  }
+}

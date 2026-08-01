@@ -1,0 +1,37 @@
+==============================================================================
+DERIVED INPUTS — the two files the estimator actually reads
+==============================================================================
+  matrix  85c27fc1d5a56a4c…  PIN OK
+  tr      8c23496ee351757e…  PIN OK
+
+==============================================================================
+RECONSTRUCTION — and its only warrant: bit-identity with the frozen run
+==============================================================================
+  z/treatment_u                           IDENTICAL
+  z/treatment_u_residualised              IDENTICAL
+  z/reference_z_mom                       IDENTICAL
+  raw/treatment_u                         IDENTICAL
+  raw/treatment_u_residualised            IDENTICAL
+  raw/reference_z_mom                     IDENTICAL
+  6 arm statistics compared on 6 fields each
+
+  §7 per-date series persisted: 6,480 rows (6 series × 1080 dates)
+
+==============================================================================
+NULL CALIBRATION on the REAL series — bar = t_{0.975,17} = 2.1098, 4,000 circular block bootstraps per Lb
+==============================================================================
+  series                                        1      5     10     20     30     60    120    180    240    rho1  ident
+  draws per resample ->                      1080    216    108     54     36     18      9      6      5
+  z/treatment_u                             0.051  0.052  0.060  0.055  0.043  0.056  0.080  0.065  0.034   0.941  False
+  z/treatment_u_residualised                0.049  0.052  0.057  0.049  0.049  0.063  0.087  0.063  0.037   0.938  False
+  z/reference_z_mom                         0.052  0.057  0.046  0.047  0.053  0.054  0.104  0.076  0.034   0.971  False
+  raw/treatment_u                           0.056  0.047  0.043  0.052  0.052  0.054  0.111  0.118  0.097   0.937  False
+  raw/treatment_u_residualised              0.050  0.054  0.056  0.060  0.056  0.072  0.111  0.108  0.097   0.943  False
+  raw/reference_z_mom                       0.052  0.051  0.049  0.049  0.049  0.053  0.105  0.093  0.053   0.972  False
+
+  columns are bootstrap block length Lb; nominal size is 0.050; Lb=1 is the iid baseline, not a candidate design.
+  cells at fewer than 20 draws are NOT usable for a size claim in either direction (usable Lb here: [1, 5, 10, 20, 30]).
+  preserving the 120-day label horizon needs Lb >= 120, which leaves 9 draws -> requirements overlap: False
+  an identifiable bar would need >= 20 x 120 = 2,400 dates; this window has 1,080 (2.22x short).
+
+wrote doc/research/data/2026-08-01-goal7-realseries-calibration/calibration.json
