@@ -134,6 +134,50 @@ WF-gate recipe-hash admission problem (orch#735) that this lane exists to avoid.
     never decision inputs. The feature-by-feature rank-correlation matrix is reported so
     redundancy is visible rather than argued.
 
+### 3a. The size probe has ALREADY RUN — and it fails the test as drafted `[本次实测 2026-08-01]`
+
+The probe this section requires was run ahead of the freeze (H0-only synthetic series,
+fixed seed — no real data, no alternative touched; `tools/goal7_hac_size_probe.py`,
+results committed under `doc/research/data/2026-08-01-goal7-hac-size-probe/`). n = 2,150,
+2,500 reps/cell, nominal α = 0.05 at |t| ≥ 1.96:
+
+| H0 generator | L=19 | L=39 | L=59 | L=119 | calibrated 5% bar t\* (L=59) |
+|---|---|---|---|---|---|
+| iid control | **0.050** | 0.053 | 0.056 | 0.066 | 2.02 |
+| **overlap MA(19)** — the designed-for shape | **0.117** | 0.082 | **0.078** | 0.080 | **2.23** |
+| AR(1) ρ=0.90 | 0.142 | 0.097 | 0.090 | 0.084 | 2.27 |
+| AR(1) ρ=0.95 | 0.226 | 0.147 | 0.121 | 0.100 | 2.54 |
+| AR(1) ρ=0.975 | 0.357 | 0.234 | 0.181 | 0.139 | 3.10 |
+
+Three facts this settles:
+
+1. **The test as drafted above FAILS its own rule.** At `L = h−1 = 19`, even the pure
+   label-overlap shape rejects at **0.117 — 2.3× nominal**, far past the ≤0.075 line. The
+   iid row (0.050 exactly) proves the instrument is fine; the failure is the Bartlett
+   triangle down-weighting precisely the lags that carry the dependence.
+2. **No bandwidth in the grid rescues the nominal bar** — the overlap shape plateaus at
+   ~0.078–0.082 for L ≥ 39. Widening L alone is not the fix.
+3. **The empirically calibrated bar is the fix**, and it is cheap and reproducible:
+   at L = 59 the seeded 5% critical value is **t\* = 2.23** for the overlap shape
+   (2.54 / 3.10 if the real series turns out AR-like at ρ = 0.95 / 0.975).
+
+**Proposed amendment (for review, not adopted unilaterally):** primary test becomes HAC
+at **L = 59** against an **empirically calibrated bar**: baseline t\* = 2.23 (overlap
+generator, this probe's seed); at run time the real IC series' ACF is measured, and if
+its tail beyond lag h exceeds a frozen envelope the bar recalibrates against an
+AR-matched generator by the same seeded machinery (the table above is exactly that
+mapping). Secondary confirmation: a dependence-preserving block bootstrap of the real
+series — feasible HERE because at h = 20 over ~2,150 dates the gap-separated donor count
+is ≈ **54** `[推导]`, not the 4–5 that made the h=60 corpora degenerate (model#157).
+
+**Power restated under the amendment `[推导, conditional]`:** MDE ≈ t\* × SE ≈ 2.23 ×
+0.0183 ≈ **0.041** against the +0.04 bar — the bar and the MDE now nearly coincide, so
+power at a true IC of exactly +0.04 is ~50%, and the design must say so rather than imply
+comfort. A true IC of 0.05 is detected with high probability; 0.03 is not detectable and
+a KILL at 0.03 truth is the expected outcome. This is the honest price of size-valid
+inference, and it is still far better than the h=60 corpora, where no valid test existed
+at any power.
+
 **Power, stated honestly `[推导, conditional]`.** Per-date IC sd at N≈292 is ~0.1966
 `[早前实测, breadth memo, VERIFIED]`. Under pure-overlap MA(19) the variance inflation of
 the mean is ×20, so with ~2,300 eligible dates `n_eff ≈ 115`, `SE ≈ 0.018`, MDE at t=2 ≈
