@@ -25,20 +25,34 @@ score = `Σε/(σ_ε·√N)`; per-date cross-sectional z. Feature family F1–F5
 (§2b), composite `S` = equal-weight z-mean over available features, **≥3 of 5** required,
 ETFs carry no F3.
 
-**The 43 no-dividend-column names are DECLARED non-payers `[假设, frozen]`.** Direction
+**The 43 no-dividend-column names (frozen verbatim in §2) are DECLARED non-payers `[假设, frozen]`.** Direction
 of error if false for any name: its TR and hence its momentum is understated — a bias
 AGAINST the candidate, acceptable to freeze. The sector map is
 `data/ticker_sectors.json`, snapshot `as_of 2026-05-18`; its sha256 is recorded by the
 runner at execution and the snapshot-PIT limitation is inherited as stated in #161.
 
-## 2. Data (pinned by digest at run time)
+## 2. Data — pinned by digest NOW `[本次实测 2026-08-01]`
 
-Panel `data/alpha158_291_fundamental_dataset.parquet` (2,599 dates, 292 names; labels
-per-date z-scored price-return excess vs SPY — constructor quoted in #161's AC4 comment;
-Spearman is invariant to the z-scoring; the dividend omission inside the label is a
-recorded limitation biasing against payers). OHLCV per-name parquets. Eligible dates:
-formation-feasible dates only (measured ≈2,150); names/date floor **50**; the runner
-records every exclusion count.
+| input | sha256 |
+|---|---|
+| `data/alpha158_291_fundamental_dataset.parquet` (2,599 dates, 292 names) | `55811f6387e67411fe11a20eb1d5d929086c5a9dc2675496f3d8592fed2c0dba` |
+| `data/ticker_sectors.json` (as_of 2026-05-18) | `ec26bb1efcf8463519366478ae72c933f93c9d110d65f8af1634e2fcbb578d3b` |
+| OHLCV combined (sha256 over sorted `ticker:file-sha` lines, **292/292** present) | `4d4638a9f0d69f940fb36a73c28e92883d51b686ab032aebedf559c174c2c1d0` |
+
+Labels are per-date z-scored price-return excess vs SPY (constructor quoted in #161's
+AC4 comment; Spearman invariant to the z-scoring; the in-label dividend omission is a
+recorded limitation biasing against payers). Eligible dates: formation-feasible only
+(measured ≈2,150); names/date floor **50**; the runner records every exclusion count.
+
+**The 43 no-dividend-column names, frozen verbatim:** ABNB, ADBE, AFRM, AMD, AMZN, ANET,
+APP, BSX, CMG, COHR, COIN, CRWD, DDOG, DOCU, ESTC, EW, FTNT, GLD, HUBS, ISRG, LITE, MDB,
+NET, NFLX, NOW, OKTA, ON, PANW, PCTY, PLTR, RBLX, SHOP, SMCI, SNOW, SOFI, SPOT, TEAM,
+TSLA, VEEV, VRTX, WDAY, ZM, ZS.
+
+**UNRESOLVED-DATA rule:** at execution the runner recomputes all three digests and the
+43-name list. ANY mismatch → the run completes nothing and reports **UNRESOLVED-DATA**
+with the differing digests; proceeding on changed inputs is not an option this document
+grants.
 
 ## 3. Estimands
 
@@ -60,15 +74,22 @@ records every exclusion count.
    sources represented, neither assumed away. This argument is the one #162 requires a
    consumer to freeze; it is hereby frozen.
 3. **Bar (precommitted worst-case, closing the stress path):**
-   `t* = max(t*_MA, t*_AR)` at **α = 0.05 two-sided**, each `t*` the seeded 95th
-   percentile of |T| under its generator (≥5,000 reps, seed **20260801**, n = the
-   realized eligible-date count). AR adequacy envelope: max abs ACF deviation over lags
-   1…40 ≤ 2 plug-in SEs; **if the AR fit fails adequacy, the family collapses to
-   {overlap-MA(19)} and `t*` = t*_MA alone, with the failure printed** — the collapse
-   rule is frozen now so no run-time judgement exists.
-4. **Validation gates (all must pass before any verdict is read):** positive control
-   (committed pure-noise series must not reject at ≈α); machinery self-check (#162 §4);
-   both `t*` values and the realized ACF published regardless of outcome.
+   `t* = max(t*_MA, t*_AR)` at **α = 0.025 two-sided per test** (the §6 Bonferroni split
+   of a 0.05 family across the two decision tests), each `t*` the seeded **97.5th
+   percentile** of |T| under its generator (**5,000 reps exactly**, seed **20260801**,
+   n = the realized eligible-date count). AR adequacy envelope: max abs ACF deviation over lags
+   1…40 ≤ 2 plug-in SEs. **If the AR fit fails adequacy, the outcome is
+   UNRESOLVED-METHOD** — per #162's governing rule, a family whose persistence member
+   cannot be justified does not get to proceed on the overlap member alone; dropping a
+   named dependence source is not a fallback, it is an unjustified null.
+4. **Validation gates (all must pass before any verdict is read), with frozen
+   arithmetic:** each gate runs **5,000 reps** at seed **20260801**; Monte-Carlo
+   SE = √(0.025·0.975/5000) ≈ 0.0022; the frozen tolerance is **±3·SE = ±0.0066**.
+   * positive control: the committed pure-noise series' rejection rate under the full
+     protocol must lie within **[0.0184, 0.0316]**;
+   * machinery self-check (#162 §4): series simulated from each admissible generator,
+     pushed through the identical pipeline, must reject within the same band;
+   * both `t*` values and the realized ACF are published regardless of outcome.
 5. **Decision:**
    * `H1`: mean IC(S) ≥ **+0.04** AND `|T|` ≥ t\* AND placebo mean |IC| < **0.01**
      (5 within-date permutation draws, centring only) → RETAIN-to-shadow; else KILL.
@@ -88,10 +109,9 @@ book.
 
 ## 6. Multiplicity ledger
 
-Decision tests: **2** (H1 on S; H2's ΔIC). Bonferroni within the decision family:
-α/2 each side of t\* derivation? No — frozen simpler and stricter: both H1 and H2 are
-tested at the SINGLE worst-case t\* derived at α = 0.05/2 = **0.025** per test. The
-seeded calibration uses the 97.5th percentile accordingly. Diagnostics (5 features,
+Decision tests: **2** (H1 on S; H2's ΔIC), Bonferroni: **α = 0.025 per test**, bars at
+the seeded **97.5th percentile** — the single calibration §4.3 specifies; no other α or
+percentile appears anywhere in this document. Diagnostics (5 features,
 h=60, ACF plots) carry no α budget; they decide nothing.
 
 ## 7. Execution gate
