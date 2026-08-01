@@ -64,8 +64,8 @@ underpowered (model#157: gap-separated blocks = 4–5 on those series).
 Momentum is not one phenomenon. The literature decomposes it into distinct economic
 mechanisms, and the non-supportive record (§1) concerns only one *expression* of one of them —
 raw price trend, and even that under since-corrected inference. The family below assigns **one feature per mechanism**, chooses
-expressions none of the closed studies tested, and keeps every constant frozen from the
-literature value so the zero-parameter-fitting property survives; what that property
+expressions none of the closed studies tested, and keeps every constant a
+literature value — proposed, per §2 — so the zero-parameter-fitting property survives; what that property
 does and does not buy is governed by §2's pre-freeze caveat, not restated here.
 
 | id | mechanism | feature (exact) | reference |
