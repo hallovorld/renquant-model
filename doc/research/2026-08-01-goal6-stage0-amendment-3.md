@@ -22,13 +22,29 @@ panels (`transformer_v4_wl200_clean`, `alpha158_291_fundamental_dataset`) agree
 **byte-for-byte** on `fwd_60d_excess` over their full 354,258-row intersection
 (max |Δ| = 0.0), so "the panel" is well-defined for labels.
 
-**Amended rule:** ALL decision-statistic labels — both horizons, both model arms, and
-every null — are read from ONE panel file in ONE pass at execution:
-`data/transformer_v4_wl200_clean.parquet` (the file §2 already names), whose sha256 is
-recorded in the run output at read time. The corpus supplies ONLY
-`score`/`decile_rank`/`regime`. The corpus's own `fwd_60d_excess` is demoted to a
-DIAGNOSTIC (its divergence from the panel label may be reported as a data-vintage
-observation; it decides nothing).
+Additionally measured `[实测 2026-08-01]`: §2's cited panel CANNOT be the label
+source at all — `transformer_v4_wl200_clean` carries **142 tickers** and covers only
+**142/292** of the corpus universe; `alpha158_291_fundamental_dataset` covers
+**292/292** (0 missing), and the two agree **byte-for-byte** on `fwd_60d_excess`
+across their full 354,258-row intersection, so alpha158 is a strict superset labeler
+of the same label definition.
+
+**Amended rule (rev 2, review round 1 — a mutable path cannot freeze decision
+data):** ALL decision-statistic labels — both horizons, both model arms, every null,
+and the H3 lag profile — are read from the COMMITTED frozen label table
+`doc/research/data/2026-08-01-goal6-stage0-frozen-labels/labels.parquet`
+(sha256 `b1981eef13984d1a260eab06a883a76affb55fee820b388917f404f57b2faf02`;
+725,840 rows × 5 cols, 2,599 dates, 292 tickers, 17.6 MB), extracted ONCE by the
+committed `extract_labels.py` beside it from
+`alpha158_291_fundamental_dataset.parquet` at source sha
+`55811f6387e67411fe11a20eb1d5d929086c5a9dc2675496f3d8592fed2c0dba` — byte-identical
+to the momentum prereg's §2 panel pin, whose bytes are additionally preserved in the
+orch#742 snapshot, giving the extraction double provenance. **Fail-closed
+resolution:** the runner verifies the committed table's sha256 against the pin in
+this paragraph before any read; mismatch or absence aborts the run (no live-path
+fallback of any kind). The corpus supplies ONLY `score`/`decile_rank`/`regime`; both
+corpora's own `fwd_60d_excess` columns are demoted to DIAGNOSTICS (vintage-drift
+observations; they decide nothing).
 
 ## Defect 2: §4's block construction is the L = h geometry the program's own erratum rules unsupported
 
@@ -41,12 +57,23 @@ between consecutive blocks) measured **0.047–0.051**. The Stage-0 prereg was f
 2026-07-28, two days BEFORE the erratum — it inherited the defect, and yesterday's
 independent audit flagged the same geometry riding the corrected-eval bundle.
 
-**Amended rule:** block-level decision statistics use gap-separated blocks — length
-`h` trading days with a GAP of `h` trading days between consecutive blocks (so no two
-blocks share any label window); `n_eff` is the gapped block count and every table
-states it. The no-gap L = h numbers may be published as diagnostics only, clearly
-labelled. The already-frozen `SE_HAC` estimator (Newey-West, Bartlett, lag = h_min−1)
-is untouched.
+**Amended rule (rev 2 — deterministic construction, review round 1):** for an arm
+whose own eligible trading-date sequence is indexed `0 … T−1` (anchor = index 0 = that
+arm's FIRST eligible date under the original frozen rule, per horizon), the retained
+blocks are the index windows `[2kh, 2kh+h)` for `k = 0, 1, 2, …`; every gap window
+`[2kh+h, 2kh+2h)` is discarded, so no two retained blocks share any label window.
+A terminal PARTIAL retained window is DISCARDED (its dropped date count is reported).
+`n_eff(h, T) = floor((T − h) / (2h)) + 1` for `T ≥ h`, else 0. Worked on the full
+508-date window: h=20 → `floor(488/40)+1 = 13` blocks; h=60 → `floor(448/120)+1 = 4`
+blocks. Each arm (real / permutation / persistence) applies the formula to ITS OWN
+`T` — the persistence arm's eligible subset is smaller by construction and its blocks
+are built on that subset, never borrowed. Honesty note: gapping cuts n_eff roughly in
+half vs the defective no-gap scheme (60d: 4 blocks; df = 3) — the power cost of
+non-overlapping evidence is real and every table must state `n_eff` and `df`; the
+frozen t ≥ 2.0 bars are deliberately NOT retuned here (surgical amendment), and any
+future recalibration of bars for small n_eff is its own amendment. The no-gap L = h
+numbers may be published as diagnostics only, clearly labelled. The already-frozen
+`SE_HAC` estimator (Newey-West, Bartlett, lag = h_min−1) is untouched.
 
 ## Defect 3: arm (b) has no scores in the corpus §2 points both arms at
 
