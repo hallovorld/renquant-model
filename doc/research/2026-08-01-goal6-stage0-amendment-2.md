@@ -33,32 +33,37 @@ promotion, wrong for the record.
 
 with:
 
-> (c) fails by more than **1.25 × `SE_HAC`** of the smaller sample — the widening
-> factor is frozen at 1.25 ≥ 1.224 = √(1/0.6675), the audited analytic de-bias for the
-> pure-overlap dependence the label construction guarantees `[analytic, audit UPHELD]`,
-> rounded UP so residual under-coverage (estimation noise; any AR-like persistence
-> beyond pure overlap, which only widens the honest band further) errs toward
-> INCONCLUSIVE — the refusing-to-overclaim direction for a boundary whose exact width
-> is not identified.
+> a failure of (c) is graded **INCONCLUSIVE, never REFUTED**, until a clear-violation
+> band calibrated under a separately justified and frozen dependence family exists for
+> this series. The `SE_HAC`-width discriminator is SUSPENDED: its width is not
+> identified — the audited 1.224 de-bias covers only the pure-overlap MA(19) component,
+> and the AR-like persistence this document itself names has **no measured upper
+> bound**, so no hand-chosen widening can be called conservative `[per review]`.
+
+(c) itself is untouched: it remains a hard SUPPORTED gate on the point comparison
+`d_20d ≤ d_60d`. What is suspended is only the band that promoted a (c) failure from
+INCONCLUSIVE to REFUTED.
 
 No other constant, statistic, hypothesis, or gate changes. `SE_HAC`'s formula and
 `L = 19` are untouched — the amendment corrects the BAND's width where the estimator is
 consumed, not the estimator.
 
-## Why not the other #163 options
+## Why suspension rather than the alternatives
 
-* **Recalibrate per model#162**: correct in principle, but (c) is not a test — building
-  a seeded generator calibration for a tie-discriminator imports machinery the decision
-  does not need, and #162's own review bars it from authorizing verdicts without a
-  frozen DGP argument. Disproportionate here.
-* **Downgrade (c) to descriptive**: removes a frozen hard gate entirely — a larger
-  change to the preregistration's substance than correcting a band width with an
-  audited constant, and it would delete the protection (c) exists to give.
+* **A widened band (this amendment's own first draft, 1.25×)**: rejected on review —
+  the 1.224 factor is exact only for pure overlap; with no upper bound on the AR-like
+  component, any hand-chosen constant can still be anti-conservative on a hard outcome.
+* **Recalibrate per model#162 now**: the valid path, and the suspension names it as the
+  condition for reinstatement; building it is real work with its own frozen DGP
+  argument, and grading (c) failures INCONCLUSIVE meanwhile loses nothing decidable.
+* **Downgrade (c) entirely**: removes the hard SUPPORTED gate too — more change than
+  the defect requires; the point comparison stays.
 
 ## Not claimed
 
-That 1.25 is exact for the realized series — it is a lower-bounded conservative widening
-whose stated failure mode is extra INCONCLUSIVEs, never extra REFUTEDs. That any other
+That the suspension is costless — H2 loses its ability to hard-REFUTE via (c) until the
+calibrated band exists; outcomes that would have been REFUTED are held at INCONCLUSIVE,
+which is the refusing-to-overclaim direction and is stated as the price. That any other
 SE_HAC use exists in the prereg (the frozen text says "used only for §5 H2's effect-size
 veto (c)"; grep confirms). That this amendment licenses running Stage 0 — the runner
 remains unbuilt and the #163 record should note this amendment as the executed decision.

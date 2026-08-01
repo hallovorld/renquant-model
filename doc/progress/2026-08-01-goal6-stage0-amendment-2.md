@@ -5,8 +5,11 @@ Reading §5 verbatim narrowed model#163's framing: SE_HAC is consumed once, as t
 REFUTED/INCONCLUSIVE tie-discriminator band in H2(c), not as a rejection test. The
 audited size-probe arithmetic (Bartlett L=19 captures 66.75% of overlap LRV → SE
 understated ×0.817 → band ~18% too narrow) means near-ties were being classified as
-clear violations. The band widens by a frozen 1.25 ≥ 1.224 (the audited analytic
-de-bias, rounded UP so every unmodeled residual errs toward INCONCLUSIVE). Nothing else
+clear violations. Per review, no hand-chosen widening can be called conservative (the audited 1.224
+covers only pure overlap; the AR-like component has no measured upper bound), so the
+band is SUSPENDED: (c) failures grade INCONCLUSIVE, never REFUTED, until a band
+calibrated under a separately justified frozen dependence family exists. The (c)
+SUPPORTED point-gate is untouched. Nothing else
 changes; the estimator itself is untouched; the amendment is visible per the prereg's
 own Amendment-1 precedent.
 
