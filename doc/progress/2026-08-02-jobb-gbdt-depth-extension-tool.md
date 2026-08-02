@@ -7,12 +7,19 @@ reproduction of the earliest existing window **FAILED prediction parity:
 max|Δ| = 0.6489841341972351** (target < 1e-6) over 4380 OOS rows / 15 dates
 `[VERIFIED: doc/research/data/2026-08-02-jobb-gbdt-depth-extension/golden_report.json]`.
 Per the Job B spec this is reported without rationalization and the batch was NOT
-launched; the tool now hard-refuses batch mode until a passed golden exists.
-**Decision needed upstream:** the existing 43-window ladder cannot be
-byte-reproduced from current inputs (the June-vintage input bytes are gone), so
-depth extension requires either (a) regenerating the WHOLE ladder on the current
-input vintage first, or (b) an explicitly documented vintage seam. This tool
-refuses to make that call silently.
+launched; the tool hard-refuses batch mode until a passed golden exists — OR, per
+the operator decision below, until the seam is declared explicitly.
+
+**DECISION (operator, 2026-08-02): DOCUMENT THE VINTAGE SEAM — do NOT regenerate
+the 43-window ladder.** Rationale (recorded verbatim in the tool and the seam
+block): the production lineage stamps bind the ACTUAL artifacts in the WF
+manifest; regenerating them on the Aug vintage would break that tie and create a
+third parallel corpus. The whole ladder is already retrospective (built
+June-July 2026 for 2023-2026 cutoffs), so extending on the current vintage with
+the seam recorded is methodologically the same object — the seam makes the
+June-vs-Aug input drift first-class instead of silent. Implemented as
+`--accept-vintage-seam` (see "Vintage-seam mode" below); without the flag the
+golden-pass gate is unchanged.
 
 ## Golden verdict — localization (measured, not assumed)
 
@@ -86,10 +93,40 @@ hard-asserts the produced gate contract against the reference window.
   0.4 s cached, regime replay 6.5 s). Implied batch: ≤ 82 × 14 s ≈ **19 min**
   upper bound (backward windows train on strictly less data); ~21–30 min for
   the spec's 90–130-fit range.
-* Tests: new file **23 passed**; full suite **1328 passed** (was 1305 before
+* Tests: new file **29 passed**; full suite **1334 passed** (was 1305 before
   this branch).
+
+## Vintage-seam mode (`--accept-vintage-seam`, implements the decision above)
+
+Batch admission has exactly two lawful states (`resolve_vintage_seam`):
+
+* **no flag** — the golden must have PASSED (`require_golden_pass`, unchanged);
+* **flag** — the golden must exist and have FAILED: the failed
+  `golden_report.json` IS the seam's measured evidence and is referenced from
+  the seam block. A PASSED golden under the flag REFUSES (no seam exists — the
+  flag would document a lie). A missing golden under the flag REFUSES.
+
+When admitted under the flag, the extension lineage manifest additionally
+carries a `vintage_seam` block (`build_vintage_seam`) with these fields:
+`input_vintage` ("2026-08-01-rebuild"), `decision`, `decision_rationale`,
+`evidence_golden_report`, `golden_parity_max_abs_delta` (0.649, carried FROM
+the report), `drift` (the report's `feature_means_max_abs_delta` 7.13e-3 →
+gross_profitability robust-z median, `feature_stds_max_abs_delta` 9.45e-3 →
+book_to_price robust-z scale, global_z max drift 1.8e-9, localization note),
+`rebuilt_inputs` (sec_fundamentals_daily.parquet + panel + stats, each with its
+CURRENT read-time sha256 and measured mtime date), `rebuild_date_measured`
+(2026-08-01), and `non_reproducibility` (the June-vintage bytes no longer exist
+on disk; the existing 43 windows are NOT byte-reproducible from current
+inputs). Every NEW window row is additionally stamped
+`input_vintage: "2026-08-01-rebuild"` so no consumer can pool across the seam
+without seeing it. Both roots are kept as before: `old_lineage_root_sha` (over
+the existing 43) and `new_lineage_root_sha` (full extended ladder), old root
+recomputable from the suffix.
 
 ## Not done / blocked
 
-* The 82-fit batch: NOT launched (golden parity failed; batch mode now refuses
-  by construction). Unblocking is an upstream vintage decision, not a tool fix.
+* The 82-fit batch: NOT launched (per instruction; two golden-gate/seam paths
+  verified — the no-flag refusal end-to-end against the real failed golden, the
+  seam path by unit tests). Launching is now a single command:
+  `wf_gbdt_depth_extension.py --accept-vintage-seam` (~19 min measured upper
+  bound).

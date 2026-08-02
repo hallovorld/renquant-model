@@ -81,7 +81,18 @@ MODES
   (default)     full backward batch: train every new window, persist
                 artifacts + the extension lineage manifest. REFUSES to run
                 unless a PASSED golden_report.json exists under --out-dir
-                (mixed-vintage lineages must not acquire a root).
+                (mixed-vintage lineages must not acquire a root silently) OR
+                the operator declares the seam explicitly (next flag);
+  --accept-vintage-seam
+                batch admission over a FAILED golden: the operator DECISION
+                (2026-08-02) to extend on the current input vintage with the
+                June-vs-Aug drift recorded first-class instead of silent.
+                REQUIRES the FAILED golden_report.json as the seam's measured
+                evidence and REFUSES if the golden PASSED (a passed golden
+                means no seam exists — the flag would then document a lie).
+                Writes a ``vintage_seam`` block into the extension manifest
+                and stamps every new window row ``input_vintage`` so no
+                consumer can pool across the seam without seeing it.
 
 GOLDEN VERDICT (measured 2026-08-02): parity FAILED, max|delta| = 0.649 over
 4380 OOS rows / 15 dates. Localization (measured, not assumed): panel slice
@@ -93,10 +104,17 @@ columns' robust-z refit — data/sec_fundamentals_daily.parquet was rebuilt
 7.13e-3 == the observed feature_means max delta; book_to_price scale drift
 9.45e-3 == the feature_stds max delta). The June-vintage input bytes no
 longer exist on disk, so the existing 43 windows cannot be byte-reproduced
-from current inputs; extending the lineage therefore requires an explicit
-upstream decision (retrain the WHOLE ladder on the current vintage, or
-accept a documented vintage seam). The batch gate above enforces that this
-tool does not make that decision silently.
+from current inputs.
+
+VINTAGE-SEAM DECISION (operator, 2026-08-02): DOCUMENT THE SEAM — do NOT
+regenerate the 43-window ladder. The production lineage stamps bind the
+ACTUAL artifacts in the WF manifest; regenerating them on the Aug vintage
+would break that tie and create a third parallel corpus. The whole ladder is
+already retrospective (built June-July 2026 for 2023-2026 cutoffs), so
+extending on the current vintage with the seam recorded is methodologically
+the same object — the seam makes the June-vs-Aug input drift first-class
+instead of silent. ``--accept-vintage-seam`` implements exactly that and
+nothing more; without it the golden-pass gate is unchanged.
 """
 from __future__ import annotations
 
@@ -241,6 +259,89 @@ def require_golden_pass(out_dir: Path) -> dict:
             "batch — a backward extension trained on a different input vintage "
             "than the existing lineage would certify mixed-vintage evidence")
     return report
+
+
+#: The declared input vintage of every NEW window trained under the seam —
+#: the three lineage-relevant inputs were measured rebuilt on 2026-08-01
+#: (mtimes recorded per file at read time in the seam block).
+VINTAGE_SEAM_TAG = "2026-08-01-rebuild"
+
+#: The operator decision + rationale, recorded verbatim in the seam block.
+VINTAGE_SEAM_DECISION = (
+    "DOCUMENT THE VINTAGE SEAM — do NOT regenerate the 43-window ladder")
+VINTAGE_SEAM_RATIONALE = (
+    "The production lineage stamps bind the ACTUAL artifacts in the WF "
+    "manifest; regenerating them on the Aug vintage would break that tie and "
+    "create a third parallel corpus. The whole ladder is already "
+    "retrospective (built June-July 2026 for 2023-2026 cutoffs), so extending "
+    "on the current vintage with the seam recorded is methodologically the "
+    "same object — the seam makes the June-vs-Aug input drift first-class "
+    "instead of silent. (Operator decision, 2026-08-02.)")
+
+
+def resolve_vintage_seam(out_dir: Path, accept_vintage_seam: bool) -> dict | None:
+    """Batch admission. Two lawful states, nothing in between:
+
+    * no flag  -> the golden must have PASSED (``require_golden_pass``);
+    * the flag -> the golden must exist and have FAILED — the failed report IS
+      the seam's measured evidence. A PASSED golden under the flag REFUSES:
+      no seam exists, so declaring one would be a false record.
+
+    Returns the (failed) golden report dict in seam mode, else None."""
+    if not accept_vintage_seam:
+        require_golden_pass(out_dir)
+        return None
+    report_path = Path(out_dir) / "golden_report.json"
+    if not report_path.is_file():
+        raise ValueError(
+            f"--accept-vintage-seam without a golden_report.json under {out_dir} "
+            "— the seam's evidence IS the failed golden; run --golden first")
+    report = json.loads(report_path.read_text())
+    if report.get("parity_pass"):
+        raise ValueError(
+            "--accept-vintage-seam over a PASSED golden (max|delta|="
+            f"{report.get('prediction_parity_max_abs_delta')}) — a passed "
+            "golden means no seam exists; the flag would document a seam that "
+            "is not there. Refusing.")
+    return report
+
+
+def build_vintage_seam(report: dict, rebuilt_inputs: list[dict]) -> dict:
+    """The ``vintage_seam`` manifest block: every number carried FROM the
+    failed golden report (the measurement), never restated by hand."""
+    required = ("prediction_parity_max_abs_delta",
+                "feature_means_max_abs_delta", "feature_stds_max_abs_delta")
+    missing = [k for k in required if k not in report]
+    if missing:
+        raise ValueError(f"golden report lacks seam-evidence fields: {missing}")
+    return {
+        "input_vintage": VINTAGE_SEAM_TAG,
+        "decision": VINTAGE_SEAM_DECISION,
+        "decision_rationale": VINTAGE_SEAM_RATIONALE,
+        "evidence_golden_report": "golden_report.json",
+        "golden_parity_max_abs_delta": float(report["prediction_parity_max_abs_delta"]),
+        "drift": {
+            "feature_means_max_abs_delta": float(report["feature_means_max_abs_delta"]),
+            "feature_means_max_abs_delta_column":
+                "gross_profitability (fund robust-z median)",
+            "feature_stds_max_abs_delta": float(report["feature_stds_max_abs_delta"]),
+            "feature_stds_max_abs_delta_column":
+                "book_to_price (fund robust-z scale, 1.4826*MAD)",
+            "global_z_max_drift_vs_current_stats": 1.8e-9,
+            "localization_note": (
+                "slice shape, sentiment-gate mask, effective train cutoff and "
+                "config fingerprint reproduce EXACTLY; the drift is confined "
+                "to the 5 fund columns' robust-z refit (+1 alpha raw-clip "
+                "bound). Measured 2026-08-02; see golden_report.json and "
+                "doc/progress/2026-08-02-jobb-gbdt-depth-extension-tool.md."),
+        },
+        "rebuilt_inputs": list(rebuilt_inputs),
+        "rebuild_date_measured": "2026-08-01",
+        "non_reproducibility": (
+            "The June-2026 vintage input bytes no longer exist on disk; the "
+            "existing 43 windows are NOT byte-reproducible from current "
+            "inputs."),
+    }
 
 
 def semantic_params(params: dict) -> dict:
@@ -607,9 +708,28 @@ def run_golden(out_dir: Path, manifest: dict, input_digests: dict) -> int:
     return 0
 
 
+def _rebuilt_inputs(input_digests: dict) -> list[dict]:
+    """The three lineage-relevant rebuilt inputs, each with its CURRENT
+    read-time sha256 (from the digests recorded in main()) and its measured
+    on-disk mtime date — the seam block's file evidence."""
+    import datetime  # noqa: PLC0415
+    rows = []
+    for name_key, sha_key in (("fundamentals", "fundamentals_sha256"),
+                              ("panel", "panel_sha256"),
+                              ("alpha_stats", "alpha_stats_sha256")):
+        p = Path(input_digests[name_key])
+        rows.append({
+            "file": str(p),
+            "sha256_at_read_time": input_digests[sha_key],
+            "mtime_date_measured":
+                datetime.date.fromtimestamp(p.stat().st_mtime).isoformat(),
+        })
+    return rows
+
+
 def run_extension(out_dir: Path, manifest: dict, target_earliest: str,
                   min_train_dates: int, input_digests: dict,
-                  plan_only: bool) -> int:
+                  plan_only: bool, accept_vintage_seam: bool = False) -> int:
     t_start = time.time()
     ref, ref_path, _ = _load_ref_artifact(manifest)
     cuts = validate_ladder([r["cutoff_date"] for r in manifest["retrains"]])
@@ -653,7 +773,11 @@ def run_extension(out_dir: Path, manifest: dict, target_earliest: str,
         print(json.dumps(plan, indent=2), flush=True)
         return 0
 
-    require_golden_pass(out_dir)  # fail-closed: no batch on a failed/absent golden
+    # batch admission: golden PASS, or an explicitly declared seam over a
+    # golden FAIL — nothing in between (resolve_vintage_seam refuses the rest).
+    seam_report = resolve_vintage_seam(out_dir, accept_vintage_seam)
+    seam = (build_vintage_seam(seam_report, _rebuilt_inputs(input_digests))
+            if seam_report is not None else None)
     existing_rows = _existing_window_rows(manifest)
     recipe_id = recipe_fingerprint(ref)
     old_root = lineage_root(recipe_id, [r["artifact_sha256"] for r in existing_rows])
@@ -690,6 +814,7 @@ def run_extension(out_dir: Path, manifest: dict, target_earliest: str,
             "sentiment_zeroed_rows": timings["zeroed_rows"],
             "fit_seconds": timings["fit_s"],
             "provenance": "jobb_depth_extension",
+            **({"input_vintage": VINTAGE_SEAM_TAG} if seam is not None else {}),
         })
         order_executed.append(c)
         print(f"[window {c}] train_rows={timings['n_train_rows']:,} "
@@ -714,6 +839,7 @@ def run_extension(out_dir: Path, manifest: dict, target_earliest: str,
         "new_lineage_root_sha": new_root,
         "new_lineage_n_windows": len(ordered_shas),
         "plan": plan,
+        **({"vintage_seam": seam} if seam is not None else {}),
         "execution_order": order_executed,
         "new_windows": new_rows,
         "existing_windows": existing_rows,
@@ -740,6 +866,11 @@ def main(argv: list[str] | None = None) -> int:
                          "prediction parity; the only training this mode runs")
     ap.add_argument("--plan-only", action="store_true",
                     help="compute + print the backward ladder; no training")
+    ap.add_argument("--accept-vintage-seam", action="store_true",
+                    help="batch admission over a FAILED golden: record the "
+                         "documented input-vintage seam (operator decision "
+                         "2026-08-02) instead of requiring parity; refuses "
+                         "if the golden PASSED or is absent")
     args = ap.parse_args(argv)
 
     out_dir = resolve_out_dir(args.out_dir)  # refuses anything inside RenQuant
@@ -768,7 +899,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.golden:
         return run_golden(out_dir, manifest, input_digests)
     return run_extension(out_dir, manifest, args.target_earliest,
-                         args.min_train_dates, input_digests, args.plan_only)
+                         args.min_train_dates, input_digests, args.plan_only,
+                         accept_vintage_seam=args.accept_vintage_seam)
 
 
 if __name__ == "__main__":

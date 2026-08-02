@@ -236,6 +236,73 @@ def test_batch_admits_only_a_PASSED_golden(tmp_path):
     assert T.require_golden_pass(tmp_path)["parity_pass"] is True
 
 
+# ── vintage-seam mode (operator decision 2026-08-02) ─────────────────────────
+
+def _failed_report() -> dict:
+    return {"parity_pass": False,
+            "prediction_parity_max_abs_delta": 0.6489841341972351,
+            "feature_means_max_abs_delta": 0.007131227576620575,
+            "feature_stds_max_abs_delta": 0.009450348912744377}
+
+
+def test_seam_flag_without_any_golden_refuses(tmp_path):
+    with pytest.raises(ValueError, match="run --golden first"):
+        T.resolve_vintage_seam(tmp_path, accept_vintage_seam=True)
+
+
+def test_seam_flag_over_a_PASSED_golden_refuses(tmp_path):
+    """A passed golden means no seam exists — declaring one would be a false
+    record, so the flag must refuse rather than write it."""
+    import json
+    (tmp_path / "golden_report.json").write_text(json.dumps(
+        {"parity_pass": True, "prediction_parity_max_abs_delta": 3e-7}))
+    with pytest.raises(ValueError, match="no seam exists"):
+        T.resolve_vintage_seam(tmp_path, accept_vintage_seam=True)
+
+
+def test_seam_flag_over_a_FAILED_golden_returns_the_evidence(tmp_path):
+    import json
+    (tmp_path / "golden_report.json").write_text(json.dumps(_failed_report()))
+    report = T.resolve_vintage_seam(tmp_path, accept_vintage_seam=True)
+    assert report["parity_pass"] is False
+    assert report["prediction_parity_max_abs_delta"] == 0.6489841341972351
+
+
+def test_without_the_flag_batch_admission_is_UNCHANGED(tmp_path):
+    """No flag -> the golden-pass gate exactly as before the seam decision."""
+    import json
+    (tmp_path / "golden_report.json").write_text(json.dumps(_failed_report()))
+    with pytest.raises(ValueError, match="golden parity FAILED"):
+        T.resolve_vintage_seam(tmp_path, accept_vintage_seam=False)
+    (tmp_path / "golden_report.json").write_text(json.dumps(
+        {"parity_pass": True, "prediction_parity_max_abs_delta": 3e-7}))
+    assert T.resolve_vintage_seam(tmp_path, accept_vintage_seam=False) is None
+
+
+def test_seam_block_carries_the_required_fields_from_the_report():
+    inputs = [{"file": "/x/sec_fundamentals_daily.parquet",
+               "sha256_at_read_time": "ab" * 32,
+               "mtime_date_measured": "2026-08-01"}]
+    seam = T.build_vintage_seam(_failed_report(), inputs)
+    # the field set the seam decision requires, exactly
+    assert seam["input_vintage"] == "2026-08-01-rebuild"
+    assert seam["evidence_golden_report"] == "golden_report.json"
+    assert seam["golden_parity_max_abs_delta"] == 0.6489841341972351
+    assert seam["drift"]["feature_means_max_abs_delta"] == 0.007131227576620575
+    assert seam["drift"]["feature_stds_max_abs_delta"] == 0.009450348912744377
+    assert seam["rebuilt_inputs"] == inputs
+    assert seam["rebuild_date_measured"] == "2026-08-01"
+    assert "no longer exist on disk" in seam["non_reproducibility"]
+    assert "NOT byte-reproducible" in seam["non_reproducibility"]
+    assert "do NOT regenerate" in seam["decision"]
+    assert "third parallel corpus" in seam["decision_rationale"]
+
+
+def test_seam_block_refuses_a_report_missing_the_evidence_numbers():
+    with pytest.raises(ValueError, match="seam-evidence fields"):
+        T.build_vintage_seam({"parity_pass": False}, [])
+
+
 # ── out-dir refusal ──────────────────────────────────────────────────────────
 
 def test_out_dir_inside_the_umbrella_refuses():
