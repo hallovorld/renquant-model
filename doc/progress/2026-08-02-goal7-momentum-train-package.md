@@ -82,3 +82,35 @@ NEXT: codex re-review of this commit's fixes (ledger write-ordering — atomic
   already satisfied (operator comment: #195 merged at `8124fd34`, empty
   reconciliation delta). Slice 3 (TEST/scoring harness) is next in the
   pipeline build order.
+
+## Review round 1: the package worked only from a checkout
+
+`params_v0()` sourced the six frozen constants by importing
+`tools/goal7_momentum_run.py`. `[tool.setuptools.packages.find] where = ["src"]`,
+so that file never enters the wheel: an installed consumer raised
+`FileNotFoundError` at first use while every in-repo test passed. A package
+surface that only works from the repo it was built in is not a package surface.
+
+**Fixed by a packaged MIRROR, not by an inversion.** The obvious alternative —
+make the package the single definition and have the v1 runner import it —
+removes drift by construction and was rejected: `tools/goal7_momentum_run.py`
+is the runner of a SPENT one-shot study whose result is published and sealed,
+and editing it changes the bytes a published result was produced by, for the
+convenience of a downstream package. The cost of a mirror is that two copies
+can diverge; `test_params_v0_mirrors_the_sealed_v1_runner` pays it, holding
+every mirrored constant equal to the sealed runner's own value wherever the
+repo is present — which is CI. The sealed runner remains the authority; the
+wheel just carries a copy it is held to.
+
+| claim | value | provenance |
+|---|---|---|
+| the reviewer's repro now succeeds | `params_v0()` from a clean `--target` install returns all six constants | [VERIFIED — `pip wheel . --no-deps` → `pip install --target` → import, 2026-08-02] |
+| module tests | 35 passed | [VERIFIED — `pytest -q tests/test_momentum_train_package.py`] |
+| model suite | 1464 passed, 2 skipped | [VERIFIED — `pytest -q`] |
+| the wheel-sufficiency test is load-bearing | restoring the pre-fix `train.py` turns it red | [VERIFIED — `git show HEAD:…` over the fix, re-run] |
+
+One note on how that test is written. It does **not** grep `train.py` for the old
+path — my first version did, and it failed on a docstring that merely *mentions*
+`tools/`, which is checking prose rather than behaviour. It now copies the
+package alone into a temp tree with no `tools/` above it and calls `params_v0()`
+in a subprocess: the shape of an installed wheel, asserted by running.

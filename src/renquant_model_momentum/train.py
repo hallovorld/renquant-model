@@ -6,12 +6,15 @@ stats the serving/scoring step needs — no fitted hyper-parameters in v0
 (design §1). The mechanism functions are IMPORTED from
 ``renquant_model_common.momentum_features`` (F1–F5 + composite), never copied.
 
-**Frozen v0 params BY IMPORT, never restated** (model#164 §2): window=252 /
+**Frozen v0 params from a PACKAGED MIRROR** (model#164 §2): window=252 /
 skip=21 / min_obs=200, min_features=3, names_per_date_floor=50, and the
-runner-declared min_side_obs=30 — all sourced at call time from the sealed v1
-runner's ``FROZEN`` dict / ``MIN_SIDE_OBS`` constant
-(``tools/goal7_momentum_run.py``), so no constant can drift here outside the
-freeze. ``params_v0()`` stamps ``params_version: "v0"``; a future weighted
+runner-declared min_side_obs=30 — carried by ``_frozen_params_v0``, which ships
+in the wheel. They were previously read at call time from the sealed v1 runner
+outside ``src/``; that made the installed package raise ``FileNotFoundError`` at
+first use while every in-repo test passed (review round 1). The sealed runner
+remains the AUTHORITY: ``test_params_v0_mirrors_the_sealed_v1_runner`` holds the
+mirror equal to it wherever the repo is present, so a drifted copy fails loudly
+instead of silently. ``params_v0()`` stamps ``params_version: "v0"``; a future weighted
 composite or factor-residualization (design v-next) is a NEW params version,
 never a silent change.
 
@@ -31,7 +34,6 @@ from __future__ import annotations
 
 import datetime as _dt
 import hashlib
-import importlib.util
 import json
 from pathlib import Path
 from typing import Any, Mapping, Protocol
@@ -47,12 +49,11 @@ __all__ = ["ARTIFACT_KIND", "ARTIFACT_SCHEMA_VERSION", "MomentumReaders",
            "content_sha256_of", "params_v0", "train_momentum_artifact",
            "verify_artifact_content_sha"]
 
+from . import _frozen_params_v0 as _F
+
 ARTIFACT_KIND = "momentum_residual_v0"
 ARTIFACT_SCHEMA_VERSION = 1
 
-_REPO = Path(__file__).resolve().parents[2]
-_V1_RUNNER_PATH = _REPO / "tools" / "goal7_momentum_run.py"
-_V1_CACHE: Any = None
 
 #: The params keys train_momentum_artifact requires (beyond params_version).
 _REQUIRED_PARAM_KEYS = ("window", "skip", "min_obs", "min_features",
@@ -82,46 +83,25 @@ class MomentumReaders(Protocol):
     def read_digests(self) -> Mapping[str, str]: ...
 
 
-def _load_v1_runner():
-    """The sealed v1 runner module — the by-import home of the frozen constants.
-
-    Loaded the way the v2 runner loads it (spec_from_file_location; the module
-    has no import-time side effects beyond a sys.path insert). Cached."""
-    global _V1_CACHE
-    if _V1_CACHE is None:
-        if not _V1_RUNNER_PATH.is_file():
-            raise FileNotFoundError(
-                f"frozen-constant source missing: {_V1_RUNNER_PATH} — params v0 "
-                "is BY IMPORT from the sealed v1 runner and has no restated "
-                "fallback by design")
-        spec = importlib.util.spec_from_file_location(
-            "goal7_momentum_run", _V1_RUNNER_PATH)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        _V1_CACHE = mod
-    return _V1_CACHE
-
-
 def params_v0() -> dict:
-    """The v0 params block: frozen constants BY IMPORT (model#164 §2).
+    """The v0 params block, from the PACKAGED mirror (review round 1).
 
-    252/21/200 (window/skip/min_obs), min_features 3, names_per_date_floor 50
-    come from the v1 runner's ``FROZEN`` dict; min_side_obs 30 is the
-    runner-declared F5 per-side floor (reviewed in model#177). None of the six
-    numbers is restated here — they are read from the sealed module, and the
-    pinning test publishes the expected literals so any drift fails loudly."""
-    v1 = _load_v1_runner()
+    Previously sourced by importing `tools/goal7_momentum_run.py`, which never enters
+    the wheel — an installed consumer failed at first use while every in-repo test
+    passed. The six numbers now live in `_frozen_params_v0`, which ships, and
+    `test_params_v0_mirrors_the_sealed_v1_runner` holds that module equal to the sealed
+    runner's `FROZEN` dict wherever the repo is present. See that module's docstring for
+    why a mirror rather than an inversion.
+    """
     return {
         "params_version": "v0",
-        "window": int(v1.FROZEN["window"]),
-        "skip": int(v1.FROZEN["skip"]),
-        "min_obs": int(v1.FROZEN["min_obs"]),
-        "min_features": int(v1.FROZEN["min_features"]),
-        "names_per_date_floor": int(v1.FROZEN["names_per_date_floor"]),
-        "min_side_obs": int(v1.MIN_SIDE_OBS),
-        "params_source": ("tools/goal7_momentum_run.py::FROZEN + MIN_SIDE_OBS "
-                          "(by import; frozen in model#164 §2, F5 floor in "
-                          "model#177)"),
+        "window": int(_F.WINDOW),
+        "skip": int(_F.SKIP),
+        "min_obs": int(_F.MIN_OBS),
+        "min_features": int(_F.MIN_FEATURES),
+        "names_per_date_floor": int(_F.NAMES_PER_DATE_FLOOR),
+        "min_side_obs": int(_F.MIN_SIDE_OBS),
+        "params_source": _F.PARAMS_SOURCE,
     }
 
 

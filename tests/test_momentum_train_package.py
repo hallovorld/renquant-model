@@ -253,6 +253,67 @@ def test_params_v0_pins_the_frozen_constants():
     assert p["min_side_obs"] == V1.MIN_SIDE_OBS
 
 
+def test_params_v0_mirrors_the_sealed_v1_runner():
+    """THE test that makes the packaged mirror safe (review round 1).
+
+    `params_v0` no longer imports the sealed runner — it reads
+    `_frozen_params_v0`, which ships in the wheel. That trades a
+    cannot-drift-by-construction property for a copy, and this is what pays for the
+    trade: every mirrored constant must still equal the sealed runner's own value.
+    It runs wherever the repo is present, which is CI.
+
+    If this ever fails, the mirror is what changed and the sealed runner is right.
+    """
+    from renquant_model_momentum import _frozen_params_v0 as F
+
+    assert F.WINDOW == V1.FROZEN["window"]
+    assert F.SKIP == V1.FROZEN["skip"]
+    assert F.MIN_OBS == V1.FROZEN["min_obs"]
+    assert F.MIN_FEATURES == V1.FROZEN["min_features"]
+    assert F.NAMES_PER_DATE_FLOOR == V1.FROZEN["names_per_date_floor"]
+    assert F.MIN_SIDE_OBS == V1.MIN_SIDE_OBS
+    # ...and the provenance string still names the sealed runner as the authority
+    assert "goal7_momentum_run.py::FROZEN" in F.PARAMS_SOURCE
+
+
+def test_params_v0_needs_NOTHING_outside_the_installed_package():
+    """The reviewer's reproduction, as a permanent test.
+
+    The defect was that `params_v0()` read a path outside `src/`, so an installed wheel
+    raised `FileNotFoundError` at first use while every in-repo test passed. Asserted
+    structurally rather than by building a wheel each run: the module that supplies the
+    constants must live inside the package, and `train.py` must not reference the repo
+    root or the tools directory at all.
+    """
+    import renquant_model_momentum as pkg
+    from renquant_model_momentum import _frozen_params_v0 as F
+    from renquant_model_momentum import train as T
+
+    pkg_dir = Path(pkg.__file__).resolve().parent
+    assert Path(F.__file__).resolve().is_relative_to(pkg_dir)
+
+    # BEHAVIOURAL, not a grep of the source: copy ONLY the package into a temp tree
+    # with no `tools/` anywhere above it — the shape of an installed wheel — and call
+    # params_v0() from there. A source-substring check would pass on a docstring that
+    # merely MENTIONS the old path, which is the wrong object to be checking.
+    import shutil
+    import subprocess
+    import sys
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        shutil.copytree(pkg_dir, Path(tmp) / pkg_dir.name)
+        out = subprocess.run(
+            [sys.executable, "-c",
+             "from renquant_model_momentum.train import params_v0;"
+             "p = params_v0(); print(p['window'], p['min_side_obs'])"],
+            cwd=tmp, env={"PYTHONPATH": tmp, "PATH": "/usr/bin:/bin"},
+            capture_output=True, text=True)
+        assert out.returncode == 0, out.stderr[-600:]
+        assert out.stdout.split() == ["252", "30"], out.stdout
+    assert params_v0()["window"] == 252
+
+
 def test_params_version_is_required(world):
     p = params_v0()
     del p["params_version"]
