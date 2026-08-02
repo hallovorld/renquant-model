@@ -138,13 +138,41 @@ def test_runner_declared_constant_is_documented_and_bounded():
 # ---------- §7 single-execution guard (codex on #177) ----------
 
 
-def _ledger(monkeypatch, tmp_path):
+#: The four paths that, left alone, point at the operator's REAL durable store.
+_CLAIM_ATTRS = ("RUN_LEDGER_DIR", "EXECUTION_CLAIM", "RESULT_PATH", "REFUSALS_LOG")
+
+
+def _redirect_claim(monkeypatch, tmp_path) -> Path:
     d = tmp_path / "run-ledger"
     monkeypatch.setattr(R, "RUN_LEDGER_DIR", d)
     monkeypatch.setattr(R, "EXECUTION_CLAIM", d / "EXECUTION_CLAIM.json")
     monkeypatch.setattr(R, "RESULT_PATH", d / "result.json")
     monkeypatch.setattr(R, "REFUSALS_LOG", d / "refusals.jsonl")
     return d
+
+
+@pytest.fixture(autouse=True)
+def _never_touch_the_real_claim(monkeypatch, tmp_path):
+    """AUTOUSE, because the safe path must not be opt-in.
+
+    `_ledger()` was a helper each test had to remember to call, and the claim now lives
+    at `~/renquant-data-store/goal7-momentum-prereg-run/` — OUTSIDE the repository. So a
+    new test that calls `R.execute()` and forgets the helper consumes the single licensed
+    execution of a frozen study, and `git status` shows nothing, because nothing in the
+    repo changed. The failure is silent, durable and unrecoverable without an operator
+    deliberately deleting the claim.
+
+    That is the `enumerated-allow-list` shape: the dangerous path was the default and
+    safety was the thing you had to remember. Inverted — every test in this module is
+    redirected, and touching the real store now requires opting IN.
+    """
+    _redirect_claim(monkeypatch, tmp_path)
+
+
+def _ledger(monkeypatch, tmp_path):
+    """Kept for the tests that name it. The autouse fixture has already redirected;
+    calling this again is idempotent and returns the same directory."""
+    return _redirect_claim(monkeypatch, tmp_path)
 
 
 def test_second_invocation_is_refused_BEFORE_any_data_read(monkeypatch, tmp_path, capsys):
@@ -204,3 +232,28 @@ def test_execute_refuses_a_caller_selected_output(tmp_path, capsys):
     rc = R.main(["--execute", "--json-out", str(tmp_path / "x.json")])
     assert rc == 2
     assert "PREDECLARED" in capsys.readouterr().err
+
+
+
+def test_NO_test_in_this_module_can_reach_the_real_claim_store(monkeypatch, tmp_path):
+    """The guard on the guard.
+
+    Asserts the property rather than the convention: with the autouse fixture active and
+    WITHOUT calling `_ledger()`, every claim path already points inside `tmp_path`. If
+    the fixture is ever removed or renamed, this fails instead of a future test quietly
+    burning the licence.
+    """
+    for attr in _CLAIM_ATTRS:
+        value = Path(getattr(R, attr))
+        assert value.is_relative_to(tmp_path), f"{attr} -> {value}"
+        assert "renquant-data-store" not in str(value), f"{attr} -> {value}"
+
+
+def test_a_forgetful_test_still_cannot_consume_the_licence(monkeypatch, tmp_path):
+    """End-to-end version of the above: run the real entry point with no isolation call
+    of its own and confirm the claim lands in tmp, not in the operator's store."""
+    monkeypatch.setattr(R, "AMENDMENT_2", tmp_path / "absent.md")
+    R.execute()
+    assert Path(R.EXECUTION_CLAIM).is_relative_to(tmp_path)
+    assert not (Path.home() / "renquant-data-store"
+                / "goal7-momentum-prereg-run").exists()
