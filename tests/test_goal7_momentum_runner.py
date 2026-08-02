@@ -252,8 +252,55 @@ def test_NO_test_in_this_module_can_reach_the_real_claim_store(monkeypatch, tmp_
 def test_a_forgetful_test_still_cannot_consume_the_licence(monkeypatch, tmp_path):
     """End-to-end version of the above: run the real entry point with no isolation call
     of its own and confirm the claim lands in tmp, not in the operator's store."""
+    real = Path.home() / "renquant-data-store" / "goal7-momentum-prereg-run"
+    before = sorted(q.name for q in real.iterdir()) if real.exists() else None
     monkeypatch.setattr(R, "AMENDMENT_2", tmp_path / "absent.md")
     R.execute()
     assert Path(R.EXECUTION_CLAIM).is_relative_to(tmp_path)
-    assert not (Path.home() / "renquant-data-store"
-                / "goal7-momentum-prereg-run").exists()
+    # UPDATED 2026-08-02: the original asserted the real store DOES NOT EXIST,
+    # which becomes false the moment a REAL execution runs — the test would then
+    # fail on every branch forever. The property that matters is that THIS TEST
+    # left the real store untouched: identical before/after listing.
+    after = sorted(q.name for q in real.iterdir()) if real.exists() else None
+    assert after == before, "the test leaked into the operator's real store"
+
+
+# -------- the 2026-08-02 import-crash regression (guard validating the wrong object) --------
+
+
+def test_tr_builder_import_has_NO_side_effects():
+    """Importing the TR construction must not execute the July build script —
+    its module-level raw-corpus guard crashed the single --execute on
+    2026-08-02 (SystemExit at import, pre-inference). The package home is pure."""
+    import importlib
+    import sys as _sys
+
+    mod = importlib.import_module("renquant_model_common.total_return")
+    assert callable(mod.total_return_close)
+    # the build SCRIPT must not have been pulled in by the package import
+    assert "build_total_return_series" not in _sys.modules
+
+
+def test_tr_function_arithmetic_is_unchanged_by_the_move():
+    """Pin the moved-verbatim body on a hand-checked case: one $1 dividend on a
+    $100 bar grosses up every EARLIER close by 1.01; the last bar is untouched."""
+    idx = pd.to_datetime(["2024-01-02", "2024-01-03", "2024-01-04"])
+    close = pd.Series([100.0, 100.0, 100.0], index=idx)
+    div = pd.Series([0.0, 1.0, 0.0], index=idx)
+    tr = R._load_tr_builder()(close, div)
+    assert abs(tr.iloc[2] - 100.0) < 1e-12          # last bar: empty product
+    assert abs(tr.iloc[1] - 100.0) < 1e-12          # gross-up applies to s > t only
+    assert abs(tr.iloc[0] - 100.0 / 1.01) < 1e-9    # pre-event bar deflated
+
+
+def test_an_import_time_guard_becomes_a_PREFLIGHT_refusal_not_a_crash(monkeypatch):
+    """The stranded-claim shape: if the builder import ever raises again —
+    including SystemExit — preflight fails tr_builder_importable, so execute()
+    takes the claim-releasing UNRESOLVED-DATA path instead of dying mid-run."""
+    def boom():
+        raise SystemExit("ABORT: raw input layer changed")
+
+    monkeypatch.setattr(R, "_load_tr_builder", boom)
+    rep = R.verify_preconditions()
+    assert "tr_builder_importable" in rep["unresolved_data"]
+    assert "SystemExit" in rep["checks"]["tr_builder_importable"]["detail"]
