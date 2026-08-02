@@ -31,9 +31,9 @@ EVIDENCE:
                  import, before any panel/OHLCV read)
   best-known?:   yes — the function's one importable home replaces a script
                  import that executed a study
-  scope:         19/19 runner tests (was 18 + the updated forgetful-test);
-                 make test 1393 passed pre-fix baseline, re-run below
-                 `[VERIFIED — pytest 2026-08-02]`
+  scope:         18/18 runner tests (15 prior + 3 regressions; the
+                 forgetful-test updated in place); make test 1393 passed
+                 `[VERIFIED — pytest 2026-08-02, both counts measured]`
 NEXT: codex review → merge → re-execute the single --execute (legitimate:
 zero statistics were computed by the crashed attempt; the claim's own
 docstring names manual removal WITH a durable record — THIS DOC is that
