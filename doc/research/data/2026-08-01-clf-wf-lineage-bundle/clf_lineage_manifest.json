@@ -1,0 +1,224 @@
+{
+  "schema": "clf-lineage-manifest-v1",
+  "identity_model": "renquant-backtesting#94 (merged 2026-08-01)",
+  "recipe_src_sha256": "04cba8a424290acc8c7866df621bc3c8b8bc98a84777e5cec92bb2701e964e05",
+  "lineage_root_sha": "e9eefe813785ca719e0b7e1fc40ae96488dee42102a9e98eb6e3954db601606b",
+  "folds": [
+    {
+      "cutoff_date": "2023-10-02",
+      "artifact_sha256": "eb4924a3cc9b16bb6cfd9def280f3ab88f93f053f1a49b14f5a322418c240a2c",
+      "artifact_path": "fold_artifacts/2023-10-02/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2023-10-23",
+      "artifact_sha256": "ee6bb1db820964b65ffb493a6702778f1bbc88685bcf67f739c553d8ef40148b",
+      "artifact_path": "fold_artifacts/2023-10-23/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2023-11-13",
+      "artifact_sha256": "34240cfe6a55d414fa1f8944ddddce0c92653c81f0ea07c3955fc3a7af50fde8",
+      "artifact_path": "fold_artifacts/2023-11-13/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2023-12-04",
+      "artifact_sha256": "ddc3732e5dacf20e90fa853fbf4f0424d513e87d5922aa4c6ff684aa478503f2",
+      "artifact_path": "fold_artifacts/2023-12-04/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2023-12-25",
+      "artifact_sha256": "9261be8233b3afa38d6d82dfcf32bb7f5116fabcca2ecf865af791f2081c2247",
+      "artifact_path": "fold_artifacts/2023-12-25/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2024-01-15",
+      "artifact_sha256": "594e017c4ae0f45f8c3d49e00c50c335e30f3832138efd13adcc3bafd347acca",
+      "artifact_path": "fold_artifacts/2024-01-15/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2024-02-05",
+      "artifact_sha256": "8556adce1f500c1516884417169bbf96fd5914dd22777dbb52c868d5adacddaa",
+      "artifact_path": "fold_artifacts/2024-02-05/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2024-02-26",
+      "artifact_sha256": "7e872efdb25d5872923f6d6353787cb974f4866fc65c1bd19b5f35f684645bb9",
+      "artifact_path": "fold_artifacts/2024-02-26/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2024-03-18",
+      "artifact_sha256": "8f4962cb7911975cd05efe0d598d28ba6f3980ca195c55f40f2a8a0959da006c",
+      "artifact_path": "fold_artifacts/2024-03-18/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2024-04-08",
+      "artifact_sha256": "80d304b64164291a6b753bec892e47cf96f61b58ef9cbcb16c268344f7a54796",
+      "artifact_path": "fold_artifacts/2024-04-08/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2024-04-29",
+      "artifact_sha256": "f7f23ed8b1e7b5ba9ecb1779a35af5e62685f5d095bb2b38752789500e147ee8",
+      "artifact_path": "fold_artifacts/2024-04-29/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2024-05-20",
+      "artifact_sha256": "c4765934efe01c07c5c9ac46b19dbdc4d4d015d9e6b02ea5e9c9d1538e7cec9b",
+      "artifact_path": "fold_artifacts/2024-05-20/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2024-06-10",
+      "artifact_sha256": "46e995eafdd1e64d9e4c273462535c318e96e282ea9623d18bb0472c487d117c",
+      "artifact_path": "fold_artifacts/2024-06-10/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2024-07-01",
+      "artifact_sha256": "b5036f6bc8fe86203307a6978400b05fcea9b79ad54d29b7273bd9aba9a43b92",
+      "artifact_path": "fold_artifacts/2024-07-01/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2024-07-22",
+      "artifact_sha256": "fc520efeb24dcf6f1852917acb34a03c4c9cb2ab77855d172a09c8c1a2f5dc7f",
+      "artifact_path": "fold_artifacts/2024-07-22/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2024-08-12",
+      "artifact_sha256": "83968baaa8df838f564ed8184d89b1c1dbffd9f34a3504292bc752c1f8cb684d",
+      "artifact_path": "fold_artifacts/2024-08-12/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2024-09-02",
+      "artifact_sha256": "e49a9e469767c1d879bc9492b49f574f2ca5696bb1b1e7cd5e184f3408fc5d50",
+      "artifact_path": "fold_artifacts/2024-09-02/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2024-09-23",
+      "artifact_sha256": "a0f4497f1eb1245fcdd6e837c501096fd1635a7c8dd37aa5f1263bca10d733b8",
+      "artifact_path": "fold_artifacts/2024-09-23/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2024-10-14",
+      "artifact_sha256": "3d17d3fdddf7b81465db5b119356270f33527ddf50de096e0605337c55f56a73",
+      "artifact_path": "fold_artifacts/2024-10-14/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2024-11-04",
+      "artifact_sha256": "f3d73a54bfcfabc5e80cef39e8c22c78385a32ca7c77314bbd6539f2dc66500f",
+      "artifact_path": "fold_artifacts/2024-11-04/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2024-11-25",
+      "artifact_sha256": "0487f78f930c05dff7a634f5d6e7924e3cadc7d7e36000e262a648e94824634f",
+      "artifact_path": "fold_artifacts/2024-11-25/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2024-12-16",
+      "artifact_sha256": "b80a47fdf8b1379a13d4ef794bc5ef8709b2e1991dd56d6fa7b78d14069c58ef",
+      "artifact_path": "fold_artifacts/2024-12-16/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2025-01-06",
+      "artifact_sha256": "ca86f1694a20b84d92b5feaad276d4f9a41e3f43deb55cce3d332e0c56afdba7",
+      "artifact_path": "fold_artifacts/2025-01-06/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2025-01-27",
+      "artifact_sha256": "175efeebd7a8193256938c8cbc10a1405da3b374179edd5d0137f3626196c1c1",
+      "artifact_path": "fold_artifacts/2025-01-27/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2025-02-17",
+      "artifact_sha256": "01c0dceb1901641e2de0b25bc856f657b3ee2acbee00075415fc244abd5f4441",
+      "artifact_path": "fold_artifacts/2025-02-17/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2025-03-10",
+      "artifact_sha256": "4ef908a146e6a1c5b88c565398df461d7a177a15c5311eeb27f7eec49ce62608",
+      "artifact_path": "fold_artifacts/2025-03-10/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2025-03-31",
+      "artifact_sha256": "8d939cee7d1fa04c18bc8b60a63383049326662315dfdfc85ffe9631426364e9",
+      "artifact_path": "fold_artifacts/2025-03-31/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2025-04-21",
+      "artifact_sha256": "10e0117556dce74474c650d071cf0900885c918653e38fe0e1734f69162e92cf",
+      "artifact_path": "fold_artifacts/2025-04-21/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2025-05-12",
+      "artifact_sha256": "064af66cf2e3d29d1aa4f55f1ae8b984f91738d1475595a17ac0b647af787562",
+      "artifact_path": "fold_artifacts/2025-05-12/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2025-06-02",
+      "artifact_sha256": "913becb64f5f469b6876a6606ad3a3d6f49d2f80cdded0b8a9a6c8383c50dfe7",
+      "artifact_path": "fold_artifacts/2025-06-02/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2025-06-23",
+      "artifact_sha256": "aceaf8d663c2d051aeb3df75c47795ccd5b407ee4f1f0e1333002dc0be2397ad",
+      "artifact_path": "fold_artifacts/2025-06-23/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2025-07-14",
+      "artifact_sha256": "0ce6e7796c64547aacf627a80f7a6f4923fa8a2f4d998a76bd9c35d15e3c2436",
+      "artifact_path": "fold_artifacts/2025-07-14/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2025-08-04",
+      "artifact_sha256": "1c0a33c4255e207dc641f436ae87cd46b15bbbf38d32cef0eda00768868c70c8",
+      "artifact_path": "fold_artifacts/2025-08-04/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2025-08-25",
+      "artifact_sha256": "06bdedc706a1fa7d250ec910fcfe0ae6e2140164396a7edd5a69441b99be9f14",
+      "artifact_path": "fold_artifacts/2025-08-25/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2025-09-15",
+      "artifact_sha256": "9b380e570d7cfa4d89e830aa6c92422f4c8b061830acde095f900240854a95d1",
+      "artifact_path": "fold_artifacts/2025-09-15/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2025-10-06",
+      "artifact_sha256": "797a8a10022d4d427394b276455613b8dedb3eaa9e9c8ad7ea7cae8ce5220046",
+      "artifact_path": "fold_artifacts/2025-10-06/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2025-10-27",
+      "artifact_sha256": "467ece29cc06459ff0f1b6fa0a93280b64466571c58097d74d645e17ddab8acb",
+      "artifact_path": "fold_artifacts/2025-10-27/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2025-11-17",
+      "artifact_sha256": "5a4a810e74f8463deebd700a6ad9b4a1fa36a6d7fb23ea8041fdba40982275ad",
+      "artifact_path": "fold_artifacts/2025-11-17/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2025-12-08",
+      "artifact_sha256": "e8131c546d1cd0531ba4d8f5597b2d69444d51ab4244eef6d755d262f41cd48c",
+      "artifact_path": "fold_artifacts/2025-12-08/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2025-12-29",
+      "artifact_sha256": "c087656b02489ffae75957b8e911b31314e268a7efac5510cccb8f0e568bc6b8",
+      "artifact_path": "fold_artifacts/2025-12-29/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2026-01-19",
+      "artifact_sha256": "a41939f3155cb5dfd342a01320f783be915f4daeacdfab449a92d68232fe7cdc",
+      "artifact_path": "fold_artifacts/2026-01-19/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2026-02-09",
+      "artifact_sha256": "7e8281236df83318aca0b1815e25114689abb6639175159ecb8e9722e04c186a",
+      "artifact_path": "fold_artifacts/2026-02-09/panel-clf.top-decile.json"
+    },
+    {
+      "cutoff_date": "2026-03-02",
+      "artifact_sha256": "313a783b5adf8b91151a97ea1b9cf03bd8dc2e1948567aed1f76d11d42a605cc",
+      "artifact_path": "fold_artifacts/2026-03-02/panel-clf.top-decile.json"
+    }
+  ],
+  "root_rule": "sha256(recipe_src_sha256 + LF + LF-joined ordered fold shas + LF)"
+}
