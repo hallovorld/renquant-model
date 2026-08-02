@@ -408,12 +408,10 @@ def test_cli_refuses_when_surfaces_missing(monkeypatch, capsys, tmp_path):
     assert not (tmp_path / "out").exists()
 
 
-def test_cli_ledger_refusal_leaves_no_orphaned_artifact(monkeypatch, tmp_path,
-                                                        world):
-    """Regression (codex review, PR #196): if append_to_artifact_ledger
-    refuses (tampered/duplicate/stale-sha ledger), the CLI must leave NO
-    artifact file behind — else a retry hits REFUSED-ARTIFACT-EXISTS for a
-    cutoff that was never actually ledgered, with no automatic recovery."""
+def _wire_fake_cli_surfaces(monkeypatch, tmp_path, world):
+    """Point the CLI at tmp-path surface stubs + the synthetic readers so the
+    real-run path executes end-to-end with no live data. Returns
+    (out_root, asof_str, cutoff_dir)."""
     ohlcv_market_dir = tmp_path / "ohlcv" / CLI.MARKET
     ohlcv_market_dir.mkdir(parents=True)
     (ohlcv_market_dir / "1d.parquet").touch()
@@ -430,20 +428,77 @@ def test_cli_ledger_refusal_leaves_no_orphaned_artifact(monkeypatch, tmp_path,
     monkeypatch.setattr(world["readers"], "record_digest",
                         lambda *a, **kw: None, raising=False)
     monkeypatch.setattr(CLI, "LiveReaders", lambda *a, **kw: world["readers"])
+    out_root = tmp_path / "out"
+    asof_str = str(world["asof"].date())
+    return out_root, asof_str, out_root / asof_str
+
+
+def test_cli_ledger_refusal_leaves_no_orphaned_artifact(monkeypatch, tmp_path,
+                                                        world):
+    """Regression (codex review, PR #196): if append_to_artifact_ledger
+    refuses (tampered/duplicate/stale-sha ledger), the CLI must leave NO
+    artifact file behind — else a retry hits REFUSED-ARTIFACT-EXISTS for a
+    cutoff that was never actually ledgered, with no automatic recovery.
+    Round 2 adds the inverse half: once the failure clears, the SAME retry
+    must SUCCEED end-to-end."""
+    out_root, asof_str, cutoff_dir = _wire_fake_cli_surfaces(
+        monkeypatch, tmp_path, world)
+    real_append = CLI.append_to_artifact_ledger
 
     def _boom(artifact, ledger_path):
         raise RuntimeError("simulated ledger refusal")
     monkeypatch.setattr(CLI, "append_to_artifact_ledger", _boom)
 
-    out_root = tmp_path / "out"
-    asof_str = str(world["asof"].date())
     with pytest.raises(RuntimeError, match="simulated ledger refusal"):
         CLI.main(["--asof", asof_str, "--out-root", str(out_root)])
 
-    cutoff_dir = out_root / asof_str
     assert not (cutoff_dir / CLI.ARTIFACT_BASENAME).exists()
     assert not any(cutoff_dir.glob("*.tmp")), \
         "orphaned staging file left behind after a ledger refusal"
+
+    # RETRY AFTER THE FAILURE CLEARS (codex round 2, reproduction inverted):
+    # restore the real append; the identical invocation must now succeed.
+    monkeypatch.setattr(CLI, "append_to_artifact_ledger", real_append)
+    rc = CLI.main(["--asof", asof_str, "--out-root", str(out_root)])
+    assert rc == 0, "retry after a cleared ledger failure must succeed"
+    final = cutoff_dir / CLI.ARTIFACT_BASENAME
+    assert final.is_file()
+    assert not any(cutoff_dir.glob("*.tmp")), "staging file survived finalize"
+    rows = load_and_verify_ledger(out_root / CLI.LEDGER_BASENAME)
+    assert len(rows) == 1
+    art = json.loads(final.read_text())
+    assert rows[0]["artifact_content_sha256"] == art["content_sha256"], \
+        "ledger row does not bind the finalized artifact bytes' content sha"
+
+
+def test_cli_ledger_integrity_refusal_is_clean_exit_5(monkeypatch, tmp_path,
+                                                      world, capsys):
+    """A LedgerIntegrityError is an EXPECTED refusal, not a crash: clean
+    REFUSED-LEDGER JSON + exit 5, nothing final-named or staged left behind,
+    and the invariant is stated: no final-named artifact without its row."""
+    out_root, asof_str, cutoff_dir = _wire_fake_cli_surfaces(
+        monkeypatch, tmp_path, world)
+    real_append = CLI.append_to_artifact_ledger
+    calls = {"n": 0}
+
+    def _flaky(artifact, ledger_path):
+        if calls["n"] == 0:
+            calls["n"] += 1
+            raise LedgerIntegrityError("transient: simulated tampered ledger")
+        return real_append(artifact, ledger_path)
+    monkeypatch.setattr(CLI, "append_to_artifact_ledger", _flaky)
+
+    rc = CLI.main(["--asof", asof_str, "--out-root", str(out_root)])
+    out = capsys.readouterr().out
+    assert rc == 5
+    assert "REFUSED-LEDGER" in out
+    assert not (cutoff_dir / CLI.ARTIFACT_BASENAME).exists()
+    assert not any(cutoff_dir.glob("*.tmp"))
+
+    rc = CLI.main(["--asof", asof_str, "--out-root", str(out_root)])
+    assert rc == 0, "retry after the transient refusal must succeed"
+    assert (cutoff_dir / CLI.ARTIFACT_BASENAME).is_file()
+    assert len(load_and_verify_ledger(out_root / CLI.LEDGER_BASENAME)) == 1
 
 
 @pytest.mark.skipif(not LIVE, reason=OFF_MACHINE)

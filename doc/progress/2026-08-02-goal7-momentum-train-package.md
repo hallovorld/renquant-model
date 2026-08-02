@@ -63,18 +63,22 @@ EVIDENCE:
                  surface touched; live reads READ-ONLY (ohlcv parquets, panel
                  ticker/date columns, ticker_sectors.json); CLI writes only
                  under --out-root
-  tests:         new file 32 passed (22 original + 10 added in this codex-
-                 review fix pass: params-domain-violation ×9 — 7 parametrized
-                 out-of-domain cases + min_obs>window + unsupported
-                 params_version — and ledger-refusal-leaves-no-artifact ×1);
-                 full suite 1463 passed, 0 failed `[VERIFIED — make test
-                 2026-08-02, 60.45s]`; pre-slice baseline 1431 `[DERIVED —
-                 1463 − 32 new]`
+  tests:         new file 33 passed (22 original + 11 added across this
+                 codex-review fix pass: params-domain-violation ×9 — 7
+                 parametrized out-of-domain cases + min_obs>window +
+                 unsupported params_version — ledger-refusal-leaves-no-
+                 artifact ×1, and ledger-integrity-refusal-clean-exit-5 ×1,
+                 the latter also proving a transient refusal's retry
+                 succeeds end-to-end once cleared); full suite 1464 passed,
+                 0 failed `[VERIFIED — make test 2026-08-02, 61.78s]`;
+                 pre-slice baseline 1431 `[DERIVED — 1464 − 33 new]`
 
-NEXT: codex re-review of this commit's three fixes (ledger write-ordering —
-  atomic tmp-file + rename after ledger success, so a ledger refusal never
-  orphans an artifact; v0 param-domain validation, fail-closed for any
-  non-"v0" params_version; and this progress doc). On APPROVED, this can
-  merge — the #195 design gate is already satisfied (operator comment: #195
-  merged at `8124fd34`, empty reconciliation delta). Slice 3 (TEST/scoring
-  harness) is next in the pipeline build order.
+NEXT: codex re-review of this commit's fixes (ledger write-ordering — atomic
+  staging-file + rename after ledger success, so a ledger refusal never
+  orphans an artifact; a `LedgerIntegrityError` now returns a clean
+  `REFUSED-LEDGER` exit 5 distinct from an unexpected-exception path; v0
+  param-domain validation, fail-closed for any non-"v0" params_version; and
+  this progress doc). On APPROVED, this can merge — the #195 design gate is
+  already satisfied (operator comment: #195 merged at `8124fd34`, empty
+  reconciliation delta). Slice 3 (TEST/scoring harness) is next in the
+  pipeline build order.

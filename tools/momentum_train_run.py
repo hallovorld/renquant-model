@@ -7,7 +7,9 @@ per-file digest RECORDING (not pinning — design §1); writes ONLY under
 machine landing is slice 5 and is operator-gated (design build order).
 
 Exit codes: 0 ok (incl. --dry-run); 2 usage; 3 surfaces missing / refused;
-4 artifact for this cutoff already exists (append-only: never overwritten).
+4 artifact for this cutoff already exists (append-only: never overwritten);
+5 the ledger refused the append (NO final-named artifact is left behind, so a
+retry is safe once the cause clears).
 """
 from __future__ import annotations
 
@@ -23,8 +25,9 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "src"))
 
 from renquant_model_common.total_return import total_return_close  # noqa: E402
-from renquant_model_momentum import (append_to_artifact_ledger,  # noqa: E402
-                                     params_v0, train_momentum_artifact)
+from renquant_model_momentum import (LedgerIntegrityError,  # noqa: E402
+                                     append_to_artifact_ledger, params_v0,
+                                     train_momentum_artifact)
 
 RQ = Path("/Users/renhao/git/github/RenQuant")
 PANEL_PATH = RQ / "data/alpha158_291_fundamental_dataset.parquet"
@@ -173,16 +176,40 @@ def main(argv=None) -> int:
     artifact = train_momentum_artifact(asof, universe, params_v0(),
                                        readers=readers)
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    # ATOMIC FINALIZE (codex on #196). Invariant CHOSEN: a final-named
+    # artifact NEVER exists without its ledger row. Order: (1) full bytes to a
+    # staging name in the SAME directory; (2) ledger append — the row binds
+    # content_sha256, which is computed over the artifact's canonical JSON
+    # body, so it is identical for staging and final bytes and the binding is
+    # unaffected by the rename; (3) os.rename (Path.replace) staging -> final,
+    # atomic on POSIX. The two failure modes:
+    #   - ledger REFUSES at (2): staging is unlinked, NOTHING final-named
+    #     remains -> a retry succeeds once the cause clears (regression-tested);
+    #   - crash between (2) and (3): a ledger row points at a missing final
+    #     artifact -> the retry is REFUSED LOUDLY by the duplicate
+    #     (cutoff_date, params_version) check. Both invariant halves cannot
+    #     hold under a crash there, so we prefer artifact-missing-with-row
+    #     refused loudly over artifact-present-without-row silently unaudited.
     staging_path = artifact_path.with_suffix(artifact_path.suffix + ".tmp")
     staging_path.write_text(
         json.dumps(artifact, indent=2, sort_keys=True, allow_nan=False) + "\n",
         encoding="utf-8")
     try:
         row = append_to_artifact_ledger(artifact, ledger_path)
+    except LedgerIntegrityError as exc:
+        # Clean refusal: nothing final-named remains; retry-safe (exit 5).
+        staging_path.unlink(missing_ok=True)
+        print(json.dumps({
+            "status": "REFUSED-LEDGER",
+            "why": str(exc),
+            "cutoff_date": artifact["cutoff_date"],
+            "artifact_final_written": False,
+            "retry_safe_after_cause_clears": True,
+        }, indent=2))
+        return 5
     except Exception:
-        # Ledger refused (tampered/duplicate/stale-sha) — leave NO artifact
-        # file behind so a retry does not hit REFUSED-ARTIFACT-EXISTS for a
-        # cutoff that was never actually ledgered.
+        # Unexpected failure mid-append: same cleanup so a retry does not hit
+        # REFUSED-ARTIFACT-EXISTS for a cutoff that was never ledgered.
         staging_path.unlink(missing_ok=True)
         raise
     staging_path.replace(artifact_path)
