@@ -218,75 +218,119 @@ def test_recipe_fingerprint_ignores_execution_only_params():
 
 def test_batch_refuses_without_a_golden_report(tmp_path):
     with pytest.raises(ValueError, match="run --golden first"):
-        T.require_golden_pass(tmp_path)
+        T.require_golden_pass(tmp_path / "golden_report.json")
 
 
 def test_batch_refuses_a_FAILED_golden(tmp_path):
     import json
-    (tmp_path / "golden_report.json").write_text(json.dumps(
+    p = tmp_path / "golden_report.json"
+    p.write_text(json.dumps(
         {"parity_pass": False, "prediction_parity_max_abs_delta": 0.649}))
     with pytest.raises(ValueError, match="golden parity FAILED"):
-        T.require_golden_pass(tmp_path)
+        T.require_golden_pass(p)
 
 
 def test_batch_admits_only_a_PASSED_golden(tmp_path):
     import json
-    (tmp_path / "golden_report.json").write_text(json.dumps(
+    p = tmp_path / "golden_report.json"
+    p.write_text(json.dumps(
         {"parity_pass": True, "prediction_parity_max_abs_delta": 3e-7}))
-    assert T.require_golden_pass(tmp_path)["parity_pass"] is True
+    assert T.require_golden_pass(p)["parity_pass"] is True
 
 
 # ── vintage-seam mode (operator decision 2026-08-02) ─────────────────────────
+
+DIGESTS = {"panel_sha256": "p" * 64, "fundamentals_sha256": "f" * 64,
+           "alpha_stats_sha256": "a" * 64, "wf_manifest_sha256": "m" * 64,
+           "strategy_config_sha256": "s" * 64, "spy_ohlcv_sha256": "y" * 64,
+           "gmm_artifact_sha256": "g" * 64}
+
 
 def _failed_report() -> dict:
     return {"parity_pass": False,
             "prediction_parity_max_abs_delta": 0.6489841341972351,
             "feature_means_max_abs_delta": 0.007131227576620575,
-            "feature_stds_max_abs_delta": 0.009450348912744377}
+            "feature_stds_max_abs_delta": 0.009450348912744377,
+            "input_digests": {"panel": "/x/panel.parquet", **DIGESTS}}
+
+
+def _write(tmp_path, payload) -> "pathlib.Path":
+    import json
+    p = tmp_path / "golden_report.json"
+    p.write_text(json.dumps(payload))
+    return p
 
 
 def test_seam_flag_without_any_golden_refuses(tmp_path):
     with pytest.raises(ValueError, match="run --golden first"):
-        T.resolve_vintage_seam(tmp_path, accept_vintage_seam=True)
+        T.resolve_vintage_seam(tmp_path / "golden_report.json", True, DIGESTS)
 
 
 def test_seam_flag_over_a_PASSED_golden_refuses(tmp_path):
     """A passed golden means no seam exists — declaring one would be a false
     record, so the flag must refuse rather than write it."""
-    import json
-    (tmp_path / "golden_report.json").write_text(json.dumps(
-        {"parity_pass": True, "prediction_parity_max_abs_delta": 3e-7}))
+    p = _write(tmp_path, {"parity_pass": True,
+                          "prediction_parity_max_abs_delta": 3e-7})
     with pytest.raises(ValueError, match="no seam exists"):
-        T.resolve_vintage_seam(tmp_path, accept_vintage_seam=True)
+        T.resolve_vintage_seam(p, True, DIGESTS)
 
 
-def test_seam_flag_over_a_FAILED_golden_returns_the_evidence(tmp_path):
-    import json
-    (tmp_path / "golden_report.json").write_text(json.dumps(_failed_report()))
-    report = T.resolve_vintage_seam(tmp_path, accept_vintage_seam=True)
+def test_seam_flag_over_a_BOUND_FAILED_golden_returns_the_evidence(tmp_path):
+    """The true report + matching input digests -> admitted, and the returned
+    file sha binds the exact evidence bytes."""
+    import hashlib as h
+    p = _write(tmp_path, _failed_report())
+    report, sha = T.resolve_vintage_seam(p, True, DIGESTS)
     assert report["parity_pass"] is False
     assert report["prediction_parity_max_abs_delta"] == 0.6489841341972351
+    assert sha == h.sha256(p.read_bytes()).hexdigest()
+
+
+def test_seam_admission_refuses_a_STALE_report_naming_the_digest(tmp_path):
+    """Inputs rebuilt since the golden ran: one digest diverges -> refused,
+    and the message NAMES the diverging digest."""
+    p = _write(tmp_path, _failed_report())
+    current = dict(DIGESTS, panel_sha256="q" * 64)
+    with pytest.raises(ValueError, match="STALE.*'panel_sha256'"):
+        T.resolve_vintage_seam(p, True, current)
+
+
+def test_seam_admission_refuses_a_SUBSTITUTED_report(tmp_path):
+    """A different failed report recorded against different bytes: its digest
+    set does not match the pending batch -> refused (digest binding); a report
+    with no digests at all is unusable."""
+    stale = _failed_report()
+    stale["input_digests"] = {"panel_sha256": "z" * 64}  # different vintage
+    p = _write(tmp_path, stale)
+    with pytest.raises(ValueError, match="panel_sha256|lacks input digest"):
+        T.resolve_vintage_seam(p, True, DIGESTS)
+    p2 = _write(tmp_path, {"parity_pass": False,
+                           "prediction_parity_max_abs_delta": 0.1})
+    with pytest.raises(ValueError, match="no input\\s+digests|no input digests"):
+        T.resolve_vintage_seam(p2, True, DIGESTS)
 
 
 def test_without_the_flag_batch_admission_is_UNCHANGED(tmp_path):
     """No flag -> the golden-pass gate exactly as before the seam decision."""
-    import json
-    (tmp_path / "golden_report.json").write_text(json.dumps(_failed_report()))
+    p = _write(tmp_path, _failed_report())
     with pytest.raises(ValueError, match="golden parity FAILED"):
-        T.resolve_vintage_seam(tmp_path, accept_vintage_seam=False)
-    (tmp_path / "golden_report.json").write_text(json.dumps(
-        {"parity_pass": True, "prediction_parity_max_abs_delta": 3e-7}))
-    assert T.resolve_vintage_seam(tmp_path, accept_vintage_seam=False) is None
+        T.resolve_vintage_seam(p, False, DIGESTS)
+    p = _write(tmp_path, {"parity_pass": True,
+                          "prediction_parity_max_abs_delta": 3e-7})
+    assert T.resolve_vintage_seam(p, False, DIGESTS) is None
 
 
 def test_seam_block_carries_the_required_fields_from_the_report():
     inputs = [{"file": "/x/sec_fundamentals_daily.parquet",
                "sha256_at_read_time": "ab" * 32,
                "mtime_date_measured": "2026-08-01"}]
-    seam = T.build_vintage_seam(_failed_report(), inputs)
+    seam = T.build_vintage_seam(_failed_report(), inputs,
+                                evidence_path="/runs/run-001/golden_report.json",
+                                evidence_sha256="cd" * 32)
     # the field set the seam decision requires, exactly
     assert seam["input_vintage"] == "2026-08-01-rebuild"
-    assert seam["evidence_golden_report"] == "golden_report.json"
+    assert seam["evidence_golden_report"] == "/runs/run-001/golden_report.json"
+    assert seam["evidence_golden_report_sha256"] == "cd" * 32
     assert seam["golden_parity_max_abs_delta"] == 0.6489841341972351
     assert seam["drift"]["feature_means_max_abs_delta"] == 0.007131227576620575
     assert seam["drift"]["feature_stds_max_abs_delta"] == 0.009450348912744377
@@ -301,6 +345,76 @@ def test_seam_block_carries_the_required_fields_from_the_report():
 def test_seam_block_refuses_a_report_missing_the_evidence_numbers():
     with pytest.raises(ValueError, match="seam-evidence fields"):
         T.build_vintage_seam({"parity_pass": False}, [])
+
+
+# ── atomic predeclared run dirs (goal7_momentum_run.py claim pattern) ─────────
+
+def test_claim_creates_the_run_dir_with_an_in_progress_claim(tmp_path):
+    import json
+    run_dir = T.claim_run_dir(tmp_path, "001", "golden")
+    assert run_dir == (tmp_path / "run-001").resolve()
+    claim = json.loads((run_dir / "RUN_CLAIM.json").read_text())
+    assert claim["status"] == "in-progress" and claim["mode"] == "golden"
+
+
+def test_claim_refuses_an_existing_run_dir(tmp_path):
+    (tmp_path / "run-001").mkdir(parents=True)
+    with pytest.raises(ValueError, match="already exists"):
+        T.claim_run_dir(tmp_path, "001", "golden")
+
+
+def test_claim_refuses_an_existing_claim_ie_a_crashed_run(tmp_path):
+    """A crashed run leaves its claim in force: refuse-and-investigate."""
+    T.claim_run_dir(tmp_path, "001", "extension")  # claim taken, never sealed
+    with pytest.raises(ValueError, match="already exists.*in-progress"):
+        T.claim_run_dir(tmp_path, "001", "extension")
+
+
+def test_repeat_refusal_after_a_COMPLETED_sealed_run(tmp_path):
+    """A completed run seals its outputs; rerunning the same run id refuses —
+    a sealed corpus is superseded by a NEW run id, never overwritten."""
+    import os
+    run_dir = T.claim_run_dir(tmp_path, "002", "golden")
+    (run_dir / "golden_report.json").write_text("{}")
+    T.seal_run(run_dir, {"outcome": "golden", "parity_pass": False})
+    with pytest.raises(ValueError, match="already exists.*consumed"):
+        T.claim_run_dir(tmp_path, "002", "golden")
+    # ... and the sealed outputs are read-only (0444)
+    mode = os.stat(run_dir / "golden_report.json").st_mode & 0o777
+    assert mode == 0o444
+    assert (os.stat(run_dir / "RUN_CLAIM.json").st_mode & 0o777) == 0o444
+
+
+def test_writers_refuse_an_UNCLAIMED_run_dir_so_no_write_precedes_the_claim(
+        tmp_path, monkeypatch):
+    """The 'no write before the claim' guarantee at runtime: every writing mode
+    asserts an in-progress claim BEFORE touching anything. With all heavy
+    readers/writers/trainers monkeypatched to raise, an unclaimed run dir must
+    be refused before ANY of them is reached."""
+    def _boom(*a, **k):
+        raise AssertionError("writer/trainer invoked before the run claim")
+    for fn in ("_load_ref_artifact", "_existing_window_rows", "_panel_dates",
+               "_train_window", "sha256_file"):
+        monkeypatch.setattr(T, fn, _boom, raising=True)
+    with pytest.raises(ValueError, match="RUN_CLAIM"):
+        T.run_extension(tmp_path / "run-009", {"retrains": []}, "2019-01-02",
+                        250, DIGESTS, plan_only=False)
+    with pytest.raises(ValueError, match="RUN_CLAIM"):
+        T.run_golden(tmp_path / "run-009", {"retrains": []}, DIGESTS)
+
+
+def test_writers_refuse_a_SEALED_run_dir(tmp_path, monkeypatch):
+    """A consumed claim is terminal: even with the dir present, writers refuse."""
+    def _boom(*a, **k):
+        raise AssertionError("writer/trainer invoked on a sealed run")
+    run_dir = T.claim_run_dir(tmp_path, "003", "extension")
+    T.seal_run(run_dir, {"outcome": "extension"})
+    for fn in ("_load_ref_artifact", "_existing_window_rows", "_panel_dates",
+               "_train_window", "sha256_file"):
+        monkeypatch.setattr(T, fn, _boom, raising=True)
+    with pytest.raises(ValueError, match="not in-progress"):
+        T.run_extension(run_dir, {"retrains": []}, "2019-01-02",
+                        250, DIGESTS, plan_only=False)
 
 
 # ── out-dir refusal ──────────────────────────────────────────────────────────

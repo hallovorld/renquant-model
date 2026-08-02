@@ -68,31 +68,54 @@ SAFETY
 ------
 READ-ONLY over /Users/renhao/git/github/RenQuant (sys.dont_write_bytecode is
 set before any umbrella import so no __pycache__ is ever written there);
-refuses any --out-dir that resolves inside the umbrella. Writes only under
---out-dir. Every input is digest-recorded at read time.
+refuses any output root that resolves inside the umbrella. Every input is
+digest-recorded at read time.
+
+ATOMIC PREDECLARED RUN DIRECTORIES (tools/goal7_momentum_run.py pattern)
+------------------------------------------------------------------------
+Every writing invocation (--golden or the batch) runs inside its OWN
+``run-<NNN>`` subdir of the durable ``--out-root`` (default
+``~/renquant-data-store/goal6-jobb-gbdt-depth/``), claimed ATOMICALLY
+(fresh mkdir + O_CREAT|O_EXCL ``RUN_CLAIM.json``) BEFORE any training or
+output write, and sealed read-only (0444, claim included) at finish — so a
+rerun can never overwrite the failed golden evidence or a completed corpus;
+it must claim a NEW run id. An existing run dir — claimed, completed, or
+crashed — is REFUSED. A claim left behind by a crash stays IN FORCE
+(refuse-and-investigate beats silent rerun); removing a stale run dir is a
+manual operator act that MUST leave its own durable record (a progress-doc
+or memory entry naming what was removed and why).
 
 MODES
 -----
-  --plan-only   compute + print the backward ladder, no training;
-  --golden      reproduce the EARLIEST EXISTING window (2023-10-02) from
-                scratch and compare booster prediction parity on its OOS
-                dates vs the committed artifact's booster (target max|delta|
-                < 1e-6); the ONLY training this mode runs is that single fit;
-  (default)     full backward batch: train every new window, persist
-                artifacts + the extension lineage manifest. REFUSES to run
-                unless a PASSED golden_report.json exists under --out-dir
-                (mixed-vintage lineages must not acquire a root silently) OR
-                the operator declares the seam explicitly (next flag);
+  --plan-only   compute + PRINT the backward ladder; no training, no writes;
+  --golden      (requires --run-id) reproduce the EARLIEST EXISTING window
+                (2023-10-02) from scratch and compare booster prediction
+                parity on its OOS dates vs the committed artifact's booster
+                (target max|delta| < 1e-6); the ONLY training this mode runs
+                is that single fit. The report — pass or FAIL — is sealed in
+                the claimed run dir (a failed report is the seam's evidence);
+  (default)     (requires --run-id + --evidence-golden) full backward batch:
+                train every new window, persist artifacts + the extension
+                lineage manifest into the claimed run dir. REFUSES unless
+                the golden evidence PASSED (mixed-vintage lineages must not
+                acquire a root silently) OR the operator declares the seam
+                explicitly (next flag);
   --accept-vintage-seam
                 batch admission over a FAILED golden: the operator DECISION
                 (2026-08-02) to extend on the current input vintage with the
                 June-vs-Aug drift recorded first-class instead of silent.
-                REQUIRES the FAILED golden_report.json as the seam's measured
-                evidence and REFUSES if the golden PASSED (a passed golden
-                means no seam exists — the flag would then document a lie).
-                Writes a ``vintage_seam`` block into the extension manifest
-                and stamps every new window row ``input_vintage`` so no
-                consumer can pool across the seam without seeing it.
+                REQUIRES the FAILED golden report as the seam's measured
+                evidence, BOUND to the pending batch: every lineage-relevant
+                input digest the report recorded must equal the batch's
+                freshly-computed digest (a stale or substituted report is
+                refused with the diverging digest NAMED), and the exact
+                evidence bytes are pinned into the seam block by content
+                sha256 (``evidence_golden_report_sha256``). REFUSES if the
+                golden PASSED (a passed golden means no seam exists — the
+                flag would then document a lie). Writes a ``vintage_seam``
+                block into the extension manifest and stamps every new
+                window row ``input_vintage`` so no consumer can pool across
+                the seam without seeing it.
 
 GOLDEN VERDICT (measured 2026-08-02): parity FAILED, max|delta| = 0.649 over
 4380 OOS rows / 15 dates. Localization (measured, not assumed): panel slice
@@ -121,6 +144,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import sys
 import time
 import uuid
@@ -137,8 +161,11 @@ STRATEGY_DIR = RQ / "backtesting" / "renquant_104"
 WF_MANIFEST = (STRATEGY_DIR / "artifacts" / "sim" /
                "walkforward_manifest_gbdt_prod_recipe_v2.calibrated.json")
 STRATEGY_CONFIG = GITHUB / "renquant-strategy-104" / "configs" / "strategy_config.json"
-DEFAULT_OUT = Path("/private/tmp/claude-502/-Users-renhao-git-github-renquant-orchestrator/"
-                   "428feb92-8ee7-4b4f-afed-1e4fa82ef367/scratchpad/jobb-gbdt-depth")
+# Durable predeclared output root (NOT a session scratch path): every writing
+# invocation claims its own run-<NNN> subdir atomically and seals it at finish,
+# so a rerun can never overwrite the failed golden evidence or a completed
+# corpus (same pattern as tools/goal7_momentum_run.py's execution claim).
+DEFAULT_OUT_ROOT = Path.home() / "renquant-data-store" / "goal6-jobb-gbdt-depth"
 DEFAULT_TARGET_EARLIEST = "2019-01-02"
 SIDE_LABEL = "wf_depth_ext_jobb"
 GOLDEN_PARITY_TARGET = 1e-6
@@ -232,11 +259,84 @@ def resolve_out_dir(raw: str | Path) -> Path:
     rq = RQ.resolve()
     if out == rq or rq in out.parents:
         raise ValueError(
-            f"--out-dir {out} resolves inside the read-only umbrella {rq}; refusing")
+            f"--out-root {out} resolves inside the read-only umbrella {rq}; refusing")
     return out
 
 
-def require_golden_pass(out_dir: Path) -> dict:
+# ── atomic predeclared run directories (tools/goal7_momentum_run.py pattern) ─
+# Every writing invocation (--golden or the batch) runs inside its own
+# ``run-<NNN>`` subdir of the durable out-root. The dir is claimed ATOMICALLY
+# (mkdir with no exist_ok + O_CREAT|O_EXCL RUN_CLAIM.json) BEFORE any training
+# or output write; completed outputs are sealed read-only (0444) at finish. A
+# claim left behind by a crash stays IN FORCE: the next invocation refuses the
+# run id (refuse-and-investigate beats silent rerun), and removing a stale
+# claim/run dir is a manual operator act that MUST leave its own durable
+# record (a progress-doc or memory entry naming what was removed and why).
+
+def _utc_now() -> str:
+    import datetime as _dt  # noqa: PLC0415
+    return _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds")
+
+
+def claim_run_dir(out_root: Path, run_id: str, mode: str) -> Path:
+    """Atomically claim ``<out_root>/run-<run_id>``; refuse if it exists at all
+    (claimed, completed, or crashed). This is the ONLY function that may create
+    a run directory, and it runs BEFORE any training or output write."""
+    run_dir = resolve_out_dir(Path(out_root) / f"run-{run_id}")
+    if run_dir.exists():
+        claim = run_dir / "RUN_CLAIM.json"
+        state = "no claim file (unknown writer)"
+        if claim.is_file():
+            try:
+                state = json.loads(claim.read_text()).get("status", "unreadable")
+            except (OSError, json.JSONDecodeError):
+                state = "unreadable claim"
+        raise ValueError(
+            f"run dir {run_dir} already exists (claim status: {state}) — "
+            "refusing to overwrite a claimed/completed/crashed run; pick a new "
+            "run id, or investigate. Manual removal of a stale run dir must "
+            "leave a durable record.")
+    run_dir.parent.mkdir(parents=True, exist_ok=True)
+    run_dir.mkdir()  # atomic; races fail here with FileExistsError
+    fd = os.open(run_dir / "RUN_CLAIM.json",
+                 os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        json.dump({"claimed_at": _utc_now(), "pid": os.getpid(), "mode": mode,
+                   "status": "in-progress"}, fh, indent=2)
+    return run_dir
+
+
+def assert_claimed(run_dir: Path) -> None:
+    """Writers may only run inside an in-progress claimed run dir — this is the
+    runtime tripwire behind 'no write happens before the claim'."""
+    claim = Path(run_dir) / "RUN_CLAIM.json"
+    if not claim.is_file():
+        raise ValueError(
+            f"run dir {run_dir} carries no RUN_CLAIM.json — outputs may only "
+            "be written inside an atomically claimed run dir (claim_run_dir)")
+    status = json.loads(claim.read_text()).get("status")
+    if status != "in-progress":
+        raise ValueError(
+            f"run claim in {run_dir} has status {status!r} (not in-progress) — "
+            "a completed run is sealed and never rewritten")
+
+
+def seal_run(run_dir: Path, summary: dict) -> None:
+    """Finish a claimed run: stamp the claim consumed, then seal EVERY file in
+    the run dir read-only (0444) — golden reports, window artifacts, manifests
+    and the claim itself. A sealed run can only be superseded by a NEW run id,
+    never edited."""
+    run_dir = Path(run_dir)
+    claim_path = run_dir / "RUN_CLAIM.json"
+    claim = json.loads(claim_path.read_text())
+    claim.update(status="consumed", finished_at=_utc_now(), **summary)
+    claim_path.write_text(json.dumps(claim, indent=2))
+    for p in sorted(run_dir.rglob("*")):
+        if p.is_file():
+            os.chmod(p, 0o444)
+
+
+def require_golden_pass(report_path: Path) -> dict:
     """The batch gate: training the backward windows is only meaningful if the
     golden reproduction of the earliest EXISTING window passed prediction
     parity — otherwise the new windows are trained on a DIFFERENT input
@@ -245,11 +345,11 @@ def require_golden_pass(out_dir: Path) -> dict:
     (max|delta|=0.649) because data/sec_fundamentals_daily.parquet was rebuilt
     on 2026-08-01 with revised historical values (fund robust-z drift up to
     9.45e-3), so this gate REFUSES the batch until parity passes or the
-    vintage decision is made explicitly upstream."""
-    report_path = Path(out_dir) / "golden_report.json"
+    vintage seam is declared explicitly (``--accept-vintage-seam``)."""
+    report_path = Path(report_path)
     if not report_path.is_file():
         raise ValueError(
-            f"no golden_report.json under {out_dir} — run --golden first; the "
+            f"no golden report at {report_path} — run --golden first; the "
             "batch refuses to train windows without a parity-verified recipe path")
     report = json.loads(report_path.read_text())
     if not report.get("parity_pass"):
@@ -279,36 +379,71 @@ VINTAGE_SEAM_RATIONALE = (
     "instead of silent. (Operator decision, 2026-08-02.)")
 
 
-def resolve_vintage_seam(out_dir: Path, accept_vintage_seam: bool) -> dict | None:
+def resolve_vintage_seam(evidence_path: Path, accept_vintage_seam: bool,
+                         current_input_digests: dict) -> tuple[dict, str] | None:
     """Batch admission. Two lawful states, nothing in between:
 
-    * no flag  -> the golden must have PASSED (``require_golden_pass``);
-    * the flag -> the golden must exist and have FAILED — the failed report IS
-      the seam's measured evidence. A PASSED golden under the flag REFUSES:
-      no seam exists, so declaring one would be a false record.
+    * no flag  -> the golden at ``evidence_path`` must have PASSED
+      (``require_golden_pass``);
+    * the flag -> the golden must exist, have FAILED, and be BOUND to the
+      pending batch: EVERY lineage-relevant input digest the report recorded
+      (the ``*_sha256`` set golden mode writes) must equal the batch's
+      freshly-computed digest for the same input. A stale report (inputs
+      rebuilt since the golden ran) or a substituted report (recorded against
+      different bytes) is refused with the diverging digest NAMED — a failed
+      golden admits ONLY the vintage it actually measured.
 
-    Returns the (failed) golden report dict in seam mode, else None."""
+    Returns ``(report, report_file_sha256)`` in seam mode (the sha binds the
+    exact evidence bytes into the seam block), else None."""
+    evidence_path = Path(evidence_path)
     if not accept_vintage_seam:
-        require_golden_pass(out_dir)
+        require_golden_pass(evidence_path)
         return None
-    report_path = Path(out_dir) / "golden_report.json"
-    if not report_path.is_file():
+    if not evidence_path.is_file():
         raise ValueError(
-            f"--accept-vintage-seam without a golden_report.json under {out_dir} "
+            f"--accept-vintage-seam without a golden report at {evidence_path} "
             "— the seam's evidence IS the failed golden; run --golden first")
-    report = json.loads(report_path.read_text())
+    raw = evidence_path.read_bytes()
+    report_sha = hashlib.sha256(raw).hexdigest()
+    report = json.loads(raw)
     if report.get("parity_pass"):
         raise ValueError(
             "--accept-vintage-seam over a PASSED golden (max|delta|="
             f"{report.get('prediction_parity_max_abs_delta')}) — a passed "
             "golden means no seam exists; the flag would document a seam that "
             "is not there. Refusing.")
-    return report
+    evidence_digests = report.get("input_digests") or {}
+    ev_keys = {k for k in evidence_digests if k.endswith("_sha256")}
+    cur_keys = {k for k in (current_input_digests or {}) if k.endswith("_sha256")}
+    if not ev_keys:
+        raise ValueError(
+            "seam evidence unusable: the golden report carries no input "
+            "digests — it cannot be bound to the pending batch's inputs")
+    for k in sorted(ev_keys | cur_keys):
+        if k not in ev_keys:
+            raise ValueError(
+                f"seam evidence unbound: the golden report lacks input digest "
+                f"{k!r} that the pending batch recorded — refusing")
+        if k not in cur_keys:
+            raise ValueError(
+                f"seam evidence unbound: the pending batch recorded no input "
+                f"digest {k!r} that the golden report carries — refusing")
+        if evidence_digests[k] != current_input_digests[k]:
+            raise ValueError(
+                f"seam evidence STALE: input digest {k!r} diverged between the "
+                f"golden report ({str(evidence_digests[k])[:16]}…) and the "
+                f"pending batch ({str(current_input_digests[k])[:16]}…) — the "
+                "inputs changed since the golden ran; re-run --golden on the "
+                "current vintage before declaring the seam")
+    return report, report_sha
 
 
-def build_vintage_seam(report: dict, rebuilt_inputs: list[dict]) -> dict:
+def build_vintage_seam(report: dict, rebuilt_inputs: list[dict],
+                       evidence_path: str = "golden_report.json",
+                       evidence_sha256: str | None = None) -> dict:
     """The ``vintage_seam`` manifest block: every number carried FROM the
-    failed golden report (the measurement), never restated by hand."""
+    failed golden report (the measurement), never restated by hand; the exact
+    evidence bytes bound by content sha256."""
     required = ("prediction_parity_max_abs_delta",
                 "feature_means_max_abs_delta", "feature_stds_max_abs_delta")
     missing = [k for k in required if k not in report]
@@ -318,7 +453,8 @@ def build_vintage_seam(report: dict, rebuilt_inputs: list[dict]) -> dict:
         "input_vintage": VINTAGE_SEAM_TAG,
         "decision": VINTAGE_SEAM_DECISION,
         "decision_rationale": VINTAGE_SEAM_RATIONALE,
-        "evidence_golden_report": "golden_report.json",
+        "evidence_golden_report": str(evidence_path),
+        "evidence_golden_report_sha256": evidence_sha256,
         "golden_parity_max_abs_delta": float(report["prediction_parity_max_abs_delta"]),
         "drift": {
             "feature_means_max_abs_delta": float(report["feature_means_max_abs_delta"]),
@@ -644,7 +780,10 @@ def _score_with_artifact(art: dict, frame: pd.DataFrame) -> np.ndarray:
 
 def run_golden(out_dir: Path, manifest: dict, input_digests: dict) -> int:
     """Reproduce the EARLIEST EXISTING window from scratch; compare booster
-    prediction parity on that window's OOS dates vs the committed artifact."""
+    prediction parity on that window's OOS dates vs the committed artifact.
+    Runs ONLY inside an atomically claimed run dir; the report — pass or fail
+    (a failed report is the seam's evidence) — is sealed read-only at finish."""
+    assert_claimed(out_dir)
     ref, ref_path, ref_sha = _load_ref_artifact(manifest)
     cuts = validate_ladder([r["cutoff_date"] for r in manifest["retrains"]])
     cut, nxt = pd.Timestamp(cuts[0]), pd.Timestamp(cuts[1])
@@ -696,12 +835,16 @@ def run_golden(out_dir: Path, manifest: dict, input_digests: dict) -> int:
         "timings": timings,
         "input_digests": input_digests,
     }
-    out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "golden_report.json").write_text(json.dumps(report, indent=2))
+    report_path = out_dir / "golden_report.json"
+    report_path.write_text(json.dumps(report, indent=2))
+    seal_run(out_dir, {"outcome": "golden",
+                       "parity_pass": report["parity_pass"],
+                       "golden_report_sha256": sha256_file(report_path)})
     print(json.dumps(report, indent=2), flush=True)
     if not report["parity_pass"]:
         print(f"[GOLDEN FAIL] max|delta|={max_delta} >= {GOLDEN_PARITY_TARGET} "
-              "— NOT rationalizing; stopping.", flush=True)
+              "— NOT rationalizing; stopping. Evidence sealed at "
+              f"{report_path}", flush=True)
         return 1
     print(f"[GOLDEN OK] max|delta|={max_delta} over {len(oos)} rows / "
           f"{len(window)} dates; fit {timings['fit_s']}s", flush=True)
@@ -729,7 +872,15 @@ def _rebuilt_inputs(input_digests: dict) -> list[dict]:
 
 def run_extension(out_dir: Path, manifest: dict, target_earliest: str,
                   min_train_dates: int, input_digests: dict,
-                  plan_only: bool, accept_vintage_seam: bool = False) -> int:
+                  plan_only: bool, accept_vintage_seam: bool = False,
+                  evidence_golden: Path | None = None) -> int:
+    """Plan (read-only, prints) or train the backward batch. The batch runs
+    ONLY inside an atomically claimed run dir (``assert_claimed`` first, before
+    anything else), admits only via the golden evidence at ``evidence_golden``
+    (PASS without the seam flag; digest-bound FAIL with it), and is sealed
+    read-only at finish."""
+    if not plan_only:
+        assert_claimed(out_dir)
     t_start = time.time()
     ref, ref_path, _ = _load_ref_artifact(manifest)
     cuts = validate_ladder([r["cutoff_date"] for r in manifest["retrains"]])
@@ -768,16 +919,26 @@ def run_extension(out_dir: Path, manifest: dict, target_earliest: str,
         "truncated_infeasible": truncated,
     }
     if plan_only:
-        out_dir.mkdir(parents=True, exist_ok=True)
-        (out_dir / "extension_plan.json").write_text(json.dumps(plan, indent=2))
+        # read-only preview: PRINTS the plan, writes nothing (files exist only
+        # inside claimed, sealed run dirs).
         print(json.dumps(plan, indent=2), flush=True)
         return 0
 
     # batch admission: golden PASS, or an explicitly declared seam over a
-    # golden FAIL — nothing in between (resolve_vintage_seam refuses the rest).
-    seam_report = resolve_vintage_seam(out_dir, accept_vintage_seam)
-    seam = (build_vintage_seam(seam_report, _rebuilt_inputs(input_digests))
-            if seam_report is not None else None)
+    # digest-BOUND golden FAIL — nothing in between (resolve_vintage_seam
+    # refuses the rest, naming any diverging input digest).
+    if evidence_golden is None:
+        raise ValueError(
+            "no golden evidence declared — pass --evidence-golden "
+            "<run-dir>/golden_report.json from a sealed --golden run")
+    bound = resolve_vintage_seam(evidence_golden, accept_vintage_seam,
+                                 input_digests)
+    seam = None
+    if bound is not None:
+        seam_report, seam_report_sha = bound
+        seam = build_vintage_seam(seam_report, _rebuilt_inputs(input_digests),
+                                  evidence_path=str(evidence_golden),
+                                  evidence_sha256=seam_report_sha)
     existing_rows = _existing_window_rows(manifest)
     recipe_id = recipe_fingerprint(ref)
     old_root = lineage_root(recipe_id, [r["artifact_sha256"] for r in existing_rows])
@@ -847,7 +1008,12 @@ def run_extension(out_dir: Path, manifest: dict, target_earliest: str,
         "reference_artifact": str(ref_path),
         "wall_seconds": round(time.time() - t_start, 1),
     }
-    (out_dir / "gbdt_depth_extension_manifest.json").write_text(json.dumps(ext, indent=2))
+    manifest_path = out_dir / "gbdt_depth_extension_manifest.json"
+    manifest_path.write_text(json.dumps(ext, indent=2))
+    seal_run(out_dir, {"outcome": "extension",
+                       "n_new_windows": len(new_rows),
+                       "new_lineage_root_sha": new_root,
+                       "manifest_sha256": sha256_file(manifest_path)})
     print(json.dumps({"old_lineage_root_sha": old_root,
                       "new_lineage_root_sha": new_root,
                       "n_new_windows": len(new_rows)}, indent=2), flush=True)
@@ -856,7 +1022,12 @@ def run_extension(out_dir: Path, manifest: dict, target_earliest: str,
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--out-dir", default=str(DEFAULT_OUT))
+    ap.add_argument("--out-root", default=str(DEFAULT_OUT_ROOT),
+                    help="durable run-dir root; each writing invocation claims "
+                         "its own run-<NNN> subdir and seals it at finish")
+    ap.add_argument("--run-id", default=None,
+                    help="predeclared run id NNN (required for --golden and "
+                         "the batch; refused if run-<NNN> already exists)")
     ap.add_argument("--target-earliest", default=DEFAULT_TARGET_EARLIEST)
     ap.add_argument("--min-train-dates", type=int, default=250,
                     help="refuse windows with fewer panel dates before their "
@@ -865,15 +1036,21 @@ def main(argv: list[str] | None = None) -> int:
                     help="reproduce the earliest EXISTING window and report "
                          "prediction parity; the only training this mode runs")
     ap.add_argument("--plan-only", action="store_true",
-                    help="compute + print the backward ladder; no training")
+                    help="compute + PRINT the backward ladder; no training, "
+                         "no writes")
     ap.add_argument("--accept-vintage-seam", action="store_true",
                     help="batch admission over a FAILED golden: record the "
                          "documented input-vintage seam (operator decision "
                          "2026-08-02) instead of requiring parity; refuses "
-                         "if the golden PASSED or is absent")
+                         "if the golden PASSED, is absent, or its recorded "
+                         "input digests diverge from the pending batch's")
+    ap.add_argument("--evidence-golden", default=None,
+                    help="path to the sealed golden_report.json from a prior "
+                         "--golden run; the batch's admission evidence "
+                         "(required for the batch)")
     args = ap.parse_args(argv)
 
-    out_dir = resolve_out_dir(args.out_dir)  # refuses anything inside RenQuant
+    out_root = resolve_out_dir(args.out_root)  # refuses anything inside RenQuant
     _bootstrap_heavy()
 
     # input digests, recorded AT READ TIME (before any load that uses them)
@@ -896,11 +1073,26 @@ def main(argv: list[str] | None = None) -> int:
     }
     manifest = json.loads(WF_MANIFEST.read_text())
 
+    if args.plan_only:
+        # read-only: no run dir, no claim, no writes.
+        return run_extension(out_root, manifest, args.target_earliest,
+                             args.min_train_dates, input_digests, True)
+
+    # every writing mode claims its predeclared run dir BEFORE any training
+    # or output write; the claim is the first and only dir creation.
+    if not args.run_id:
+        raise SystemExit("--run-id NNN is required for --golden and the batch "
+                         "(each run gets its own claimed, sealed run dir)")
+    mode = "golden" if args.golden else "extension"
+    run_dir = claim_run_dir(out_root, args.run_id, mode)
+
     if args.golden:
-        return run_golden(out_dir, manifest, input_digests)
-    return run_extension(out_dir, manifest, args.target_earliest,
-                         args.min_train_dates, input_digests, args.plan_only,
-                         accept_vintage_seam=args.accept_vintage_seam)
+        return run_golden(run_dir, manifest, input_digests)
+    return run_extension(run_dir, manifest, args.target_earliest,
+                         args.min_train_dates, input_digests, False,
+                         accept_vintage_seam=args.accept_vintage_seam,
+                         evidence_golden=(Path(args.evidence_golden)
+                                          if args.evidence_golden else None))
 
 
 if __name__ == "__main__":

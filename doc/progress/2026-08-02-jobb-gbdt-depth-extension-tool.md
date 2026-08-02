@@ -152,7 +152,7 @@ hard-asserts the produced gate contract against the reference window.
   0.4 s cached, regime replay 6.5 s). Implied batch: ≤ 82 × 14 s ≈ **19 min**
   upper bound (backward windows train on strictly less data); ~21–30 min for
   the spec's 90–130-fit range.
-* Tests: new file **29 passed**; full suite **1334 passed** (was 1305 before
+* Tests: new file **37 passed**; full suite **1342 passed** (was 1305 before
   this branch).
 
 ## Vintage-seam mode (`--accept-vintage-seam`, implements the decision above)
@@ -168,7 +168,9 @@ Batch admission has exactly two lawful states (`resolve_vintage_seam`):
 When admitted under the flag, the extension lineage manifest additionally
 carries a `vintage_seam` block (`build_vintage_seam`) with these fields:
 `input_vintage` ("2026-08-01-rebuild"), `decision`, `decision_rationale`,
-`evidence_golden_report`, `golden_parity_max_abs_delta` (0.649, carried FROM
+`evidence_golden_report` + `evidence_golden_report_sha256` (path + content sha
+of the exact evidence bytes; review round 1), `golden_parity_max_abs_delta`
+(0.649, carried FROM
 the report), `drift` (the report's `feature_means_max_abs_delta` 7.13e-3 →
 gross_profitability robust-z median, `feature_stds_max_abs_delta` 9.45e-3 →
 book_to_price robust-z scale, global_z max drift 1.8e-9, localization note),
@@ -182,10 +184,50 @@ without seeing it. Both roots are kept as before: `old_lineage_root_sha` (over
 the existing 43) and `new_lineage_root_sha` (full extended ladder), old root
 recomputable from the suffix.
 
+## Review round 1 (Codex on PR #185) — two gate-integrity fixes
+
+1. **Evidence binding.** `resolve_vintage_seam` no longer accepts any local
+   failed report: in seam mode it compares EVERY lineage-relevant input digest
+   the golden report recorded (the `*_sha256` set golden mode writes — panel,
+   fundamentals, alpha stats, WF manifest, strategy config, SPY OHLCV, GMM)
+   against the pending batch's freshly-computed digests, key-by-key, and
+   refuses on any divergence NAMING the digest ("seam evidence STALE: input
+   digest 'panel_sha256' diverged ..."). A report with no recorded digests is
+   unusable; a report missing a key (or the batch missing one) refuses. The
+   exact evidence bytes are bound into the seam block as
+   `evidence_golden_report_sha256` (file content sha256), alongside the
+   evidence path. A failed golden now admits ONLY the vintage it actually
+   measured.
+2. **Atomic predeclared run dirs** (the `tools/goal7_momentum_run.py` claim
+   pattern). Default out-root is now the durable
+   `~/renquant-data-store/goal6-jobb-gbdt-depth/`; every writing invocation
+   (`--golden` or the batch) requires a predeclared `--run-id NNN` and claims
+   `run-<NNN>` atomically (fresh `mkdir` + `O_CREAT|O_EXCL RUN_CLAIM.json`)
+   BEFORE any training or output write; `run_golden`/`run_extension` assert an
+   in-progress claim before touching anything (the runtime tripwire behind
+   "no write precedes the claim"); completed outputs — golden report, window
+   artifacts, extension manifest, the claim itself — are sealed read-only
+   (0444) at finish. An existing run dir (claimed, completed, or crashed)
+   refuses; a crashed claim stays in force (refuse-and-investigate), and
+   manual removal must leave its own durable record. `--plan-only` is now
+   PRINT-only (no writes outside claimed run dirs). The batch takes its
+   evidence via `--evidence-golden <run-dir>/golden_report.json` (path + sha
+   recorded in the seam block).
+
+New tests for both: stale-digest refusal naming the digest, substituted-report
+refusal, true-report admission with sha binding, claim/overwrite/repeat-after-
+completion refusals, seal-mode 0444 checks, and monkeypatched-writer proofs
+that an unclaimed or sealed run dir refuses before any writer/trainer runs.
+
 ## Not done / blocked
 
-* The 82-fit batch: NOT launched (per instruction; two golden-gate/seam paths
-  verified — the no-flag refusal end-to-end against the real failed golden, the
-  seam path by unit tests). Launching is now a single command:
-  `wf_gbdt_depth_extension.py --accept-vintage-seam` (~19 min measured upper
-  bound).
+* The 82-fit batch: NOT launched (per instruction; the no-flag refusal was
+  verified end-to-end against the real failed golden, the seam and claim paths
+  by unit tests). Launching is now:
+  `--golden --run-id NNN` (fresh evidence on the current vintage), then
+  `--run-id MMM --evidence-golden <run-NNN>/golden_report.json
+  --accept-vintage-seam` (~19 min measured upper bound). The digest binding
+  means the batch must run on the SAME input vintage as its golden evidence —
+  if the nightly data rebuild intervenes, the seam admission refuses and a
+  fresh `--golden` is required first (that refusal is the designed behavior,
+  not a bug).
