@@ -68,6 +68,7 @@ import pandas as pd
 import pyarrow.parquet as pq
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 import raw_input_manifest  # noqa: E402
 
 LIVE = Path("/Users/renhao/git/github/RenQuant")
@@ -128,28 +129,10 @@ def load_raw(t: str):
 
 
 # ------------------------------------------------------------ the adjustment --
-def total_return_close(close: pd.Series, dividend: pd.Series) -> pd.Series:
-    """TR[t] = P[t] / prod_{s>t} (1 + D[s]/P[s]).  See module docstring."""
-    p = close.to_numpy(dtype="float64")
-    d = dividend.reindex(close.index).fillna(0.0).to_numpy(dtype="float64")
-
-    if np.any(d < 0):
-        raise ValueError("negative dividend")
-    bad = (d > 0) & ~(np.isfinite(p) & (p > 0))
-    if bad.any():
-        raise ValueError(f"dividend on a bar with unusable close ({bad.sum()} bars)")
-
-    g = np.ones_like(p)
-    ev = d > 0
-    g[ev] = 1.0 + d[ev] / p[ev]
-    if np.any(g <= 0) or not np.all(np.isfinite(g)):
-        raise ValueError("non-positive / non-finite gross-up factor")
-
-    # R[t] = prod of g over s > t ; R[last] = 1 (empty product)
-    R = np.ones_like(p)
-    if len(p) > 1:
-        R[:-1] = np.cumprod(g[::-1])[::-1][1:]
-    return pd.Series(p / R, index=close.index, name="tr_close")
+# total_return_close MOVED VERBATIM to renquant_model_common.total_return
+# (2026-08-02): a pure function must be importable without executing this
+# script's build guards; this script keeps guarding its OWN builds above.
+from renquant_model_common.total_return import total_return_close  # noqa: E402
 
 
 # --------------------------------------------------------------------- build --

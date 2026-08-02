@@ -189,12 +189,16 @@ def _resolve_root(man: dict) -> Path | None:
 
 
 def _load_tr_builder():
-    """The VALIDATED total-return construction, imported — never restated."""
-    spec = importlib.util.spec_from_file_location(
-        "build_total_return_series", REPO / "tools" / "build_total_return_series.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod.total_return_close
+    """The VALIDATED total-return construction, imported — never restated.
+
+    Imports the PACKAGE home (renquant_model_common.total_return), not the
+    build script: the script's top level executes the July study's raw-corpus
+    guard and build loop, which crashed this runner's single --execute on
+    2026-08-02 (SystemExit at import, before any data read — a guard
+    validating the WRONG object for this runner, whose inputs are the frozen
+    digest-verified store)."""
+    from renquant_model_common.total_return import total_return_close
+    return total_return_close
 
 
 def verify_preconditions() -> dict:
@@ -206,6 +210,14 @@ def verify_preconditions() -> dict:
         if not ok:
             out["unresolved_data"].append(name)
 
+    try:
+        _load_tr_builder()
+        _tr_ok, _tr_detail = True, "renquant_model_common.total_return imports cleanly"
+    except BaseException as exc:  # noqa: BLE001 - incl. SystemExit: an import-time
+        # guard in a dependency must become a pre-inference refusal (claim
+        # releases), never a mid-execute crash that strands the claim (2026-08-02).
+        _tr_ok, _tr_detail = False, f"{type(exc).__name__}: {exc}"
+    check("tr_builder_importable", _tr_ok, _tr_detail)
     check("prereg_present", PREREG.is_file(), str(PREREG))
     check("amendment_1_present", AMENDMENT_1.is_file(),
           "runner implements the AMENDED F1; refuses on a pre-amendment tree")
