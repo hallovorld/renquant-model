@@ -12,7 +12,7 @@ QUESTION: this panel at T=2378 cannot answer mean-IC≥0.04@h=20 under honest
 inference at these standards; a third null on the same estimand would be
 method-shopping and is not proposed.
 EVIDENCE:
-  artifact:      doc/research/doc/research/data/2026-08-02-goal7-momentum-v2-result/result.json
+  artifact:      doc/research/data/2026-08-02-goal7-momentum-v2-result/result.json
                  (sha256 9414edab..., byte-identical to the sealed store copy)
   prod or exp:   exp — research verdict record
   existing data: n_dates 2378, realized_block_sd 0.14496 (ddof=1), bar
