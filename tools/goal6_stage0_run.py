@@ -42,7 +42,6 @@ import pandas as pd
 from scipy import stats as sstats
 
 REPO = Path(__file__).resolve().parent.parent
-RQ = Path("/Users/renhao/git/github/RenQuant")
 
 # ---- frozen by the prereg + amendments; the runner only restates ----------------
 FROZEN = {
@@ -66,12 +65,11 @@ PERM_SEEDS = tuple(20260801 + i for i in range(FROZEN["n_perm_seeds"]))
 LABELS = REPO / "doc/research/data/2026-08-01-goal6-stage0-frozen-labels/labels.parquet"
 CLF_SCORES = (REPO / "doc/research/data/2026-07-29-clf-wf-closure-bundle/"
                      "artifacts/clf-wf/clf_wf_scores.parquet")
-XGB_CORPUS = RQ / "data/exp/oos_pick_table_recipe_v2.parquet"
 PREREG = REPO / "doc/research/2026-07-28-goal6-stage0-prereg.md"
 AMENDMENTS = tuple(
     REPO / f"doc/research/2026-07-28-goal6-stage0-amendment-1.md" if i == 1 else
     REPO / f"doc/research/2026-08-01-goal6-stage0-amendment-{i}.md"
-    for i in (1, 2, 3))
+    for i in (1, 2, 3, 4))
 
 
 def _sha(p: Path) -> str:
@@ -118,18 +116,25 @@ def n_eff(T: int, h: int) -> int:
 
 
 def gap_block_t(series: np.ndarray, h: int) -> dict:
-    """Gap-block t of a per-date series: block means over retained windows."""
+    """Gap-block t of a per-date series: block means over retained windows.
+    Reports the TERMINAL PARTIAL retained window's dropped-date count, as
+    Amendment 3 requires (gap windows are discarded by design, not 'dropped')."""
     v = np.asarray(series, float)
-    blocks = gap_blocks(len(v), h)
+    T = len(v)
+    blocks = gap_blocks(T, h)
+    next_start = 2 * len(blocks) * h
+    dropped_tail = max(0, T - next_start)
     means = [float(np.nanmean(v[s:e])) for s, e in blocks
              if np.isfinite(v[s:e]).any()]
     N = len(means)
     if N < 2:
-        return {"t": None, "n_eff": N, "df": max(N - 1, 0), "mean": (means[0] if means else None)}
+        return {"t": None, "n_eff": N, "df": max(N - 1, 0),
+                "mean": (means[0] if means else None),
+                "dropped_tail_dates": dropped_tail}
     m = float(np.mean(means))
     se = float(np.std(means, ddof=1) / np.sqrt(N))
     return {"t": (m / se if se > 0 else None), "n_eff": N, "df": N - 1,
-            "mean": m, "se": se}
+            "mean": m, "se": se, "dropped_tail_dates": dropped_tail}
 
 
 def bartlett_hac_se(v: np.ndarray, L: int) -> float:
@@ -253,9 +258,17 @@ def two_sided_p(t: float | None, df: int) -> float | None:
     return float(2 * sstats.t.sf(abs(t), df))
 
 
-def decide_h1(contrasts: dict, own_t: dict) -> dict:
+def _veto_passes(v: dict | None) -> bool:
+    """§5 Veto (all hypotheses): REAL − persistence must be positive at t ≥ 1.0."""
+    return (v is not None and v.get("t") is not None
+            and v["t"] >= 1.0 and (v.get("mean") or 0) > 0)
+
+
+def decide_h1(contrasts: dict, own_t: dict, veto: dict | None = None) -> dict:
     """H1 per §5: both tail-vs-IC contrasts Holm-significant IN FAVOUR OF the tail
-    statistic AND each tail's own REAL−perm t ≥ 2.0."""
+    statistic AND each tail's own REAL−perm t ≥ 2.0 — and NO statistic can be
+    declared SUPPORTED-winner if its REAL − persistence veto fails."""
+    veto = veto or {}
     alpha = FROZEN["holm_family_alpha"]
     pv = {k: two_sided_p(c["t"], c["df"]) for k, c in contrasts.items()}
     sig = holm(pv, alpha)
@@ -264,8 +277,15 @@ def decide_h1(contrasts: dict, own_t: dict) -> dict:
     hit_ok = sig["hit_vs_ic"] and fav["hit_vs_ic"] and (own_t["hit"] or 0) >= FROZEN["own_t_bar"]
     ic_favoured = any(sig[k] and not fav[k] for k in ("spread_vs_ic", "hit_vs_ic"))
     if spread_ok and hit_ok:
-        winner = "spread" if (own_t["spread"] or 0) >= (own_t["hit"] or 0) else "hit"
-        return {"verdict": "SUPPORTED", "primary_statistic": winner}
+        ranked = sorted(("spread", "hit"), key=lambda k: -(own_t[k] or 0))
+        survivors = [k for k in ranked if _veto_passes(veto.get(k))]
+        if survivors:
+            return {"verdict": "SUPPORTED", "primary_statistic": survivors[0],
+                    "veto": {k: _veto_passes(veto.get(k)) for k in ranked}}
+        return {"verdict": "INCONCLUSIVE", "primary_statistic": "ic",
+                "why": "§5 persistence veto: no cleared tail statistic has "
+                       "REAL − persistence positive at t ≥ 1.0",
+                "veto": {k: _veto_passes(veto.get(k)) for k in ranked}}
     if ic_favoured or (not spread_ok and not hit_ok):
         return {"verdict": "REFUTED" if not (spread_ok or hit_ok) else "INCONCLUSIVE",
                 "primary_statistic": "ic"}
@@ -273,14 +293,20 @@ def decide_h1(contrasts: dict, own_t: dict) -> dict:
 
 
 def decide_h2(t_pair: dict, own_t_20: float | None, d20: float | None,
-              d60: float | None) -> dict:
+              d60: float | None, veto20: dict | None = None) -> dict:
     """H2 per §5 as amended by Amendment 2: (a)+(b) required; a failure of (c) is
-    graded INCONCLUSIVE, never REFUTED (the SE_HAC discriminator is SUSPENDED)."""
+    graded INCONCLUSIVE, never REFUTED (the SE_HAC discriminator is SUSPENDED);
+    and the §5 persistence veto gates SUPPORTED here too."""
     a = t_pair["t"] is not None and t_pair["t"] >= FROZEN["own_t_bar"] and (t_pair["mean"] or 0) > 0
     b = (own_t_20 or 0) >= FROZEN["own_t_bar"]
     c = (d20 is not None and d60 is not None and d20 <= d60)
     if a and b and c:
-        return {"verdict": "SUPPORTED", "a": a, "b": b, "c": c}
+        if not _veto_passes(veto20):
+            return {"verdict": "INCONCLUSIVE", "a": a, "b": b, "c": c,
+                    "veto_passed": False,
+                    "why": "§5 persistence veto: REAL − persistence not positive "
+                           "at t ≥ 1.0 on the 20d arm"}
+        return {"verdict": "SUPPORTED", "a": a, "b": b, "c": c, "veto_passed": True}
     if a and b and not c:
         return {"verdict": "INCONCLUSIVE", "a": a, "b": b, "c": c,
                 "why": "Amendment 2: (c) discriminator suspended — never REFUTED on (c)"}
@@ -289,7 +315,11 @@ def decide_h2(t_pair: dict, own_t_20: float | None, d20: float | None,
 
 
 # ------------------------------------------------------------------ preflight ----
-def verify_preconditions() -> dict:
+def verify_preconditions(xgb_df: pd.DataFrame | None,
+                         xgb_path: Path | None = None) -> dict:
+    """`xgb_df` is the ALREADY-LOADED corpus frame — identity is verified on the
+    exact object execution will consume (no second read, no swap window between
+    preflight and load). `xgb_path` is recorded for the report only."""
     out: dict = {"checks": {}, "unresolved": []}
 
     def check(name, ok, detail=""):
@@ -298,27 +328,30 @@ def verify_preconditions() -> dict:
             out["unresolved"].append(name)
 
     check("prereg_present", PREREG.is_file(), str(PREREG))
-    for i, p in zip((1, 2, 3), AMENDMENTS):
+    for i, p in zip((1, 2, 3, 4), AMENDMENTS):
         check(f"amendment_{i}_present", p.is_file(), str(p))
     check("labels_digest", LABELS.is_file() and _sha(LABELS) == FROZEN["labels_sha256"],
           "Amendment 3 clause 1 — fail-closed, no live-path fallback")
     check("clf_scores_digest",
           CLF_SCORES.is_file() and _sha(CLF_SCORES) == FROZEN["clf_scores_sha256"],
           "Amendment 3 clause 3")
-    if XGB_CORPUS.is_file():
-        df = pd.read_parquet(XGB_CORPUS)
-        check("xgb_corpus_content_digest",
-              xgb_corpus_content_sha(df) == FROZEN["xgb_corpus_content_sha256"],
-              "the corpus manifest's canonical content identity")
+    if xgb_df is None:
+        check("xgb_corpus_provided", False,
+              "--xgb-corpus is a REQUIRED explicit input (no workstation default)")
     else:
-        check("xgb_corpus_present", False, str(XGB_CORPUS))
+        check("xgb_corpus_content_digest",
+              xgb_corpus_content_sha(xgb_df) == FROZEN["xgb_corpus_content_sha256"],
+              "the corpus manifest's canonical content identity, verified on the "
+              "loaded frame itself")
+        out["xgb_corpus_resolved_path"] = str(xgb_path) if xgb_path else None
     out["ok"] = not out["unresolved"]
     return out
 
 
 # -------------------------------------------------------------------- execute ----
-def execute(json_out: Path | None) -> int:
-    pre = verify_preconditions()
+def execute(xgb_path: Path, json_out: Path | None) -> int:
+    xgb_df = pd.read_parquet(xgb_path) if xgb_path.is_file() else None
+    pre = verify_preconditions(xgb_df, xgb_path)
     if not pre["ok"]:
         print(json.dumps({"status": "UNRESOLVED-DATA", "preflight": pre},
                          indent=2, sort_keys=True))
@@ -329,7 +362,7 @@ def execute(json_out: Path | None) -> int:
     labels_by = {h: {d: g.set_index("ticker")[f"fwd_{h}d_excess"]
                      for d, g in lab.groupby("date")} for h in FROZEN["horizons"]}
 
-    xgb = pd.read_parquet(XGB_CORPUS).rename(columns={"name": "ticker"})
+    xgb = xgb_df.rename(columns={"name": "ticker"})
     xgb["date"] = pd.to_datetime(xgb["date"])
     clf = pd.read_parquet(CLF_SCORES).rename(columns={"cal": "score"})
     clf["date"] = pd.to_datetime(clf["date"])
@@ -380,7 +413,16 @@ def execute(json_out: Path | None) -> int:
             "spread_vs_hit": gap_block_t(deltas["spread"] - deltas["hit"], h1_h),
         }
         own_t = {k: gap_block_t(deltas[k], h1_h)["t"] for k in STAT_KEYS}
-        h1 = decide_h1(contrasts, own_t)
+        # §5 persistence veto inputs at the H1 horizon (each stat's REAL − persist)
+        pers20 = eff[h1_h]["persist"]
+        veto20 = {}
+        if pers20["dates"]:
+            idx20 = {d: i for i, d in enumerate(eff[h1_h]["dates"])}
+            sel20 = [idx20[d] for d in pers20["dates"]]
+            veto20 = {k: gap_block_t(eff[h1_h]["real"][k][sel20]
+                                     - pers20["stats"][k], h1_h)
+                      for k in STAT_KEYS}
+        h1 = decide_h1(contrasts, own_t, veto20)
         arm_rep["H1"] = {"contrasts": contrasts, "own_t": own_t, **h1}
         # H2 on the H1-selected statistic, 20d vs 60d on common dates, blocks at 60
         stat = h1["primary_statistic"]
@@ -391,7 +433,8 @@ def execute(json_out: Path | None) -> int:
         d60 = np.array([(eff[60]["real"][stat] - np.nanmean(eff[60]["perm"][stat], axis=0))[i60[d]] for d in common])
         t_pair = gap_block_t(d20 - d60, 60)
         own20 = gap_block_t(d20, 20)["t"]
-        h2 = decide_h2(t_pair, own20, float(np.nanmean(d20)), float(np.nanmean(d60)))
+        h2 = decide_h2(t_pair, own20, float(np.nanmean(d20)), float(np.nanmean(d60)),
+                       veto20.get(stat))
         arm_rep["H2"] = {"statistic": stat, "t_pair_blocks_at_60": t_pair,
                          "d20_mean": float(np.nanmean(d20)),
                          "d60_mean": float(np.nanmean(d60)), **h2}
@@ -428,15 +471,19 @@ def main(argv=None) -> int:
     g.add_argument("--preflight", action="store_true")
     g.add_argument("--execute", action="store_true")
     ap.add_argument("--json-out", type=Path, default=None)
+    ap.add_argument("--xgb-corpus", type=Path, required=True,
+                    help="explicit path to oos_pick_table_recipe_v2.parquet — no "
+                         "workstation default; content identity is verified on load")
     try:
         args = ap.parse_args(argv)
     except SystemExit:
         return 2
     if args.preflight:
-        pre = verify_preconditions()
+        df = pd.read_parquet(args.xgb_corpus) if args.xgb_corpus.is_file() else None
+        pre = verify_preconditions(df, args.xgb_corpus)
         print(json.dumps(pre, indent=2, sort_keys=True))
         return 0 if pre["ok"] else 3
-    return execute(args.json_out)
+    return execute(args.xgb_corpus, args.json_out)
 
 
 if __name__ == "__main__":

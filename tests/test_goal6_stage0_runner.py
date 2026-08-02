@@ -98,11 +98,24 @@ def _c(t, n=13, mean=None):
             "mean": (mean if mean is not None else (0.1 if t and t > 0 else -0.1))}
 
 
+def _veto_ok():
+    return {"spread": {"t": 1.5, "mean": 0.02}, "hit": {"t": 1.5, "mean": 0.02}}
+
+
 def test_h1_supported_when_both_tails_clear_and_holm_significant():
     contrasts = {"spread_vs_ic": _c(4.0), "hit_vs_ic": _c(3.5), "spread_vs_hit": _c(0.5)}
     own = {"ic": 1.0, "spread": 3.0, "hit": 2.5}
-    out = R.decide_h1(contrasts, own)
+    out = R.decide_h1(contrasts, own, _veto_ok())
     assert out["verdict"] == "SUPPORTED" and out["primary_statistic"] == "spread"
+
+
+def test_h1_without_veto_data_cannot_be_supported():
+    """§5's veto applies to every hypothesis; absent veto data must fail CLOSED,
+    not silently pass (the fail-open-default lesson)."""
+    contrasts = {"spread_vs_ic": _c(4.0), "hit_vs_ic": _c(3.5), "spread_vs_hit": _c(0.5)}
+    own = {"ic": 1.0, "spread": 3.0, "hit": 2.5}
+    out = R.decide_h1(contrasts, own)          # no veto data at all
+    assert out["verdict"] == "INCONCLUSIVE" and "persistence veto" in out["why"]
 
 
 def test_h1_refuted_when_nothing_clears():
@@ -166,16 +179,56 @@ def test_corpus_content_hash_mirrors_the_pick_table_algorithm_exactly():
 def test_preflight_refuses_on_a_missing_amendment(monkeypatch, tmp_path):
     monkeypatch.setattr(R, "AMENDMENTS", (tmp_path / "absent1.md",
                                           tmp_path / "absent2.md",
-                                          tmp_path / "absent3.md"))
-    pre = R.verify_preconditions()
+                                          tmp_path / "absent3.md",
+                                          tmp_path / "absent4.md"))
+    pre = R.verify_preconditions(None)
     assert not pre["ok"]
     assert "amendment_1_present" in pre["unresolved"]
+    assert "xgb_corpus_provided" in pre["unresolved"]
 
 
 def test_preflight_refuses_on_a_labels_digest_mismatch(monkeypatch, tmp_path):
     bogus = tmp_path / "labels.parquet"
     bogus.write_bytes(b"not the frozen table")
     monkeypatch.setattr(R, "LABELS", bogus)
-    pre = R.verify_preconditions()
+    pre = R.verify_preconditions(None)
     assert not pre["ok"]
     assert "labels_digest" in pre["unresolved"]
+
+
+def test_gap_block_reports_the_terminal_dropped_tail():
+    """Amendment 3: the terminal partial retained window's dropped count is REPORTED."""
+    out = R.gap_block_t(np.random.default_rng(1).normal(size=59), 20)
+    assert out["dropped_tail_dates"] == 19          # [40, 59) partial retained window
+    out508 = R.gap_block_t(np.random.default_rng(2).normal(size=508), 60)
+    assert out508["n_eff"] == 4 and out508["dropped_tail_dates"] == 28   # 508 - 480
+
+
+def test_h1_persistence_veto_reroutes_or_blocks_supported():
+    """§5 veto: a cleared tail whose REAL − persistence is not positive at t ≥ 1.0
+    cannot win; the other cleared, unvetoed tail takes the win; both vetoed →
+    INCONCLUSIVE naming the veto."""
+    contrasts = {"spread_vs_ic": _c(4.0), "hit_vs_ic": _c(3.5), "spread_vs_hit": _c(0.5)}
+    own = {"ic": 1.0, "spread": 3.0, "hit": 2.5}
+    veto_spread_fails = {"spread": {"t": 0.4, "mean": 0.01},
+                         "hit": {"t": 1.6, "mean": 0.02}}
+    out = R.decide_h1(contrasts, own, veto_spread_fails)
+    assert out["verdict"] == "SUPPORTED" and out["primary_statistic"] == "hit"
+    both_fail = {"spread": {"t": 0.4, "mean": 0.01},
+                 "hit": {"t": 1.2, "mean": -0.01}}      # positive-t but negative mean
+    out2 = R.decide_h1(contrasts, own, both_fail)
+    assert out2["verdict"] == "INCONCLUSIVE" and "persistence veto" in out2["why"]
+
+
+def test_h2_persistence_veto_blocks_supported():
+    t_pair = {"t": 3.0, "mean": 0.05, "n_eff": 4, "df": 3}
+    out = R.decide_h2(t_pair, own_t_20=2.5, d20=0.03, d60=0.05,
+                      veto20={"t": 0.2, "mean": 0.01})
+    assert out["verdict"] == "INCONCLUSIVE" and "persistence veto" in out["why"]
+    ok = R.decide_h2(t_pair, own_t_20=2.5, d20=0.03, d60=0.05,
+                     veto20={"t": 1.4, "mean": 0.02})
+    assert ok["verdict"] == "SUPPORTED" and ok["veto_passed"] is True
+
+
+def test_cli_requires_the_explicit_corpus_path():
+    assert R.main(["--preflight"]) == 2                 # missing required --xgb-corpus
