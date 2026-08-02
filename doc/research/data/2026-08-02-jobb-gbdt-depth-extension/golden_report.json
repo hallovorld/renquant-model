@@ -1,0 +1,63 @@
+{
+  "mode": "golden",
+  "reproduced_cutoff": "2023-10-02",
+  "reference_artifact": "/Users/renhao/git/github/RenQuant/backtesting/renquant_104/artifacts/walkforward_gbdt_prod_recipe_v2/2023-10-02/panel-ltr.json",
+  "reference_artifact_sha256": "3ac7cf9f0d874217d648ebc307a877ea3fee26131faffb0a308af0f894c33b2a",
+  "oos_window": [
+    "2023-10-03",
+    "2023-10-23"
+  ],
+  "n_oos_rows": 4380,
+  "n_oos_dates": 15,
+  "prediction_parity_max_abs_delta": 0.6489841341972351,
+  "parity_target": 1e-06,
+  "parity_pass": false,
+  "booster_bytes_identical": false,
+  "feature_means_max_abs_delta": 0.007131227576620575,
+  "feature_stds_max_abs_delta": 0.009450348912744377,
+  "effective_train_cutoff_match": true,
+  "config_fingerprint_match": true,
+  "sentiment_zeroed_rows": {
+    "new": 366713,
+    "ref": 366713
+  },
+  "panel_shape": {
+    "new": {
+      "rows": 526515,
+      "tickers": 292,
+      "dates": 1890
+    },
+    "ref": {
+      "rows": 526515,
+      "tickers": 292,
+      "dates": 1890
+    }
+  },
+  "timings": {
+    "load_panel_s": 0.4,
+    "regime_gate_s": 6.5,
+    "fit_s": 6.7,
+    "leakage_margin_bdays": 1,
+    "honest_train_max_date": "2023-07-07",
+    "n_train_rows": 526515,
+    "n_train_dates": 1890,
+    "zeroed_rows": 366713,
+    "total_s": 14.0
+  },
+  "input_digests": {
+    "wf_manifest": "/Users/renhao/git/github/RenQuant/backtesting/renquant_104/artifacts/sim/walkforward_manifest_gbdt_prod_recipe_v2.calibrated.json",
+    "wf_manifest_sha256": "d8b170188fe09036fe9e6bd82d9299218affe499f56c37bb49a64c80111f2e75",
+    "panel": "/Users/renhao/git/github/RenQuant/data/alpha158_291_fundamental_dataset.parquet",
+    "panel_sha256": "55811f6387e67411fe11a20eb1d5d929086c5a9dc2675496f3d8592fed2c0dba",
+    "alpha_stats": "/Users/renhao/git/github/RenQuant/data/alpha158_qlib_dataset.stats.json",
+    "alpha_stats_sha256": "35736ee422dc8fed9f10016e0ca3872f1789dbafafd95216331f85076ef283e4",
+    "fundamentals": "/Users/renhao/git/github/RenQuant/data/sec_fundamentals_daily.parquet",
+    "fundamentals_sha256": "a9607fbbf89f769fe6cdc12e1e1a09a8263c2b8cea77e55351dc38d85f260199",
+    "strategy_config": "/Users/renhao/git/github/renquant-strategy-104/configs/strategy_config.json",
+    "strategy_config_sha256": "f52d096e0a491008a051fb1fc9c0114a9bb98f22788f3b36b4b531274cb31710",
+    "spy_ohlcv": "/Users/renhao/git/github/RenQuant/data/ohlcv/SPY/1d.parquet",
+    "spy_ohlcv_sha256": "2ba5785607e244ce3fdaf611a8c4ac21229784ad725983ca502f0565af6c8d7d",
+    "gmm_artifact": "/Users/renhao/git/github/RenQuant/backtesting/renquant_104/artifacts/prod/spy-gmm-regime.json",
+    "gmm_artifact_sha256": "cb643e003cec11ea897137c206713e6753746b1792ed39083b6a5319c851a07d"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "cadence_days": 21,
+  "cadence_measurement": {
+    "consecutive_gap_days_set": [
+      21
+    ],
+    "cutoff_weekday_set": [
+      0
+    ],
+    "nyse_holiday_cutoff_evidence": "2023-12-25",
+    "convention": "pure N-calendar-day arithmetic grid, no NYSE-holiday adjustment; OOS windows use panel trading dates"
+  },
+  "existing_n": 43,
+  "existing_earliest": "2023-10-02",
+  "existing_latest": "2026-03-02",
+  "target_earliest": "2019-01-02",
+  "panel_min_date": "2016-01-04",
+  "min_train_dates": 250,
+  "n_new_windows": 82,
+  "new_earliest": "2019-01-14",
+  "new_latest": "2023-09-11",
+  "truncated_infeasible": []
+}
