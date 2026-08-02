@@ -86,7 +86,10 @@ pinned by digest, not by prose.
   1. **Ordering.** (a) form blocks and drop <10-usable blocks (§2.2);
      (b) if `n_surviving < 40` → `UNRESOLVED-POWER`, controls are NOT run;
      (c) compute `realized_block_sd` = the sample standard deviation of the
-     surviving block means with **ddof=1**;
+     surviving block means with **ddof=1**; if it is non-finite or ≤ 0, the
+     value is PUBLISHED and the verdict is `UNRESOLVED-METHOD` — controls and
+     H1/H2 are NOT run (a degenerate spread makes every t statistic
+     undefined; the runner must refuse here, not divide);
      (c′) **degenerate-scale valve (review round 2).** If `realized_block_sd`
      is not finite, or is `<= 0.0`: PUBLISH its value and return
      `UNRESOLVED-METHOD` immediately — controls are NOT run and H1/H2 are
