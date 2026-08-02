@@ -1,0 +1,9 @@
+{
+  "claimed_at": "2026-08-02T12:47:52+00:00",
+  "pid": 16412,
+  "prereg_v2_sha256": "7775368e988f3860deae87bc396970877bcdd59d88d5992aa2ce22462e52debb",
+  "status": "consumed",
+  "finished_at": "2026-08-02T12:53:36+00:00",
+  "exit_code": 5,
+  "result_sha256": "9414edabfc4f4ad5e73d80ac5020d9bbb6730365036f1de6110aa7c0f5fc2800"
+}
