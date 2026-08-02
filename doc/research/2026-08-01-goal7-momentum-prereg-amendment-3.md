@@ -16,14 +16,15 @@ A freeze that pins a moving path pins a deadline, not an input.
 
 ## The remedy chain (ordering per the #171 review)
 
-1. **Durable fingerprint record** — `renquant-base-data#59` publishes
+1. **Durable fingerprint record** — `renquant-base-data#60` (rev 3 of the closed #59) publishes
    `manifests/momentum-prereg-inputs-20260801.json`: 294 file entries (panel, sector
    snapshot, 292 OHLCV files), each with sha256 + byte size, plus the combined OHLCV
    digest reproducing §2's arithmetic exactly. The three headline digests are
    byte-identical to this prereg's frozen pins (verified at snapshot AND at manifest
-   build). Digests NORMATIVE; location ADVISORY (currently the umbrella experiment
-   area, PROVISIONAL pending orch#742 — the snapshot write is self-reported there for
-   operator disposition; RELOCATE changes only the manifest's location field).
+   build). Digests NORMATIVE; location ADVISORY (candidate roots: the PROPOSED durable store
+   `~/renquant-data-store/momentum-prereg-inputs-20260801` staged in base-data#60,
+   pending the operator's RELOCATE in orch#742; the umbrella cache second. Identity
+   is digest-only, so relocation never touches it).
 2. **This amendment** — §2's inputs are henceforth resolved THROUGH that manifest.
    The NORMATIVE identity pin is `dataset_id = momentum-prereg-inputs-20260801` plus
    the three §2 digests themselves (panel `55811f63…`, sector `ec26bb1e…`, combined
