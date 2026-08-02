@@ -1,6 +1,6 @@
 # Momentum graduates to a standing vertical: train/test/trade architecture fixed
 
-STATUS: proposal (design-only; no behavior change).
+STATUS: planned (design-only; no behavior change).
 WHAT: doc/design/2026-08-02-momentum-pipeline-architecture.md — three
 pipelines with repo ownership and contracts: TRAIN (renquant_model_momentum
 package; weekly gate-compatible artifacts carrying the #94 admissibility
@@ -8,8 +8,13 @@ fields + input-digest records), TEST (the v2 gap-block machinery refactored
 into a recurring evaluator appending to an evidence ledger — no gate, no
 verdicts; promotion stays on the WF lineage path), TRADE (shadow-only
 s104 shadow_models entry inheriting the whole GOAL-1 guard stack; data
-collection, no claim). Build order in 5 reviewed slices; the machine landing
-is ONE operator grant at the end.
+collection, no claim). Build order in 5 reviewed slices `[ASSUMED — design choice mirroring the
+#94 per-stage rollout]`; the machine landing is ONE operator grant at the
+end. Round-1 additions: the MANDATORY causal maturity contract on the
+recurring evaluator (eligible dates end at eval_asof − horizon − settle;
+rows persist asof/horizon/interval/digests; append-only immutable) and the
+two v-next directions placed by layer (factor-residualization = TRAIN params
+v1; vol management = TRADE overlay, never a conditioned signal).
 WHY/DIR: operator directive 2026-08-02 ("模型有了，但是要有自己的训练，测试，
 交易 pipeline") + what the two sealed studies proved structurally: history
 is out of independent observations for the fine question `[VERIFIED — prior

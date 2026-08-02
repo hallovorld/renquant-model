@@ -32,9 +32,9 @@ exactly a pipeline, not another study:
   (`renquant_model_common.momentum_features` F1–F5 + composite;
   `renquant_model_common.total_return`) behind ONE artifact-producing entry:
   `train_momentum_artifact(asof, universe, params) -> artifact`.
-- "Training" for this construction = the rolling estimation itself (252d
-  window / 21d skip residual OLS per name; the frozen v1 constants are the
-  v0 params `[VERIFIED — model#164 §2]`) + per-date cross-sectional z stats.
+- "Training" for this construction = the rolling estimation itself (252d window / 21d skip / 200 min-obs residual OLS per name — the v0 params
+  are BY REFERENCE the frozen v1 constants `[VERIFIED — model#164 §2, values
+  252/21/200]`) + per-date cross-sectional z stats.
   No fitted hyper-parameters in v0; the params block is versioned so a
   future weighted composite is a NEW params version, never a silent change.
 - **Artifact contract (gate-compatible from day one):** self-carried
@@ -64,8 +64,22 @@ exactly a pipeline, not another study:
   (power-adequacy, controls, block-t) and the standing interpretation rule:
   **capital promotion is NOT on this path** — promotion, if ever proposed,
   goes through the WF lineage gate with these artifacts.
-- The h=60 question (the marginally-viable one, `[推导 — the #190 design-time
-  arithmetic]`) rides here as a second evaluation horizon in the SAME ledger
+- **MANDATORY causal maturity contract (review round 1, HIGH):** an
+  evaluation run at `eval_asof` may score ONLY dates whose forward label has
+  fully matured by that cutoff — the last eligible observation date is
+  `eval_asof − (label_horizon_bdays + settle)` business days, mirroring the
+  blend forward-ledger's maturity rule `[VERIFIED — prior work, the
+  MATURITY_TDAYS discipline in ops/renquant104/rq104_blend_readout.py]`.
+  Partially-filled labels are NEVER included, and the eligible set of an
+  already-written row NEVER changes as labels fill in (append-only means
+  append-only). Every ledger row persists: `eval_asof`, `label_horizon_bdays`,
+  the eligible-date interval `[first_date, last_date]`, the artifact content
+  sha, and the per-input read digests — so any row is independently
+  recomputable and a silently-shifting eligible set is detectable by
+  construction.
+- The h=60 question (marginally viable: 80%-detectable 0.0387 vs the 0.04
+  target `[DERIVED — model#190's design-time arithmetic from the sealed v2
+  block means]`) rides here as a second evaluation horizon in the SAME ledger
   once fwd_60d labels are wired — evidence accumulation, not a one-shot.
 
 ### 3. TRADE — shadow only (strategy-104 config + existing shadow infra)
@@ -82,18 +96,39 @@ exactly a pipeline, not another study:
   claimed by deployment; live-capital promotion requires the standard gates
   (WF lineage + freshness + operator sign-off) — unchanged.
 
-## Build order (each slice its own reviewed PR)
+## Build order (each slice its own reviewed PR) `[ASSUMED — design choice: slice granularity mirrors the #94 per-stage rollout discipline]`
 
 1. This design (review → merge).
 2. TRAIN: package + artifact contract + weekly job code + tests (golden:
-   artifact reproduces the v1 runner's scores on a fixed date to <1e-9 —
-   the constructions must be THE SAME code, imported not copied).
+   artifact reproduces the v1 runner's scores on a fixed date to <1e-9
+   `[ASSUMED — design choice: float64 identity tolerance, same order of
+   magnitude as the clf golden's 1e-6 but tighter since no booster is
+   involved]` — the constructions must be THE SAME code, imported not copied).
 3. TEST: the reusable evaluator + ledger + tests (the v2 runner's synthetic
    fixtures port over).
 4. TRADE: s104 shadow_models config PR + shadow-lane registration tests.
 5. Machine landing (launchd job for the weekly retrain + run-checkout/pin
    sync) — ONE operator grant with reverts, per the containment protocol.
    Until granted, everything above is merged-but-dark by design.
+
+## The two v-next directions, placed by layer (design decision under the
+standing delegation, 2026-08-02)
+
+- **Factor-momentum residualization** (strip style-factor momentum beyond the
+  market, keeping the stock-specific residual) enters as **TRAIN params v1**:
+  same estimand, same TEST machinery unchanged — the cheapest honest test of
+  whether a cleaner cross-section lifts detection past the 0.80 floor.
+  Literature grounding in the dossier (Ehsani-Linnainmaa). No outcome claimed.
+- **Vol-conditioned momentum-reversion** does NOT enter as a conditioned
+  signal (conditioning splits an already-small effective sample — the exact
+  failure v2 measured); it enters at the **TRADE layer as volatility-managed
+  position scaling** in the shadow lane (Barroso-Santa-Clara's device, per
+  the dossier), where it costs no test power and accrues forward evidence.
+  The earlier panel lesson stands guard here: one apparent momentum effect
+  was REFUTED as a volatility tilt reproducible by a one-line sort
+  `[VERIFIED — prior work, the traded-estimand refutation on record]` — any
+  vol-layer contribution must be attributed to the OVERLAY in the forward
+  ledger, never folded back into the signal's claimed edge.
 
 ## Not claimed / boundaries
 
