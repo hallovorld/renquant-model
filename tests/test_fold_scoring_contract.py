@@ -108,6 +108,93 @@ def test_a_frame_indexed_by_the_WRONG_NAME_is_also_refused():
         score(frame)
 
 
+# ---------------------------------------------------------------------------
+# v0.2.1 shape widening (issue #187, Option B): means/stds as dict OR an
+# ordered list aligned to feature_cols. Real-artifact loads are guarded with
+# the repo's importorskip("xgboost") idiom; the refusal logic is ALSO covered
+# by synthetic fixtures that need no booster (refusals raise before the
+# heavyweight import).
+
+G = Path(__file__).resolve().parent.parent / (
+    "doc/research/data/2026-08-02-jobb-gbdt-depth-extension-run001/window_artifacts")
+
+
+def _real_gbdt_window_artifact() -> dict:
+    window = sorted(p for p in G.iterdir() if p.is_dir())[0]
+    return json.loads((window / "panel-ltr.json").read_text())
+
+
+def _synthetic_shape_artifact(n: int = 3) -> dict:
+    """Shape-validation fixture: needs NO booster (and no xgboost) — every
+    refusal under test raises before the booster field is touched."""
+    cols = [f"f{i}" for i in range(n)]
+    return {
+        "feature_cols": cols,
+        "feature_means": [0.0] * n,
+        "feature_stds": [1.0] * n,
+        "feature_norm_kind": ["identity"] * n,
+        "booster_raw_json": "never-reached",
+    }
+
+
+def test_real_gbdt_window_artifact_with_LIST_stats_loads_and_scores():
+    """The second committed family (gbdt WF windows: list-shaped means/stds,
+    aligned to feature_cols) loads through the PUBLIC api — the measured
+    mismatch issue #187 records, resolved per its Option B decision."""
+    pytest.importorskip("xgboost")
+    art = _real_gbdt_window_artifact()
+    assert isinstance(art["feature_means"], list)        # the family's shape
+    assert isinstance(art["feature_stds"], list)
+    assert len(art["feature_means"]) == len(art["feature_cols"])
+    score = load_fold_scorer(art)
+    rng = np.random.default_rng(7)
+    frame = pd.DataFrame(rng.normal(size=(20, len(art["feature_cols"]))),
+                         columns=art["feature_cols"],
+                         index=pd.Index([f"T{i:02d}" for i in range(20)], name="ticker"))
+    s = score(frame)
+    assert list(s.index) == list(frame.index)
+    assert np.isfinite(s).all()      # rank:pairwise margins, not probabilities
+
+
+def test_list_and_dict_stats_score_IDENTICALLY_for_the_same_artifact():
+    """The internal list→dict conversion is the identity on scores: re-keying
+    the real gbdt window's list stats by feature_cols and loading both forms
+    yields identical predictions on the same frame."""
+    pytest.importorskip("xgboost")
+    art = _real_gbdt_window_artifact()
+    as_dict = dict(art)
+    as_dict["feature_means"] = dict(zip(art["feature_cols"], art["feature_means"]))
+    as_dict["feature_stds"] = dict(zip(art["feature_cols"], art["feature_stds"]))
+    rng = np.random.default_rng(11)
+    frame = pd.DataFrame(rng.normal(size=(15, len(art["feature_cols"]))),
+                         columns=art["feature_cols"],
+                         index=pd.Index([f"T{i:02d}" for i in range(15)], name="ticker"))
+    a = load_fold_scorer(art)(frame)
+    b = load_fold_scorer(as_dict)(frame)
+    assert (a == b).all()
+
+
+def test_list_stats_length_mismatch_refuses_naming_BOTH_lengths():
+    art = _synthetic_shape_artifact(n=3)
+    art["feature_means"] = [0.0, 0.0]                     # 2 != 3
+    with pytest.raises(ValueError, match=r"list length 2 != feature_cols length 3"):
+        load_fold_scorer(art)
+
+
+def test_str_stats_is_refused_BY_INCIDENT_NAME():
+    art = _synthetic_shape_artifact()
+    art["feature_stds"] = str(art["feature_stds"])
+    with pytest.raises(ValueError, match="stringified-norm_kind incident"):
+        load_fold_scorer(art)
+
+
+def test_any_other_stats_type_is_refused_not_defaulted():
+    art = _synthetic_shape_artifact()
+    art["feature_means"] = 1.0
+    with pytest.raises(ValueError, match="got float"):
+        load_fold_scorer(art)
+
+
 def test_the_public_api_is_published_at_a_version_a_consumer_can_PIN():
     """Review round 1(2), the half that has no test yet.
 

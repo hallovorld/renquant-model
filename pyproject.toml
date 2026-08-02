@@ -4,7 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "renquant-model"
-version = "0.2.0"
+# 0.2.1: fold_scoring accepts means/stds as dict OR feature_cols-aligned list
+# (issue #187 Option B, additive — `>=0.2.0,<0.3` consumer pins unaffected).
+version = "0.2.1"
 description = "RenQuant model families (GBDT panel-LTR + PatchTST sequence) in one repo."
 readme = "README.md"
 requires-python = ">=3.10"
