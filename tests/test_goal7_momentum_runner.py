@@ -52,7 +52,8 @@ def test_execute_gates_on_the_amendment_before_touching_anything(monkeypatch, tm
     amendment path pointed at nothing: execute() must stop at UNRESOLVED-DATA naming
     it, before loading any data."""
     monkeypatch.setattr(R, "AMENDMENT_2", tmp_path / "absent.md")
-    rc = R.execute(None)
+    _ledger(monkeypatch, tmp_path)   # isolate the claim/ledger from the real store
+    rc = R.execute()
     out = capsys.readouterr().out
     assert rc == 3
     assert "amendment_2_present" in out
@@ -132,3 +133,74 @@ def test_runner_declared_constant_is_documented_and_bounded():
     assert R.MIN_SIDE_OBS == 30
     assert R.MIN_SIDE_OBS < 97 / 2
     assert "MIN_SIDE_OBS" in (REPO / "tools" / "goal7_momentum_run.py").read_text()
+
+
+# ---------- §7 single-execution guard (codex on #177) ----------
+
+
+def _ledger(monkeypatch, tmp_path):
+    d = tmp_path / "run-ledger"
+    monkeypatch.setattr(R, "RUN_LEDGER_DIR", d)
+    monkeypatch.setattr(R, "EXECUTION_CLAIM", d / "EXECUTION_CLAIM.json")
+    monkeypatch.setattr(R, "RESULT_PATH", d / "result.json")
+    monkeypatch.setattr(R, "REFUSALS_LOG", d / "refusals.jsonl")
+    return d
+
+
+def test_second_invocation_is_refused_BEFORE_any_data_read(monkeypatch, tmp_path, capsys):
+    d = _ledger(monkeypatch, tmp_path)
+    d.mkdir(parents=True)
+    (d / "EXECUTION_CLAIM.json").write_text('{"status": "consumed"}')
+
+    def boom(*a, **k):
+        raise AssertionError("data was read AFTER the claim refusal")
+
+    monkeypatch.setattr(R, "verify_preconditions", boom)
+    monkeypatch.setattr(R, "load_snapshot_manifest", boom)
+    rc = R.execute()
+    assert rc == R.EXIT_ALREADY_EXECUTED == 4
+    out = capsys.readouterr().out
+    assert "ALREADY-EXECUTED" in out and "result selection" in out
+
+
+def test_concurrent_claim_is_atomic(monkeypatch, tmp_path):
+    """O_EXCL semantics: once one caller owns the claim, the second sees refusal —
+    the same primitive covers concurrency and later reruns."""
+    _ledger(monkeypatch, tmp_path)
+    assert R._claim_execution() is None            # first caller wins
+    assert R._claim_execution() == 4               # second (concurrent) refused
+
+
+def test_pre_inference_unresolved_data_releases_the_claim_but_is_LEDGERED(
+        monkeypatch, tmp_path, capsys):
+    d = _ledger(monkeypatch, tmp_path)
+    monkeypatch.setattr(R, "verify_preconditions", lambda: {
+        "ok": False, "checks": {}, "unresolved_data": ["snapshot_manifest_present"]})
+    rc = R.execute()
+    assert rc == 3
+    assert not (d / "EXECUTION_CLAIM.json").exists(), "identity refusal releases"
+    lines = (d / "refusals.jsonl").read_text().strip().splitlines()
+    assert len(lines) == 1 and "snapshot_manifest_present" in lines[0]
+
+
+def test_a_computed_outcome_CONSUMES_the_shot_and_seals_both_files(
+        monkeypatch, tmp_path, capsys):
+    d = _ledger(monkeypatch, tmp_path)
+    assert R._claim_execution() is None
+    rc = R._finish({"status": "UNRESOLVED-METHOD", "why": "calibration failed"}, 5)
+    assert rc == 5
+    result = d / "result.json"
+    claim = d / "EXECUTION_CLAIM.json"
+    assert result.is_file() and (result.stat().st_mode & 0o777) == 0o444
+    assert (claim.stat().st_mode & 0o777) == 0o444
+    import json as _json
+    c = _json.loads(claim.read_text())
+    assert c["status"] == "consumed" and c["exit_code"] == 5
+    # ...and the shot is gone even though the verdict was UNRESOLVED
+    assert R._claim_execution() == 4
+
+
+def test_execute_refuses_a_caller_selected_output(tmp_path, capsys):
+    rc = R.main(["--execute", "--json-out", str(tmp_path / "x.json")])
+    assert rc == 2
+    assert "PREDECLARED" in capsys.readouterr().err

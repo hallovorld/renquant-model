@@ -22,14 +22,17 @@ substantial missing data, where a nan into the ≥3-of-5 composite rule is the d
 outcome.
 
 Exit codes: 0 preflight clean / run complete; 2 usage; 3 UNRESOLVED-DATA;
+4 ALREADY-EXECUTED (the single-execution claim exists);
 5 UNRESOLVED-METHOD (a validation gate failed; the report says which).
 """
 from __future__ import annotations
 
 import argparse
+import datetime as _dt
 import hashlib
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -75,6 +78,81 @@ MANIFEST_CANDIDATES = (
     Path("/Users/renhao/git/github/renquant-base-data/manifests/"
          "momentum-prereg-inputs-20260801.json"),
 )
+
+
+# ---- §7 single-execution guard (codex review on #177) ---------------------------
+#: The claim is taken ATOMICALLY (O_CREAT|O_EXCL) BEFORE any data read; the result
+#: destination is PREDECLARED (never caller-selectable); claim and result are sealed
+#: read-only at the end. A second invocation — concurrent or later, and INCLUDING
+#: after an UNRESOLVED-METHOD/POWER outcome — is refused: rerunning a frozen study
+#: is result selection. The ONLY release is the pre-inference identity refusal
+#: (UNRESOLVED-DATA from the initial preflight): no estimand has been computed on
+#: that path, so re-invocation cannot choose among results — and every such refusal
+#: is appended to a durable ledger BEFORE the claim is released. A claim left behind
+#: by a crash stays in force (refuse-and-investigate beats silent rerun); removing
+#: it is a manual operator act that must leave its own durable record.
+RUN_LEDGER_DIR = Path.home() / "renquant-data-store" / "goal7-momentum-prereg-run"
+EXECUTION_CLAIM = RUN_LEDGER_DIR / "EXECUTION_CLAIM.json"
+RESULT_PATH = RUN_LEDGER_DIR / "result.json"
+REFUSALS_LOG = RUN_LEDGER_DIR / "refusals.jsonl"
+EXIT_ALREADY_EXECUTED = 4
+
+
+def _utc_now() -> str:
+    return _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds")
+
+
+def _claim_execution() -> int | None:
+    """Atomically take the single-execution claim; exit code on refusal, else None."""
+    RUN_LEDGER_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        fd = os.open(EXECUTION_CLAIM, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        try:
+            prior = EXECUTION_CLAIM.read_text(encoding="utf-8")[:2000]
+        except OSError:
+            prior = "(claim unreadable)"
+        print(json.dumps({
+            "status": "ALREADY-EXECUTED",
+            "why": ("the §7 single-execution claim exists; a second invocation "
+                    "(concurrent or later, any prior outcome) is refused — "
+                    "rerunning a frozen study is result selection"),
+            "claim": prior,
+            "result_present": RESULT_PATH.is_file(),
+            "result_path": str(RESULT_PATH),
+        }, indent=2))
+        return EXIT_ALREADY_EXECUTED
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        json.dump({"claimed_at": _utc_now(), "pid": os.getpid(),
+                   "prereg_sha256": _sha(PREREG), "status": "in-progress"},
+                  fh, indent=2)
+    return None
+
+
+def _release_claim_unresolved(pre: dict) -> None:
+    """Pre-inference identity refusal: durably ledger it, THEN release the claim."""
+    with open(REFUSALS_LOG, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps({"at": _utc_now(), "status": "UNRESOLVED-DATA",
+                             "unresolved": pre.get("unresolved_data")}) + "\n")
+    EXECUTION_CLAIM.unlink()
+
+
+def _finish(rep: dict, code: int) -> int:
+    """Every post-preflight terminal outcome: print, persist to the PREDECLARED
+    path, seal result + claim read-only. The claim is never released here — any
+    computed outcome, including UNRESOLVED-METHOD, consumes the single shot."""
+    txt = json.dumps(rep, indent=2, sort_keys=True, default=str)
+    print(txt)
+    RESULT_PATH.write_text(txt + "\n", encoding="utf-8")
+    claim = json.loads(EXECUTION_CLAIM.read_text(encoding="utf-8"))
+    claim["status"] = "consumed"
+    claim["finished_at"] = _utc_now()
+    claim["exit_code"] = code
+    claim["result_sha256"] = hashlib.sha256((txt + "\n").encode()).hexdigest()
+    EXECUTION_CLAIM.write_text(json.dumps(claim, indent=2), encoding="utf-8")
+    os.chmod(RESULT_PATH, 0o444)
+    os.chmod(EXECUTION_CLAIM, 0o444)
+    return code
 
 
 def _sha(p: Path) -> str:
@@ -224,7 +302,12 @@ def main(argv=None) -> int:
     ap.add_argument("--json-out", default=None)
     a = ap.parse_args(argv)
     if a.execute:
-        return execute(Path(a.json_out) if a.json_out else None)
+        if a.json_out:
+            print("--json-out is refused with --execute: the result destination "
+                  f"is PREDECLARED ({RESULT_PATH}) so the outcome is never "
+                  "caller-selectable (codex on #177)", file=sys.stderr)
+            return 2
+        return execute()
     if not a.preflight:
         print("nothing to do: pass --preflight (this revision) or --execute (later).",
               file=sys.stderr)
@@ -276,9 +359,12 @@ def decide(h1_ic_mean: float, h1_t: float, t_star: float, placebo_mean_abs: floa
                     "independently clear the bar")}
 
 
-def execute(json_out: Path | None) -> int:
+def execute() -> int:
     import importlib.util as _ilu
 
+    code = _claim_execution()
+    if code is not None:
+        return code
     pre = verify_preconditions()
     for extra, path in (("amendment_2_present", AMENDMENT_2),):
         pre["checks"][extra] = {"ok": path.is_file(), "detail": str(path)}
@@ -287,6 +373,7 @@ def execute(json_out: Path | None) -> int:
     if pre["unresolved_data"]:
         rep = {"status": "UNRESOLVED-DATA", "preflight": pre}
         print(json.dumps(rep, indent=2, sort_keys=True))
+        _release_claim_unresolved(pre)
         return 3
 
     spec = _ilu.spec_from_file_location(
@@ -357,18 +444,17 @@ def execute(json_out: Path | None) -> int:
     t_mine = INF.bartlett_hac_t(s, cfg["L"])
     t_pinned = float(s.mean()) / newey_west_se(s, lag=cfg["L"])
     if not np.isclose(t_mine, t_pinned, rtol=1e-9):
-        rep = {"status": "UNRESOLVED-DATA",
-               "why": f"HAC mirror mismatch: {t_mine} vs pinned {t_pinned}"}
-        print(json.dumps(rep, indent=2)); return 3
+        return _finish({"status": "UNRESOLVED-DATA",
+                        "why": f"HAC mirror mismatch: {t_mine} vs pinned {t_pinned}"},
+                       3)
 
     realized_acf = [float(a) for a in INF.sample_acf(s, cfg["acf_envelope_lags"])]
     cal = INF.calibrate_bar(s, cfg)
     if cal["status"] != "calibrated":
         # §4.4: bars and the realized ACF are published regardless of outcome.
-        rep = {"status": "UNRESOLVED-METHOD", "calibration": cal,
-               "realized_acf": realized_acf,
-               "n_dates": len(s), "dates_skipped": skipped}
-        print(json.dumps(rep, indent=2, sort_keys=True, default=str)); return 5
+        return _finish({"status": "UNRESOLVED-METHOD", "calibration": cal,
+                        "realized_acf": realized_acf,
+                        "n_dates": len(s), "dates_skipped": skipped}, 5)
 
     # gates (§4.4) — both are 5,000-rep RATE checks against the frozen band, not
     # single-statistic comparisons. The positive-control fixture is DEDICATED and
@@ -376,21 +462,19 @@ def execute(json_out: Path | None) -> int:
     pc_path = Path(__file__).resolve().parent / "data/goal7_positive_control_noise.csv"
     pc_sha = hashlib.sha256(pc_path.read_bytes()).hexdigest()
     if pc_sha != cfg["positive_control_sha256"]:
-        rep = {"status": "UNRESOLVED-DATA",
-               "why": f"positive-control fixture digest mismatch: {pc_sha} != "
-                      f"pinned {cfg['positive_control_sha256']}"}
-        print(json.dumps(rep, indent=2)); return 3
+        return _finish({"status": "UNRESOLVED-DATA",
+                        "why": f"positive-control fixture digest mismatch: {pc_sha} "
+                               f"!= pinned {cfg['positive_control_sha256']}"}, 3)
     noise = pd.read_csv(pc_path, float_precision="round_trip")["x"].to_numpy()
     pc = INF.positive_control(noise, cfg)
     mach = INF.machinery_self_check(s, cal, cfg)
     se_hac = float(s.mean()) / t_mine if t_mine else float("nan")
     mde = cal["t_star"] * abs(se_hac)
     if not (pc["ok"] and mach["ok"]):
-        rep = {"status": "UNRESOLVED-METHOD",
-               "positive_control": pc,
-               "machinery": mach,
-               "calibration": cal, "realized_acf": realized_acf}
-        print(json.dumps(rep, indent=2, sort_keys=True, default=str)); return 5
+        return _finish({"status": "UNRESOLVED-METHOD",
+                        "positive_control": pc,
+                        "machinery": mach,
+                        "calibration": cal, "realized_acf": realized_acf}, 5)
 
     verdict = decide(float(s.mean()), t_mine, cal["t_star"],
                      float(np.nanmean(placebo_abs)),
@@ -406,12 +490,7 @@ def execute(json_out: Path | None) -> int:
            "positive_control": pc, "machinery": mach,
            "realized_acf": realized_acf,
            "preflight": pre}
-    txt = json.dumps(rep, indent=2, sort_keys=True, default=str)
-    print(txt)
-    if json_out:
-        json_out.parent.mkdir(parents=True, exist_ok=True)
-        json_out.write_text(txt + "\n")
-    return 0
+    return _finish(rep, 0)
 
 
 if __name__ == "__main__":
