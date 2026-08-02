@@ -21,10 +21,12 @@ A freeze that pins a moving path pins a deadline, not an input.
    snapshot, 292 OHLCV files), each with sha256 + byte size, plus the combined OHLCV
    digest reproducing §2's arithmetic exactly. The three headline digests are
    byte-identical to this prereg's frozen pins (verified at snapshot AND at manifest
-   build). Digests NORMATIVE; location ADVISORY (candidate roots: the PROPOSED durable store
-   `~/renquant-data-store/momentum-prereg-inputs-20260801` staged in base-data#60,
-   pending the operator's RELOCATE in orch#742; the umbrella cache second. Identity
-   is digest-only, so relocation never touches it).
+   build). Digests NORMATIVE; location ADVISORY (candidate roots: the durable store
+   `~/renquant-data-store/momentum-prereg-inputs-20260801`, whose publication is
+   EXECUTED — all 294 files copied out of the protected trees, every per-file sha256
+   re-verified against the manifest at the destination, then frozen read-only
+   (`chmod -R a-w`); the umbrella cache second, pending its operator-gated deletion
+   under orch#742. Identity is digest-only, so location changes never touch it).
 2. **This amendment** — §2's inputs are henceforth resolved THROUGH that manifest.
    The NORMATIVE identity pin is `dataset_id = momentum-prereg-inputs-20260801` plus
    the three §2 digests themselves (panel `55811f63…`, sector `ec26bb1e…`, combined
@@ -38,8 +40,9 @@ A freeze that pins a moving path pins a deadline, not an input.
    mismatch or absence as UNRESOLVED-DATA. No fallback to the live `data/` paths
    under any condition. Resolution prefers the PINNED runtime base-data copy over any
    developer checkout, and the runner records which copy it read.
-3. **The runner (#169)** — revised in its own PR to implement exactly that
-   verify-then-read resolution before this amendment's chain is mergeable end-to-end.
+3. **The runner (model#177, superseding the closed #169)** — revised in its own PR
+   to implement exactly that verify-then-read resolution before this amendment's
+   chain is mergeable end-to-end.
 
 ## The amendment (resolution only; digests, population, and rules untouched)
 
