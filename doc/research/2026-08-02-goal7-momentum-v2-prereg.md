@@ -79,18 +79,29 @@ pinned by digest, not by prose.
   `[VERIFIED — prior work, model#164 §4, same seed reused]`), centring only;
   H1 requires placebo mean |IC| < **0.01**
   `[VERIFIED — prior work, model#164 §4]`.
-- **Positive control (adapted to the machine):** a seeded synthetic block
-  series with true mean 0.04 (same value as the §4 H1 threshold,
-  `[VERIFIED — prior work, model#164 §4]`) and block-sd equal to the
-  REALIZED block-sd must clear the bar in ≥ **80%** of 1,000 seeded
-  replications `[ASSUMED — design choice: detection rate and rep count not
-  separately calibrated, replication count smaller than v1's 5,000]`
-  (seed 20260801, reused) — run BEFORE the real comparison; failure =
-  `UNRESOLVED-METHOD`.
-- **Negative control (adapted):** the same generator with true mean 0 must
-  clear in ≤ **10%**
-  `[ASSUMED — design choice: false-positive band not separately calibrated]`;
-  violation = `UNRESOLVED-METHOD`.
+- **Control mechanics, FROZEN exactly (review round 1 — different compliant
+  implementations must be impossible):**
+  1. **Ordering.** (a) form blocks and drop <10-usable blocks (§2.2);
+     (b) if `n_surviving < 40` → `UNRESOLVED-POWER`, controls are NOT run;
+     (c) compute `realized_block_sd` = the sample standard deviation of the
+     surviving block means with **ddof=1**; (d) run BOTH control gates below;
+     any violation → `UNRESOLVED-METHOD`, shot consumed, H1/H2 never
+     evaluated; (e) only then evaluate §4 on the real series.
+  2. **Generator.** For replication r ∈ {0,…,999}:
+     `rng = numpy.random.default_rng(20260801 + r)` (NumPy PCG64; the
+     seed-to-rep mapping is this addition, nothing else), draw exactly
+     `n_surviving` iid values from **Normal(μ, realized_block_sd)** via
+     `rng.normal(mu, realized_block_sd, n_surviving)`, compute the SAME
+     one-sample t as §2.3 (mean/(sd_ddof1/√n)) and compare to the SAME bar
+     `t_{0.975, n_surviving−1}` with the SAME comparison H1 uses (t ≥ bar).
+  3. **Positive control:** μ = **0.04** (the §4 H1 threshold,
+     `[VERIFIED — prior work, model#164 §4]`); pass iff the clear-rate over
+     the 1,000 reps is ≥ **80%** `[ASSUMED — design choice: detection rate
+     and rep count, not separately calibrated]`.
+  4. **Negative control:** μ = **0.0**; pass iff the clear-rate is ≤ **10%**
+     `[ASSUMED — design choice: false-positive band]`. Both rates and the
+     per-rep clear/fail counts are published in the sealed result regardless
+     of outcome.
 
 ## 4. Decision map (shape unchanged from v1)
 
