@@ -61,8 +61,10 @@ def load_fold_scorer(artifact: dict) -> Callable[[pd.DataFrame], "pd.Series"]:
     booster.load_model(bytearray(artifact["booster_raw_json"].encode("utf-8")))
 
     def _score(frame: pd.DataFrame) -> pd.Series:
-        if frame.index.name != "ticker" and "ticker" in frame.columns:
-            raise ValueError("scorer contract: frame must be TICKER-INDEXED")
+        if frame.index.name != "ticker":
+            raise ValueError(
+                "scorer contract: frame must be TICKER-INDEXED "
+                f"(index.name == 'ticker'); got index.name={frame.index.name!r}")
         X = panel_training_matrix(frame.reset_index(), feat_cols, mu, sd, norm_kind)
         prob = booster.predict(xgb.DMatrix(X.values.astype(np.float64)))
         return pd.Series(prob, index=frame.index, dtype=float)

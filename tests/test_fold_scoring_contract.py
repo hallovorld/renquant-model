@@ -77,3 +77,14 @@ def test_GOLDEN_reproduces_the_committed_corpus(request):
     j = pd.DataFrame({"e": expect, "g": got}).dropna()
     assert len(j) > 3000
     assert float((j["e"] - j["g"]).abs().max()) < 1e-6
+
+
+def test_unnamed_index_is_refused_unconditionally():
+    """Review round 1: the ticker-index guarantee must not depend on a 'ticker'
+    column existing — an unnamed index is refused, full stop."""
+    art = _real_artifact()
+    score = load_fold_scorer(art)
+    frame = pd.DataFrame(np.zeros((5, len(art["feature_cols"]))),
+                         columns=art["feature_cols"])   # unnamed RangeIndex
+    with pytest.raises(ValueError, match="TICKER-INDEXED"):
+        score(frame)
