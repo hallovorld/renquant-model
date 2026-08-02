@@ -154,3 +154,61 @@ def test_every_path_this_verifier_READS_is_inside_this_repository(lineage):
         assert p.resolve().is_relative_to(repo), p
     for f in lineage["folds"]:  # ...and no manifest path escapes the bundle
         assert not f["artifact_path"].startswith("/") and ".." not in f["artifact_path"]
+
+
+# --- guards added after the stringified-norm-kind incident -------------------------
+
+
+def test_artifact_fields_have_the_TYPES_the_consumers_assume(lineage):
+    """The incident this guards: the rebuild tool wrote `str(norm_kind)`, turning the
+    172-element per-feature kind list into ONE string in all 43 merged artifacts.
+    Every digest/root/causality check passed — the corruption was digest-consistent —
+    and two independent consumers parsed the same garbage self-consistently. A field's
+    TYPE is part of the contract; checking only digests certifies corrupted bytes."""
+    VOCAB = {"global_z", "robust_z", "identity"}
+    for f in lineage["folds"]:
+        art = json.loads((B / f["artifact_path"]).read_text())
+        nk = art["feature_norm_kind"]
+        assert isinstance(nk, list), (f["cutoff_date"], type(nk).__name__)
+        assert len(nk) == len(art["feature_cols"])
+        assert set(nk) <= VOCAB, sorted(set(nk) - VOCAB)
+        assert isinstance(art["feature_means"], dict) and isinstance(art["feature_stds"], dict)
+        assert set(art["feature_means"]) == set(art["feature_cols"])
+
+
+def test_GOLDEN_artifact_only_scoring_reproduces_the_committed_corpus(lineage, corpus):
+    """The end-to-end check that would have caught the incident BEFORE merge: score
+    one window's first OOS date using ONLY the committed artifact (booster bytes +
+    self-carried stats) and the recipe transform, and require byte-level agreement
+    with the committed corpus. Needs the panel (not in-repo) → loud skip elsewhere;
+    the TYPE guard above is the CI-side tripwire."""
+    panel_path = Path("/Users/renhao/git/github/RenQuant/data/alpha158_291_fundamental_dataset.parquet")
+    if not panel_path.is_file():
+        pytest.skip("panel not on this machine — type guard above still enforces the contract")
+    import sys
+    import numpy as np
+    import xgboost as xgb
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+    from renquant_model_gbdt.panel_trainer import panel_training_matrix
+    f = lineage["folds"][5]
+    art = json.loads((B / f["artifact_path"]).read_text())
+    feat_cols = art["feature_cols"]
+    mu = np.array([art["feature_means"][c] for c in feat_cols])
+    sd = np.array([art["feature_stds"][c] for c in feat_cols])
+    booster = xgb.Booster()
+    booster.load_model(bytearray(art["booster_raw_json"].encode()))
+    panel = pd.read_parquet(panel_path)
+    panel["date"] = pd.to_datetime(panel["date"])
+    w0, w1 = art["oos_window"]
+    window = panel[(panel["date"] >= w0) & (panel["date"] <= w1)]
+    Xo = panel_training_matrix(window, feat_cols, mu, sd, art["feature_norm_kind"])
+    prob = booster.predict(xgb.DMatrix(Xo.values.astype(np.float64)))
+    got = pd.Series(prob, index=pd.MultiIndex.from_frame(window[["date", "ticker"]]))
+    cut = pd.Timestamp(f["cutoff_date"])
+    exp_rows = corpus[corpus["cutoff"] == cut]
+    expect = pd.Series(exp_rows["cal"].values,
+                       index=pd.MultiIndex.from_frame(exp_rows[["date", "ticker"]]))
+    j = pd.DataFrame({"e": expect, "g": got}).dropna()
+    assert len(j) > 3000
+    max_d = float((j["e"] - j["g"]).abs().max())
+    assert max_d < 1e-6, f"artifact-only scoring diverges from the corpus: max|Δ|={max_d}"

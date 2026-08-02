@@ -7,7 +7,7 @@
     "source_sha256": "04cba8a424290acc8c7866df621bc3c8b8bc98a84777e5cec92bb2701e964e05",
     "renquant_model_head": "365266c0272218069ec57c1f374255fba77762ae",
     "driver": "/Users/renhao/git/github/renquant-model-wt-clfrebuild/tools/wf_clf_corpus_rebuild_persist.py",
-    "driver_sha256": "da99917d01e4aa839939dde60a7ada60682d1b380c036cf93464f3c2814db189",
+    "driver_sha256": "56e919445212fa5050a98698005a093fbf6e3bb77da9cdb0c3098121fe3f8748",
     "params": {
       "objective": "binary:logistic",
       "eta": 0.05,
@@ -704,6 +704,6 @@
       "leakage_margin_bdays": 2
     }
   ],
-  "wall_seconds": 216.3,
+  "wall_seconds": 214.6,
   "smoke_only_folds": null
 }
