@@ -1,0 +1,630 @@
+{
+  "arms": {
+    "clf": {
+      "H1": {
+        "contrasts": {
+          "hit_vs_ic": {
+            "df": 12,
+            "dropped_tail_dates": 0,
+            "mean": 0.0054448565814932065,
+            "n_eff": 13,
+            "se": 0.017754279980666816,
+            "t": 0.30667853539666373
+          },
+          "spread_vs_hit": {
+            "df": 12,
+            "dropped_tail_dates": 0,
+            "mean": 0.147506771375861,
+            "n_eff": 13,
+            "se": 0.10052875591011058,
+            "t": 1.4673092294880936
+          },
+          "spread_vs_ic": {
+            "df": 12,
+            "dropped_tail_dates": 0,
+            "mean": 0.15295162795735423,
+            "n_eff": 13,
+            "se": 0.09745542901586811,
+            "t": 1.569452102380566
+          }
+        },
+        "own_t": {
+          "hit": 0.7317928095704798,
+          "ic": 0.5138176838726639,
+          "spread": 1.287327082282703
+        },
+        "primary_statistic": "ic",
+        "verdict": "REFUTED"
+      },
+      "H2": {
+        "a": false,
+        "b": false,
+        "c": true,
+        "d20_mean": 0.02800698739980679,
+        "d60_mean": 0.030607014499647422,
+        "statistic": "ic",
+        "t_pair_blocks_at_60": {
+          "df": 3,
+          "dropped_tail_dates": 28,
+          "mean": -0.08463010874931273,
+          "n_eff": 4,
+          "se": 0.05600282476983549,
+          "t": -1.5111757147453142
+        },
+        "verdict": "REFUTED"
+      },
+      "H3_profile_lag_ic": {
+        "0": {
+          "mean_ic": 0.027697622827626743,
+          "n_dates": 508
+        },
+        "100": {
+          "mean_ic": 0.042400172359079426,
+          "n_dates": 465
+        },
+        "120": {
+          "mean_ic": 0.05786921075083332,
+          "n_dates": 445
+        },
+        "140": {
+          "mean_ic": 0.0692289383960969,
+          "n_dates": 425
+        },
+        "160": {
+          "mean_ic": 0.06466519534637605,
+          "n_dates": 405
+        },
+        "20": {
+          "mean_ic": 0.02761492895692229,
+          "n_dates": 508
+        },
+        "40": {
+          "mean_ic": 0.036809108969100265,
+          "n_dates": 508
+        },
+        "60": {
+          "mean_ic": 0.045903715551023586,
+          "n_dates": 505
+        },
+        "80": {
+          "mean_ic": 0.04227753118478925,
+          "n_dates": 485
+        }
+      },
+      "h20": {
+        "hit": {
+          "across_seed_sd": {
+            "max": 0.13112201362143716,
+            "mean": 0.08569795698805922
+          },
+          "delta_block": {
+            "df": 12,
+            "dropped_tail_dates": 0,
+            "mean": 0.026416666666666647,
+            "n_eff": 13,
+            "se": 0.03609856003118111,
+            "t": 0.7317928095704798
+          },
+          "perm_mean": 0.4764337270341208,
+          "real_mean": 0.5169291338582678,
+          "se_hac_diagnostic": 0.028422265745184198
+        },
+        "ic": {
+          "across_seed_sd": {
+            "max": 0.09022000619456942,
+            "mean": 0.05836905083562487
+          },
+          "delta_block": {
+            "df": 12,
+            "dropped_tail_dates": 0,
+            "mean": 0.020971810085173456,
+            "n_eff": 13,
+            "se": 0.0408156642782477,
+            "t": 0.5138176838726639
+          },
+          "perm_mean": -0.00030936457218004837,
+          "real_mean": 0.027697622827626743,
+          "se_hac_diagnostic": 0.031517954207673546
+        },
+        "n_dates": 508,
+        "n_eff": 13,
+        "persistence": {
+          "coverage": {
+            "cells_persist": 130816,
+            "cells_real": 130816
+          },
+          "hit": {
+            "real_minus_persist_block": {
+              "df": 10,
+              "dropped_tail_dates": 8,
+              "mean": 0.011515151515151513,
+              "n_eff": 11,
+              "se": 0.011949926134454407,
+              "t": 0.963616961777752
+            }
+          },
+          "ic": {
+            "real_minus_persist_block": {
+              "df": 10,
+              "dropped_tail_dates": 8,
+              "mean": 0.01726270194721124,
+              "n_eff": 11,
+              "se": 0.009278653571832303,
+              "t": 1.86047488609948
+            }
+          },
+          "n_dates": 448,
+          "spread": {
+            "real_minus_persist_block": {
+              "df": 10,
+              "dropped_tail_dates": 8,
+              "mean": 0.05807988357170584,
+              "n_eff": 11,
+              "se": 0.0518810020752497,
+              "t": 1.1194826863109757
+            }
+          }
+        },
+        "spread": {
+          "across_seed_sd": {
+            "max": 0.3975643187827358,
+            "mean": 0.25562529922311983
+          },
+          "delta_block": {
+            "df": 12,
+            "dropped_tail_dates": 0,
+            "mean": 0.1739234380425277,
+            "n_eff": 13,
+            "se": 0.13510431065749404,
+            "t": 1.287327082282703
+          },
+          "perm_mean": -0.0024823926677384673,
+          "real_mean": 0.21160591883880978,
+          "se_hac_diagnostic": 0.12173839698488878
+        }
+      },
+      "h60": {
+        "hit": {
+          "across_seed_sd": {
+            "max": 0.1369146231601567,
+            "mean": 0.08483810965685395
+          },
+          "delta_block": {
+            "df": 3,
+            "dropped_tail_dates": 28,
+            "mean": 0.11385416666666667,
+            "n_eff": 4,
+            "se": 0.05826792229340187,
+            "t": 1.9539767711875193
+          },
+          "perm_mean": 0.4639337270341207,
+          "real_mean": 0.5124015748031495,
+          "se_hac_diagnostic": 0.032350004033066274
+        },
+        "ic": {
+          "across_seed_sd": {
+            "max": 0.08760970737194569,
+            "mean": 0.05830001425007484
+          },
+          "delta_block": {
+            "df": 3,
+            "dropped_tail_dates": 28,
+            "mean": 0.09419794006513035,
+            "n_eff": 4,
+            "se": 0.051468383715228876,
+            "t": 1.8302097961016466
+          },
+          "perm_mean": -0.0010198945035866569,
+          "real_mean": 0.02958711999606076,
+          "se_hac_diagnostic": 0.03664045383337485
+        },
+        "n_dates": 508,
+        "n_eff": 4,
+        "persistence": {
+          "coverage": {
+            "cells_persist": 130816,
+            "cells_real": 130816
+          },
+          "hit": {
+            "real_minus_persist_block": {
+              "df": 3,
+              "dropped_tail_dates": 0,
+              "mean": 0.007083333333333331,
+              "n_eff": 4,
+              "se": 0.015029762996140842,
+              "t": 0.4712870944905853
+            }
+          },
+          "ic": {
+            "real_minus_persist_block": {
+              "df": 3,
+              "dropped_tail_dates": 0,
+              "mean": 0.020424929554208902,
+              "n_eff": 4,
+              "se": 0.017555919181351975,
+              "t": 1.1634212565699442
+            }
+          },
+          "n_dates": 448,
+          "spread": {
+            "real_minus_persist_block": {
+              "df": 3,
+              "dropped_tail_dates": 0,
+              "mean": 0.04371330550366114,
+              "n_eff": 4,
+              "se": 0.08024084823063625,
+              "t": 0.5447762139554656
+            }
+          }
+        },
+        "spread": {
+          "across_seed_sd": {
+            "max": 0.39810883025783905,
+            "mean": 0.25763962095074605
+          },
+          "delta_block": {
+            "df": 3,
+            "dropped_tail_dates": 28,
+            "mean": 0.562662256821838,
+            "n_eff": 4,
+            "se": 0.22916133554506152,
+            "t": 2.4553106023908557
+          },
+          "perm_mean": -0.00367583934987305,
+          "real_mean": 0.3159627098583036,
+          "se_hac_diagnostic": 0.1476236744132081
+        }
+      },
+      "stage2_recommendation": {
+        "measurement_horizon": 60,
+        "statistic": "ic"
+      }
+    },
+    "xgb": {
+      "H1": {
+        "contrasts": {
+          "hit_vs_ic": {
+            "df": 12,
+            "dropped_tail_dates": 0,
+            "mean": 0.005253149326292545,
+            "n_eff": 13,
+            "se": 0.018774918326799447,
+            "t": 0.27979612133886966
+          },
+          "spread_vs_hit": {
+            "df": 12,
+            "dropped_tail_dates": 0,
+            "mean": 0.16418796545643297,
+            "n_eff": 13,
+            "se": 0.0846296870011701,
+            "t": 1.9400753006939855
+          },
+          "spread_vs_ic": {
+            "df": 12,
+            "dropped_tail_dates": 0,
+            "mean": 0.16944111478272553,
+            "n_eff": 13,
+            "se": 0.07495006211989776,
+            "t": 2.2607201380523243
+          }
+        },
+        "own_t": {
+          "hit": 1.4501420277332917,
+          "ic": 0.9215171766048003,
+          "spread": 1.8669405774967867
+        },
+        "primary_statistic": "ic",
+        "verdict": "REFUTED"
+      },
+      "H2": {
+        "a": false,
+        "b": false,
+        "c": true,
+        "d20_mean": 0.04302318467061986,
+        "d60_mean": 0.05421306018138726,
+        "statistic": "ic",
+        "t_pair_blocks_at_60": {
+          "df": 3,
+          "dropped_tail_dates": 28,
+          "mean": -0.07240219001369504,
+          "n_eff": 4,
+          "se": 0.04293124510406866,
+          "t": -1.686468441299257
+        },
+        "verdict": "REFUTED"
+      },
+      "H3_profile_lag_ic": {
+        "0": {
+          "mean_ic": 0.043111231096229594,
+          "n_dates": 508
+        },
+        "100": {
+          "mean_ic": 0.0414060754294585,
+          "n_dates": 465
+        },
+        "120": {
+          "mean_ic": 0.050444129772377506,
+          "n_dates": 445
+        },
+        "140": {
+          "mean_ic": 0.057074369603122815,
+          "n_dates": 425
+        },
+        "160": {
+          "mean_ic": 0.05675232884375277,
+          "n_dates": 405
+        },
+        "20": {
+          "mean_ic": 0.03980153895191696,
+          "n_dates": 508
+        },
+        "40": {
+          "mean_ic": 0.0462818225876735,
+          "n_dates": 508
+        },
+        "60": {
+          "mean_ic": 0.052963012231753745,
+          "n_dates": 505
+        },
+        "80": {
+          "mean_ic": 0.04070452643606889,
+          "n_dates": 485
+        }
+      },
+      "h20": {
+        "hit": {
+          "across_seed_sd": {
+            "max": 0.1894912030951747,
+            "mean": 0.086930002107187
+          },
+          "delta_block": {
+            "df": 12,
+            "dropped_tail_dates": 0,
+            "mean": 0.04087584345479081,
+            "n_eff": 13,
+            "se": 0.0281874758975737,
+            "t": 1.4501420277332917
+          },
+          "perm_mean": 0.4763965389493778,
+          "real_mean": 0.5306719285687375,
+          "se_hac_diagnostic": 0.022495277101479205
+        },
+        "ic": {
+          "across_seed_sd": {
+            "max": 0.10868750349329115,
+            "mean": 0.05878770020866139
+          },
+          "delta_block": {
+            "df": 12,
+            "dropped_tail_dates": 0,
+            "mean": 0.035622694128498264,
+            "n_eff": 13,
+            "se": 0.038656570960234345,
+            "t": 0.9215171766048003
+          },
+          "perm_mean": 8.804642560972116e-05,
+          "real_mean": 0.043111231096229594,
+          "se_hac_diagnostic": 0.029832193838770813
+        },
+        "n_dates": 508,
+        "n_eff": 13,
+        "persistence": {
+          "coverage": {
+            "cells_persist": 129546,
+            "cells_real": 129546
+          },
+          "hit": {
+            "real_minus_persist_block": {
+              "df": 10,
+              "dropped_tail_dates": 8,
+              "mean": 0.020454545454545444,
+              "n_eff": 11,
+              "se": 0.02015105946169664,
+              "t": 1.0150605477307866
+            }
+          },
+          "ic": {
+            "real_minus_persist_block": {
+              "df": 10,
+              "dropped_tail_dates": 8,
+              "mean": 0.01514870154571104,
+              "n_eff": 11,
+              "se": 0.02476817720444908,
+              "t": 0.611619556040236
+            }
+          },
+          "n_dates": 448,
+          "spread": {
+            "real_minus_persist_block": {
+              "df": 10,
+              "dropped_tail_dates": 8,
+              "mean": 0.03593949203294413,
+              "n_eff": 11,
+              "se": 0.08800001528565606,
+              "t": 0.40840324761627905
+            }
+          }
+        },
+        "spread": {
+          "across_seed_sd": {
+            "max": 0.5172469058598724,
+            "mean": 0.2594372594981963
+          },
+          "delta_block": {
+            "df": 12,
+            "dropped_tail_dates": 0,
+            "mean": 0.20506380891122383,
+            "n_eff": 13,
+            "se": 0.10983949429508652,
+            "t": 1.8669405774967867
+          },
+          "perm_mean": -0.0017960564854799948,
+          "real_mean": 0.22638759251721768,
+          "se_hac_diagnostic": 0.09405239805355112
+        }
+      },
+      "h60": {
+        "hit": {
+          "across_seed_sd": {
+            "max": 0.15739008813584857,
+            "mean": 0.08629322336735665
+          },
+          "delta_block": {
+            "df": 3,
+            "dropped_tail_dates": 28,
+            "mean": 0.11051388888888888,
+            "n_eff": 4,
+            "se": 0.0359157831591944,
+            "t": 3.0770285141505385
+          },
+          "perm_mean": 0.464730798452825,
+          "real_mean": 0.533811488276884,
+          "se_hac_diagnostic": 0.02507481720934207
+        },
+        "ic": {
+          "across_seed_sd": {
+            "max": 0.1010613962961042,
+            "mean": 0.05889626682101481
+          },
+          "delta_block": {
+            "df": 3,
+            "dropped_tail_dates": 28,
+            "mean": 0.10229698397377397,
+            "n_eff": 4,
+            "se": 0.05152065741187052,
+            "t": 1.985552768785214
+          },
+          "perm_mean": -0.0004447785609907488,
+          "real_mean": 0.053768281620396506,
+          "se_hac_diagnostic": 0.03259324569992476
+        },
+        "n_dates": 508,
+        "n_eff": 4,
+        "persistence": {
+          "coverage": {
+            "cells_persist": 129546,
+            "cells_real": 129546
+          },
+          "hit": {
+            "real_minus_persist_block": {
+              "df": 3,
+              "dropped_tail_dates": 0,
+              "mean": 0.03305555555555554,
+              "n_eff": 4,
+              "se": 0.047016709664270635,
+              "t": 0.7030597375187106
+            }
+          },
+          "ic": {
+            "real_minus_persist_block": {
+              "df": 3,
+              "dropped_tail_dates": 0,
+              "mean": 0.034546485231614285,
+              "n_eff": 4,
+              "se": 0.04109079474790566,
+              "t": 0.8407353871726969
+            }
+          },
+          "n_dates": 448,
+          "spread": {
+            "real_minus_persist_block": {
+              "df": 3,
+              "dropped_tail_dates": 0,
+              "mean": 0.08625209530493413,
+              "n_eff": 4,
+              "se": 0.18101528038356374,
+              "t": 0.4764906869860356
+            }
+          }
+        },
+        "spread": {
+          "across_seed_sd": {
+            "max": 0.6676808970543445,
+            "mean": 0.2626143662212883
+          },
+          "delta_block": {
+            "df": 3,
+            "dropped_tail_dates": 28,
+            "mean": 0.45338721512217994,
+            "n_eff": 4,
+            "se": 0.1580164930905502,
+            "t": 2.8692398258855785
+          },
+          "perm_mean": -0.003017808874959572,
+          "real_mean": 0.3111397354710047,
+          "se_hac_diagnostic": 0.10910674440580903
+        }
+      },
+      "stage2_recommendation": {
+        "measurement_horizon": 60,
+        "statistic": "ic"
+      }
+    }
+  },
+  "perm_seeds": [
+    20260801,
+    20260802,
+    20260803,
+    20260804,
+    20260805,
+    20260806,
+    20260807,
+    20260808,
+    20260809,
+    20260810,
+    20260811,
+    20260812,
+    20260813,
+    20260814,
+    20260815,
+    20260816,
+    20260817,
+    20260818,
+    20260819,
+    20260820
+  ],
+  "preflight": {
+    "checks": {
+      "amendment_1_present": {
+        "detail": "/Users/renhao/git/github/renquant-model-wt-s0exec/doc/research/2026-07-28-goal6-stage0-amendment-1.md",
+        "ok": true
+      },
+      "amendment_2_present": {
+        "detail": "/Users/renhao/git/github/renquant-model-wt-s0exec/doc/research/2026-08-01-goal6-stage0-amendment-2.md",
+        "ok": true
+      },
+      "amendment_3_present": {
+        "detail": "/Users/renhao/git/github/renquant-model-wt-s0exec/doc/research/2026-08-01-goal6-stage0-amendment-3.md",
+        "ok": true
+      },
+      "amendment_4_present": {
+        "detail": "/Users/renhao/git/github/renquant-model-wt-s0exec/doc/research/2026-08-01-goal6-stage0-amendment-4.md",
+        "ok": true
+      },
+      "amendment_5_present": {
+        "detail": "/Users/renhao/git/github/renquant-model-wt-s0exec/doc/research/2026-08-01-goal6-stage0-amendment-5.md",
+        "ok": true
+      },
+      "clf_scores_digest": {
+        "detail": "Amendment 3 clause 3",
+        "ok": true
+      },
+      "labels_digest": {
+        "detail": "Amendment 3 clause 1 \u2014 fail-closed, no live-path fallback",
+        "ok": true
+      },
+      "prereg_present": {
+        "detail": "/Users/renhao/git/github/renquant-model-wt-s0exec/doc/research/2026-07-28-goal6-stage0-prereg.md",
+        "ok": true
+      },
+      "xgb_corpus_content_digest": {
+        "detail": "the corpus manifest's canonical content identity, verified on the loaded frame itself",
+        "ok": true
+      }
+    },
+    "ok": true,
+    "unresolved": [],
+    "xgb_corpus_resolved_path": "/Users/renhao/git/github/RenQuant/data/exp/oos_pick_table_recipe_v2.parquet"
+  },
+  "status": "COMPLETED"
+}
