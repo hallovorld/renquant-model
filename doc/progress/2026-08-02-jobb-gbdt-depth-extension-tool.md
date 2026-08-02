@@ -231,3 +231,34 @@ that an unclaimed or sealed run dir refuses before any writer/trainer runs.
   if the nightly data rebuild intervenes, the seam admission refuses and a
   fresh `--golden` is required first (that refusal is the designed behavior,
   not a bug).
+
+## Review round 2: the PASSED path was never bound to the input vintage
+
+Round 1 bound the failed-golden path — the seam mode compares every recorded input
+digest to the pending batch's freshly-computed one and names the diverging key. The
+ordinary admission did not. `resolve_vintage_seam` called `require_golden_pass` and
+returned, so the question it asked was *"did parity pass?"* and never *"on which
+inputs?"*
+
+A green report recorded against different panel / fundamentals / config bytes therefore
+authorized a current batch — the mixed-vintage lineage the whole gate exists to stop,
+entering through the door marked *pass*.
+
+It is the more dangerous of the two carried-forward cases: on the failed path the seam
+block at least forces the operator to look, while on the passed path **nothing else
+examines the inputs at all**.
+
+The comparison is now a named function, `require_current_input_vintage`, called **before
+either parity branch**. A golden report — passed or failed — is a measurement of the
+bytes it ran on, and carrying it onto different bytes is stale evidence either way.
+
+One consequence worth stating plainly: a passing golden that records **no**
+`input_digests` is now refused. Before round 2 that was the *default shape* of a passing
+report — nothing required a pass to record what it ran on — so this is a real tightening
+and not just a re-ordering.
+
+| claim | value | provenance |
+|---|---|---|
+| module tests | 41 passed | [VERIFIED — `pytest -q tests/test_wf_gbdt_depth_extension.py`] |
+| the round-2 regressions are load-bearing | 3 of 4 fail against the pre-fix tool | [VERIFIED — `git show HEAD:tools/wf_gbdt_depth_extension.py` over the fix, re-run] |
+| the fourth is the anti-vacuity control | a current-vintage passed golden still admits, before and after | [VERIFIED — same run] |

@@ -396,22 +396,45 @@ def resolve_vintage_seam(evidence_path: Path, accept_vintage_seam: bool,
     Returns ``(report, report_file_sha256)`` in seam mode (the sha binds the
     exact evidence bytes into the seam block), else None."""
     evidence_path = Path(evidence_path)
-    if not accept_vintage_seam:
-        require_golden_pass(evidence_path)
-        return None
     if not evidence_path.is_file():
+        if not accept_vintage_seam:
+            require_golden_pass(evidence_path)      # its own "run --golden first"
         raise ValueError(
             f"--accept-vintage-seam without a golden report at {evidence_path} "
             "— the seam's evidence IS the failed golden; run --golden first")
     raw = evidence_path.read_bytes()
     report_sha = hashlib.sha256(raw).hexdigest()
     report = json.loads(raw)
+
+    # VINTAGE BINDING FIRST, BEFORE EITHER MODE'S PARITY BRANCH (review r2).
+    # Round 1 bound only the FAILED-golden path, so a PASSED golden recorded against
+    # different panel/fundamentals/config bytes still authorized a current batch: the
+    # gate asked "did parity pass?" and never "on which inputs?". A pass is evidence
+    # about the vintage it measured and about nothing else, which is the same thing the
+    # seam path already refused for a failure.
+    require_current_input_vintage(report, current_input_digests)
+
+    if not accept_vintage_seam:
+        require_golden_pass(evidence_path)
+        return None
     if report.get("parity_pass"):
         raise ValueError(
             "--accept-vintage-seam over a PASSED golden (max|delta|="
             f"{report.get('prediction_parity_max_abs_delta')}) — a passed "
             "golden means no seam exists; the flag would document a seam that "
             "is not there. Refusing.")
+    return report, report_sha
+
+
+def require_current_input_vintage(report: dict, current_input_digests: dict) -> None:
+    """Every lineage-relevant input digest the report recorded must equal the pending
+    batch's freshly-computed digest for the same input.
+
+    Applies to BOTH admission modes. A golden report — passed or failed — is a
+    measurement of the bytes it ran on; carrying it forward onto different bytes is
+    stale evidence either way, and a PASS carried forward is the more dangerous of the
+    two because nothing else in the passed path looks at the inputs at all.
+    """
     evidence_digests = report.get("input_digests") or {}
     ev_keys = {k for k in evidence_digests if k.endswith("_sha256")}
     cur_keys = {k for k in (current_input_digests or {}) if k.endswith("_sha256")}
@@ -434,8 +457,7 @@ def resolve_vintage_seam(evidence_path: Path, accept_vintage_seam: bool,
                 f"golden report ({str(evidence_digests[k])[:16]}…) and the "
                 f"pending batch ({str(current_input_digests[k])[:16]}…) — the "
                 "inputs changed since the golden ran; re-run --golden on the "
-                "current vintage before declaring the seam")
-    return report, report_sha
+                "current vintage before admitting the batch")
 
 
 def build_vintage_seam(report: dict, rebuilt_inputs: list[dict],

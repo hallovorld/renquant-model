@@ -254,6 +254,15 @@ def _failed_report() -> dict:
             "input_digests": {"panel": "/x/panel.parquet", **DIGESTS}}
 
 
+def _passed_report() -> dict:
+    """A PASSED golden bound to the current vintage. Round 2: a passed report must
+    carry input_digests like a failed one, because the vintage check now runs before
+    either parity branch."""
+    return {"parity_pass": True, "prediction_parity_max_abs_delta": 3e-7,
+            "feature_means_max_abs_delta": 1e-9, "feature_stds_max_abs_delta": 1e-9,
+            "input_digests": {"panel": "/x/panel.parquet", **DIGESTS}}
+
+
 def _write(tmp_path, payload) -> "pathlib.Path":
     import json
     p = tmp_path / "golden_report.json"
@@ -269,8 +278,7 @@ def test_seam_flag_without_any_golden_refuses(tmp_path):
 def test_seam_flag_over_a_PASSED_golden_refuses(tmp_path):
     """A passed golden means no seam exists — declaring one would be a false
     record, so the flag must refuse rather than write it."""
-    p = _write(tmp_path, {"parity_pass": True,
-                          "prediction_parity_max_abs_delta": 3e-7})
+    p = _write(tmp_path, _passed_report())
     with pytest.raises(ValueError, match="no seam exists"):
         T.resolve_vintage_seam(p, True, DIGESTS)
 
@@ -315,8 +323,7 @@ def test_without_the_flag_batch_admission_is_UNCHANGED(tmp_path):
     p = _write(tmp_path, _failed_report())
     with pytest.raises(ValueError, match="golden parity FAILED"):
         T.resolve_vintage_seam(p, False, DIGESTS)
-    p = _write(tmp_path, {"parity_pass": True,
-                          "prediction_parity_max_abs_delta": 3e-7})
+    p = _write(tmp_path, _passed_report())
     assert T.resolve_vintage_seam(p, False, DIGESTS) is None
 
 
@@ -436,3 +443,54 @@ def test_out_dir_umbrella_root_itself_refuses():
 
 def test_out_dir_outside_the_umbrella_is_allowed(tmp_path):
     assert T.resolve_out_dir(tmp_path) == tmp_path.resolve()
+
+
+# --- review round 2: the PASSED path was never bound to the input vintage -------------
+
+def test_a_PASSED_golden_from_a_DIFFERENT_VINTAGE_is_refused(tmp_path):
+    """THE round-2 finding. Round 1 bound only the failed-golden path, so the ordinary
+    admission asked "did parity pass?" and never "on which inputs?" — a green report
+    recorded against different panel/fundamentals/config bytes authorized a current
+    batch, which is precisely the mixed-vintage lineage the whole gate exists to stop.
+
+    A pass is evidence about the vintage it measured and about nothing else. It is the
+    more dangerous of the two carried-forward cases, because nothing else in the passed
+    path looks at the inputs at all.
+    """
+    stale_pass = _passed_report()
+    stale_pass["input_digests"] = {**stale_pass["input_digests"],
+                                   "panel_sha256": "z" * 64}
+    p = _write(tmp_path, stale_pass)
+    with pytest.raises(ValueError, match="STALE.*'panel_sha256'"):
+        T.resolve_vintage_seam(p, False, DIGESTS)
+
+
+def test_a_PASSED_golden_carrying_NO_digests_is_refused(tmp_path):
+    """The unbindable case on the passed path: a report with no input digests cannot be
+    tied to the pending batch at all, so it cannot authorize it. Before round 2 this was
+    the *default* shape of a passing report — nothing required a passed golden to record
+    what it ran on."""
+    p = _write(tmp_path, {"parity_pass": True,
+                          "prediction_parity_max_abs_delta": 3e-7})
+    with pytest.raises(ValueError, match="no input\\s+digests|no input digests"):
+        T.resolve_vintage_seam(p, False, DIGESTS)
+
+
+def test_a_PASSED_golden_MISSING_ONE_digest_the_batch_recorded_is_refused(tmp_path):
+    """Set EQUALITY, not subset containment: dropping one key from the report must not
+    buy admission for that input. This is the passed-path twin of the seam path's
+    existing unbound-key check."""
+    partial = _passed_report()
+    digests = {k: v for k, v in partial["input_digests"].items()
+               if k != "gmm_artifact_sha256"}
+    partial["input_digests"] = digests
+    p = _write(tmp_path, partial)
+    with pytest.raises(ValueError, match="lacks input digest.*gmm_artifact_sha256"):
+        T.resolve_vintage_seam(p, False, DIGESTS)
+
+
+def test_a_PASSED_golden_ON_THE_CURRENT_VINTAGE_still_admits(tmp_path):
+    """Anti-vacuity: the three refusals above must come from the vintage mismatch, not
+    from a gate that now refuses every passed golden."""
+    p = _write(tmp_path, _passed_report())
+    assert T.resolve_vintage_seam(p, False, DIGESTS) is None
