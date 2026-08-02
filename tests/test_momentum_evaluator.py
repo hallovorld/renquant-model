@@ -702,6 +702,10 @@ def test_cli_finalizes_report_before_ledger_append(monkeypatch, tmp_path):
 
 def test_cli_second_run_refuses_ledgered_report(monkeypatch, capsys,
                                                 tmp_path):
+    """The inverse guard on the round-1 identity fix: the SAME triple twice
+    is still the append-only duplicate refusal — the embedded-sha identity
+    check passes (same artifact), then the ledgered-duplicate refusal
+    fires."""
     out_root = _fake_surfaces(monkeypatch, tmp_path)
     art_path = _write_artifact(tmp_path)
     monkeypatch.setattr(CLI, "build_per_date_series",
@@ -709,8 +713,12 @@ def test_cli_second_run_refuses_ledgered_report(monkeypatch, capsys,
     assert CLI.main(_cli_args(tmp_path, out_root, art_path)) == 0
     capsys.readouterr()
     rc = CLI.main(_cli_args(tmp_path, out_root, art_path))
+    out = capsys.readouterr().out
     assert rc == 4
-    assert "REFUSED-REPORT-EXISTS" in capsys.readouterr().out
+    assert "REFUSED-REPORT-EXISTS" in out
+    assert "append-only" in out, \
+        "same-triple rerun must hit the duplicate refusal, not the " \
+        "artifact-mismatch refusal"
     assert len(load_and_verify_ledger(
         out_root / CLI.LEDGER_BASENAME,
         required_fields=EVAL_ROW_REQUIRED)) == 1
@@ -855,3 +863,40 @@ def test_the_basename_REFUSES_an_unusable_artifact_digest():
             CLI.report_basename(20, bad)
     good = CLI.report_basename(20, "a" * 64)
     assert good == "momentum_eval_h20_" + "a" * 12 + ".json"
+
+
+def test_cli_reconcile_refuses_wrong_artifact_at_the_path(monkeypatch,
+                                                          capsys, tmp_path):
+    """Round 1, the reconcile half: identity keys on the report's EMBEDDED
+    artifact_content_sha256 verified against the artifact being evaluated —
+    the filename's 12-hex prefix is never trusted. A content-sha-valid
+    report embedding a DIFFERENT artifact's sha planted at this artifact's
+    path (prefix collision or tampering) is refused, never reconciled and
+    never ledgered."""
+    out_root = _fake_surfaces(monkeypatch, tmp_path)
+    art_path = _write_artifact(tmp_path)
+    monkeypatch.setattr(CLI, "build_per_date_series",
+                        _synthetic_builder(_dated(_parity_values())))
+
+    # A report genuinely evaluated for a DIFFERENT artifact, planted at THIS
+    # artifact's path with a VALID self-sha — only the embedded identity is
+    # wrong; the filename would happily lie.
+    other = _mini_artifact(cutoff_date="2026-06-23")
+    forged = evaluate_momentum_artifact(
+        other, eval_asof=ASOF, label_horizon_bdays=20,
+        readers=_readers(_dated(_parity_values())), settle_bdays=1)
+    report_path = out_root / ASOF / _report_name(art_path)
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(forged, sort_keys=True))
+
+    rc = CLI.main(_cli_args(tmp_path, out_root, art_path))
+    out = capsys.readouterr().out
+    assert rc == 4
+    assert "REFUSED-REPORT-EXISTS" in out
+    assert "embeds artifact sha" in out
+    assert other["content_sha256"] in out, \
+        "the refusal must name the embedded sha it found"
+    assert not (out_root / CLI.LEDGER_BASENAME).exists(), \
+        "the wrong artifact's report must never be ledgered"
+    assert json.loads(report_path.read_text()) == forged, \
+        "the planted report must not be overwritten"

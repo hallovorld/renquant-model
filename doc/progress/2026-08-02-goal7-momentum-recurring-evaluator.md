@@ -145,3 +145,22 @@ stub value.
 The three existing CLI tests pinned the old basename as a literal; they now DERIVE it
 through the CLI's own rule, so a future change to the naming cannot leave a test asserting
 a path the tool no longer writes.
+
+### Round 1, second half: reconcile must verify the embedded sha, not the filename
+
+Landed by the concurrent session in a separate commit on this branch (the path
+fix above); this commit contributes the remaining half of the reviewed
+contract: `_reconcile_or_refuse` now takes the sha of the artifact being
+evaluated and verifies it against the report's EMBEDDED
+`artifact_content_sha256` before anything else. The filename's 12-hex prefix
+routes; it is never believed: a content-sha-valid report embedding a
+DIFFERENT artifact's sha at this path (prefix collision or tampering) is
+refused (exit 4, naming the embedded sha it found) — never reconciled, never
+ledgered, planted bytes untouched.
+
+| claim | value | provenance |
+|---|---|---|
+| wrong-artifact report planted at the path | exit 4 naming the embedded sha; no ledger created; planted bytes unchanged | [VERIFIED — `test_cli_reconcile_refuses_wrong_artifact_at_the_path`] |
+| same triple twice | still the append-only duplicate refusal (wording asserted), 1 ledger row | [VERIFIED — `test_cli_second_run_refuses_ledgered_report`, extended] |
+| module tests | 48 passed | [VERIFIED — `pytest -q tests/test_momentum_evaluator.py`, 2.78s] |
+| model suite | 1517 passed, 0 failed | [VERIFIED — `make test 2026-08-02`, 63.09s] |

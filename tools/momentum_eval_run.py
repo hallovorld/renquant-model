@@ -184,12 +184,19 @@ def build_per_date_series(artifact: dict, *, label_col: str,
     return series, readers.read_digests(), counts
 
 
-def _reconcile_or_refuse(report_path: Path, ledger_path: Path) -> int:
+def _reconcile_or_refuse(report_path: Path, ledger_path: Path,
+                         expected_artifact_sha: str) -> int:
     """A report already exists at this (artifact, eval_asof, horizon) path —
     reconcile or refuse (the startup half of the two-file protocol). A
     finalized report with no ledger row is the ONE recoverable failure the
     protocol allows; reconcile by appending the row for the exact bytes on
-    disk — never re-evaluate, never silently drop the report."""
+    disk — never re-evaluate, never silently drop the report.
+
+    Identity keys on the report's EMBEDDED artifact_content_sha256, verified
+    against the artifact being evaluated — the filename's 12-hex prefix is a
+    disambiguator, never trusted (codex round 1 on PR #198): a report
+    embedding a DIFFERENT artifact's sha at this path is a prefix collision
+    or tampering to investigate, not a reconcile candidate."""
     try:
         existing = json.loads(report_path.read_text(encoding="utf-8"))
         if existing.get("content_sha256") != content_sha256_of(existing):
@@ -199,6 +206,20 @@ def _reconcile_or_refuse(report_path: Path, ledger_path: Path) -> int:
             "status": "REFUSED-REPORT-EXISTS",
             "report_path": str(report_path),
             "why": f"existing report failed content-sha verification: {exc}",
+        }, indent=2))
+        return 4
+
+    embedded = existing.get("artifact_content_sha256")
+    if embedded != expected_artifact_sha:
+        print(json.dumps({
+            "status": "REFUSED-REPORT-EXISTS",
+            "report_path": str(report_path),
+            "why": (f"the report at this path embeds artifact sha "
+                    f"{embedded!r}, not the artifact being evaluated "
+                    f"({expected_artifact_sha!r}) — identity keys on the "
+                    "embedded sha, never the filename; this is a path "
+                    "collision or tampering to investigate, not a "
+                    "reconcile candidate"),
         }, indent=2))
         return 4
 
@@ -346,7 +367,8 @@ def main(argv=None) -> int:
         return 0
 
     if report_path.exists():
-        return _reconcile_or_refuse(report_path, ledger_path)
+        return _reconcile_or_refuse(report_path, ledger_path,
+                                    artifact["content_sha256"])
 
     series, digests, counts = build_per_date_series(
         artifact, label_col=label_col, last_eligible=bound,
