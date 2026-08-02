@@ -1,0 +1,11 @@
+{
+  "claimed_at": "2026-08-02T08:01:56+00:00",
+  "pid": 37338,
+  "mode": "extension",
+  "status": "consumed",
+  "finished_at": "2026-08-02T08:15:54+00:00",
+  "outcome": "extension",
+  "n_new_windows": 82,
+  "new_lineage_root_sha": "83496eacf91b218ae0602ea6066e473cab6489262b268d4545cb1542ad460228",
+  "manifest_sha256": "b70119eb00cc9c32e43b8520ca1bf912e630beb040dc8cf2ff333a367a1e800d"
+}
