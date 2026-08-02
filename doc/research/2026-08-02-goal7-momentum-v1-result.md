@@ -6,7 +6,9 @@ sha256 `46118a12…`) and terminated at the CALIBRATION gate with
 licensed and nothing is killed. The shot is consumed: claim and result are
 sealed read-only, and the runner refuses any re-invocation (exit 4).**
 
-Committed verbatim in `data/2026-08-02-goal7-momentum-v1-result/`:
+Committed verbatim in `doc/research/data/2026-08-02-goal7-momentum-v1-result/`
+(top-level `data/` is gitignored — the umbrella's production data symlink —
+so these are nested under `doc/research/` and force-added past the ignore rule):
 `result.json` (byte-identical to the sealed store copy) + `EXECUTION_CLAIM.json`.
 
 ## What the machinery refused, exactly `[VERIFIED — result.json]`

@@ -12,7 +12,7 @@ validated fired on our own study; publishing the measured 40-lag ACF
 (rho_1=0.9269, oscillatory decay) is what makes a v2 designable against
 MEASURED dependence.
 EVIDENCE:
-  artifact:      data/2026-08-02-goal7-momentum-v1-result/result.json
+  artifact:      doc/research/data/2026-08-02-goal7-momentum-v1-result/result.json
                  (sha256 46118a12..., byte-identical to the sealed store copy
                  at ~/renquant-data-store/goal7-momentum-prereg-run/)
   prod or exp:   exp — research verdict record; no serving surface
