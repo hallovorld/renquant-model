@@ -13,6 +13,7 @@ import hashlib
 import importlib.util
 import inspect
 import json
+import pathlib
 import re
 import subprocess
 import sys
@@ -583,6 +584,13 @@ def _write_artifact(tmp_path) -> Path:
     return p
 
 
+def _report_name(art_path, horizon: int = 20) -> str:
+    """The CLI's own basename rule, derived rather than restated (round 1: the path
+    now carries artifact identity, so a hardcoded name would pin one artifact)."""
+    art = json.loads(pathlib.Path(art_path).read_text(encoding="utf-8"))
+    return CLI.report_basename(horizon, art["content_sha256"])
+
+
 def _cli_args(tmp_path, out_root, art_path, **over):
     args = {"--artifact": str(art_path), "--eval-asof": ASOF,
             "--horizon": "20", "--out-root": str(out_root)}
@@ -657,7 +665,7 @@ def test_cli_end_to_end_two_file_protocol(monkeypatch, capsys, tmp_path):
     out = json.loads(capsys.readouterr().out)
     assert rc == 0
     assert out["status"] == "COMPLETED"
-    report_path = out_root / ASOF / "momentum_eval_h20.json"
+    report_path = out_root / ASOF / _report_name(art_path)
     assert report_path.is_file()
     report = json.loads(report_path.read_text())
     assert content_sha256_of(report) == report["content_sha256"]
@@ -677,7 +685,7 @@ def test_cli_finalizes_report_before_ledger_append(monkeypatch, tmp_path):
     art_path = _write_artifact(tmp_path)
     monkeypatch.setattr(CLI, "build_per_date_series",
                         _synthetic_builder(_dated(_parity_values())))
-    report_path = out_root / ASOF / "momentum_eval_h20.json"
+    report_path = out_root / ASOF / _report_name(art_path)
     real_append = CLI.append_eval_ledger
     seen = {}
 
@@ -730,7 +738,7 @@ def test_cli_ledger_refusal_leaves_a_reconcilable_report(monkeypatch, capsys,
     rc = CLI.main(_cli_args(tmp_path, out_root, art_path))
     assert rc == 5
     assert "REFUSED-LEDGER" in capsys.readouterr().out
-    report_path = out_root / ASOF / "momentum_eval_h20.json"
+    report_path = out_root / ASOF / _report_name(art_path)
     assert report_path.is_file()
     original_sha = json.loads(report_path.read_text())["content_sha256"]
     assert load_and_verify_ledger(out_root / CLI.LEDGER_BASENAME,
@@ -785,3 +793,65 @@ def test_cli_dry_run_smoke_on_live_surfaces(tmp_path):
     assert rep["n_eligible_dates"] > 0
     assert "none" in rep["statistics_computed"]
     assert not out_root.exists(), "--dry-run wrote something"
+
+
+# --- review round 1: identity is (artifact, eval_asof, horizon) ----------------------
+
+def test_TWO_ARTIFACTS_same_asof_and_horizon_get_SEPARATE_reports(
+        monkeypatch, tmp_path, capsys):
+    """The regression the review asked for.
+
+    Ledger identity is `(artifact_content_sha256, eval_asof, label_horizon_bdays)`, but
+    the report basename was `momentum_eval_h{h}.json` — no artifact in it. So a second
+    artifact evaluated on the same date and horizon resolved to the FIRST one's path and
+    was reconciled-or-refused against it instead of writing its own report. That is every
+    recurring comparison and every post-retrain re-evaluation on the same date.
+
+    Both artifacts here are content-sha-valid and genuinely distinct (different
+    `cutoff_date`), and both must land — separate files, two ledger rows, append-only
+    intact.
+    """
+    out_root = _fake_surfaces(monkeypatch, tmp_path)
+    a1 = tmp_path / "artifact_a.json"
+    a1.write_text(json.dumps(_mini_artifact(), sort_keys=True))
+    a2 = tmp_path / "artifact_b.json"
+    a2.write_text(json.dumps(_mini_artifact(cutoff_date="2026-05-29"), sort_keys=True))
+
+    sha1 = json.loads(a1.read_text())["content_sha256"]
+    sha2 = json.loads(a2.read_text())["content_sha256"]
+    assert sha1 != sha2, "the fixture artifacts are not distinct"
+
+    series = _dated(_parity_values())
+    monkeypatch.setattr(CLI, "build_per_date_series", _synthetic_builder(series))
+
+    for art in (a1, a2):
+        rc = CLI.main(_cli_args(tmp_path, out_root, art))
+        out = json.loads(capsys.readouterr().out)
+        assert rc == 0, out
+        assert out["status"] == "COMPLETED", out
+
+    p1 = out_root / ASOF / _report_name(a1)
+    p2 = out_root / ASOF / _report_name(a2)
+    assert p1 != p2, "both artifacts still resolve to one report path"
+    assert p1.is_file() and p2.is_file()
+
+    r1, r2 = (json.loads(p.read_text()) for p in (p1, p2))
+    assert r1["artifact_content_sha256"] == sha1
+    assert r2["artifact_content_sha256"] == sha2
+    assert content_sha256_of(r1) == r1["content_sha256"]
+    assert content_sha256_of(r2) == r2["content_sha256"]
+
+    rows = load_and_verify_ledger(out_root / CLI.LEDGER_BASENAME,
+                                  required_fields=EVAL_ROW_REQUIRED)
+    shas = [r["artifact_content_sha256"] for r in rows]
+    assert sorted(shas) == sorted([sha1, sha2]), shas
+
+
+def test_the_basename_REFUSES_an_unusable_artifact_digest():
+    """Fail-closed on the disambiguator itself: a missing or stub digest cannot be
+    allowed to produce a path, or two artifacts silently share one again."""
+    for bad in ("", None, "abc123"):
+        with pytest.raises(ValueError, match="too short to identify"):
+            CLI.report_basename(20, bad)
+    good = CLI.report_basename(20, "a" * 64)
+    assert good == "momentum_eval_h20_" + "a" * 12 + ".json"

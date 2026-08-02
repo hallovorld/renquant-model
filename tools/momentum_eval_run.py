@@ -80,8 +80,31 @@ def _sha(p: Path) -> str:
     return hashlib.sha256(p.read_bytes()).hexdigest()
 
 
-def report_basename(label_horizon_bdays: int) -> str:
-    return f"momentum_eval_h{int(label_horizon_bdays)}.json"
+#: How many hex chars of the artifact digest go in the filename. 12 is the repo's
+#: standing abbreviation for a content sha in a human-facing identifier; the FULL
+#: digest is carried inside the report and in the ledger row, so this is a
+#: disambiguator, never the identity itself.
+_SHA_IN_PATH = 12
+
+
+def report_basename(label_horizon_bdays: int, artifact_content_sha256: str) -> str:
+    """One report per `(artifact, eval_asof, horizon)` — the ledger's own key.
+
+    Review round 1: the basename was `momentum_eval_h{h}.json`, so a SECOND artifact
+    evaluated on the same `eval_asof` and horizon resolved to the FIRST one's path and
+    was reconciled-or-refused against it instead of writing its own report. Every
+    recurring comparison and every post-retrain re-evaluation on the same date hit that.
+
+    `_reconcile_or_refuse`'s own docstring already said "a report already exists at this
+    (artifact, eval_asof, horizon) path" — the contract was stated in the code and
+    contradicted by the path.
+    """
+    sha = str(artifact_content_sha256 or "")
+    if len(sha) < _SHA_IN_PATH:
+        raise ValueError(
+            f"artifact_content_sha256 {sha!r} is too short to identify a report — "
+            "the path must carry artifact identity or two artifacts collide")
+    return f"momentum_eval_h{int(label_horizon_bdays)}_{sha[:_SHA_IN_PATH]}.json"
 
 
 def label_column(label_horizon_bdays: int) -> str:
@@ -300,7 +323,8 @@ def main(argv=None) -> int:
     bound = eligible_last_date(asof, a.horizon, a.settle_bdays)
     ledger_path = (Path(a.ledger).expanduser() if a.ledger
                    else out_root / LEDGER_BASENAME)
-    report_path = out_root / str(asof.date()) / report_basename(a.horizon)
+    report_path = (out_root / str(asof.date())
+                   / report_basename(a.horizon, artifact["content_sha256"]))
 
     if a.dry_run:
         panel_dates = pd.read_parquet(PANEL_PATH, columns=["date"])["date"]

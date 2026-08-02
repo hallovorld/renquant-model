@@ -116,3 +116,32 @@ NEXT: codex review → merge (merged-but-dark: no scheduler). Then slice 4
   `[VERIFIED — schema read 2026-08-02]` — as a second ledger key, evidence
   accumulation only.
 AC6: N/A — research/evaluation tooling; no run-surface change.
+
+## Review round 1: the report path did not carry the identity the ledger keys on
+
+Ledger identity is `(artifact_content_sha256, eval_asof, label_horizon_bdays)`, but the
+report basename was `momentum_eval_h{h}.json`. A SECOND artifact evaluated on the same
+`eval_asof` and horizon therefore resolved to the FIRST one's path and was
+reconciled-or-refused against it instead of writing its own report — which is every
+recurring comparison and every post-retrain re-evaluation on the same date, i.e. the two
+things a recurring evaluator exists to do.
+
+`_reconcile_or_refuse`'s own docstring already read *"a report already exists at this
+(artifact, eval_asof, horizon) path"*. The contract was stated in the code and
+contradicted by the path.
+
+Fixed: `report_basename(horizon, artifact_content_sha256)` →
+`momentum_eval_h{h}_{sha[:12]}.json`. The abbreviation is a disambiguator only — the full
+digest stays in the report body and the ledger row — and a digest too short to identify
+anything is REFUSED rather than truncated, so the collision cannot come back through a
+stub value.
+
+| claim | value | provenance |
+|---|---|---|
+| module tests | 47 passed | [VERIFIED — `pytest -q tests/test_momentum_evaluator.py`] |
+| model suite | 1514 passed, 2 skipped | [VERIFIED — `pytest -q`] |
+| both new tests are load-bearing | restoring the pre-fix `momentum_eval_run.py` fails both | [VERIFIED — `git show HEAD:…` over the fix, re-run] |
+
+The three existing CLI tests pinned the old basename as a literal; they now DERIVE it
+through the CLI's own rule, so a future change to the naming cannot leave a test asserting
+a path the tool no longer writes.
