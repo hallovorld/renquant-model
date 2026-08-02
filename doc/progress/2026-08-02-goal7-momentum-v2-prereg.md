@@ -17,9 +17,10 @@ v1's decision-map shape, MDE ceiling 0.06
 `[VERIFIED — prior work, model#164 §4]`, placebo discipline, and
 single-shot execution contract retained with a NEW predeclared run dir.
 WHY/DIR: v1 sealed UNRESOLVED-METHOD — the AR(1) family honestly refused the
-measured dependence (rho_1 0.9269, oscillatory; model#189). v2 avoids
-dependence modeling instead of fitting a bigger family that might also fail
-adequacy. Backlog anchor model#190; operator mandate: keep exploring.
+measured dependence (rho_1 0.9269, oscillatory
+`[VERIFIED — prior work, model#189]`). v2 avoids dependence modeling instead
+of fitting a bigger family that might also fail adequacy. Backlog anchor
+model#190; operator mandate: keep exploring.
 EVIDENCE:
   artifact:      doc/research/2026-08-02-goal7-momentum-v2-prereg.md
   prod or exp:   exp — preregistration text only; no execution, no statistic

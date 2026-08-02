@@ -9,7 +9,8 @@ run dir: `~/renquant-data-store/goal7-momentum-v2-prereg-run/`.**
 **Backlog anchor:** model#190. **What changed vs v1 and WHY (the whole
 change):** v1's single shot sealed `UNRESOLVED-METHOD` — its AR(1)+
 `bootstrap_max` calibration family measured the realized IC dependence
-(ρ₁ = 0.9269, oscillatory decay; 40-lag vector published in model#189) and
+(ρ₁ = 0.9269, oscillatory decay; 40-lag vector
+`[VERIFIED — prior work, model#189]`) and
 refused, with no MA collapse permitted. v2 replaces the DEPENDENCE-MODELING
 approach with the DEPENDENCE-AVOIDING geometry already validated in Stage-0:
 non-overlapping gap-blocks. Candidate, inputs, estimand, placebo discipline,
@@ -20,8 +21,9 @@ pinned by digest, not by prose.
 
 - Construction: exactly the merged #161 §2 + #162 protocol as implemented by
   the merged runner lineage (residual momentum vs SPY-TR: window 252, skip 21,
-  min obs 200 `[VERIFIED — prior work, model#161 §2]`; F1–F5; composite S =
-  equal-weight z-mean, ≥3 of 5; ETFs no F3;
+  min obs 200 — all three `[VERIFIED — prior work, model#161 §2]`; F1–F5;
+  composite S = equal-weight z-mean, ≥3 of 5
+  `[VERIFIED — prior work, model#161 §2]`; ETFs no F3;
   `total_return_close` from its package home
   `renquant_model_common/total_return.py`, moved verbatim in model#188).
 - Inputs resolve THROUGH the base-data fingerprint manifest exactly as
@@ -119,9 +121,13 @@ pinned by digest, not by prose.
      (d) run BOTH control gates below; any violation → `UNRESOLVED-METHOD`,
      shot consumed, H1/H2 never evaluated; (e) only then evaluate §4 on the
      real series.
-  2. **Generator.** For replication r ∈ {0,…,999}:
-     `rng = numpy.random.default_rng(20260801 + r)` (NumPy PCG64; the
-     seed-to-rep mapping is this addition, nothing else), draw exactly
+  2. **Generator.** For replication r ∈ {0,…,999}
+     `[ASSUMED — design choice: rep count, matches the 1,000 reps below]`:
+     `rng = numpy.random.default_rng(20260801 + r)` — NumPy **PCG64**
+     `[ASSUMED — design choice: RNG algorithm, review round 1]`, base seed
+     **20260801** `[VERIFIED — prior work, model#164 §4, same seed reused]`,
+     seed-to-rep mapping is this addition and nothing else
+     `[ASSUMED — design choice, review round 1]` — draw exactly
      `n_surviving` iid values from **Normal(μ, realized_block_sd)** via
      `rng.normal(mu, realized_block_sd, n_surviving)`, compute the SAME
      one-sample t as §2.3 (mean/(sd_ddof1/√n)) and compare to the SAME bar
@@ -130,7 +136,9 @@ pinned by digest, not by prose.
      `[VERIFIED — prior work, model#164 §4]`); pass iff the clear-rate over
      the 1,000 reps is ≥ **80%** `[ASSUMED — design choice: detection rate
      and rep count, not separately calibrated]`.
-  4. **Negative control:** μ = **0.0**; pass iff the clear-rate is ≤ **10%**
+  4. **Negative control:** μ = **0.0**
+     `[ASSUMED — design choice: null mean for the negative control]`; pass
+     iff the clear-rate is ≤ **10%**
      `[ASSUMED — design choice: false-positive band]`. Both rates and the
      per-rep clear/fail counts are published in the sealed result regardless
      of outcome.
