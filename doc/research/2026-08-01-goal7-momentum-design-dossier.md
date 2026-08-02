@@ -17,27 +17,28 @@ governs. Update it by PR whenever the chain gains or closes a document.
 | Amendment 1 (prior; F1 exact α-t) | `…-momentum-prereg-amendment-1.md` (model#168) | merged |
 | Amendment 2 (bootstrap adequacy) | `…-momentum-prereg-amendment-2.md` (model#170) | merged |
 | Amendment 4 (gate replacement: per-member own-bar rates) | `…-momentum-prereg-amendment-4.md` (model#172) + `doc/research/data/2026-08-01-goal7-a4-validation/` | merged |
-| Amendment 3 re-proposal (§2 resolves through the fingerprint manifest) | model#176 | in review |
-| Runner re-proposal (verify-then-read resolution) | model#177 (supersedes closed #169) | draft, flips on #176 merge |
+| Amendment 3 re-proposal (§2 resolves through the fingerprint manifest) | model#176 | merged |
+| Runner re-proposal (verify-then-read resolution) | model#177 (supersedes closed #169) | ready for review |
 | Input identity manifest (294 files, per-file sha256) | `renquant-base-data` `manifests/momentum-prereg-inputs-20260801.json` (base-data#60) | merged |
-| Durable input store | `~/renquant-data-store/momentum-prereg-inputs-20260801` — 294/294 digests re-verified at publication, frozen read-only (`chmod -R a-w`) | published |
+| Durable input store | `~/renquant-data-store/momentum-prereg-inputs-20260801` — 294/294 digests re-verified at publication `[VERIFIED — publication log, 2026-08-01; manifest base-data#60]`, frozen read-only (`chmod -R a-w`) | published |
 
 Verdict rules (frozen before any run): single `--execute`, one JSON verdict;
 RETAIN licenses **shadow only** (orch#699 + decision D1 — never a direct live
 path); KILL closes v1 honestly and the negative is published. The A4 validation
-bundle measured the machine's calibrated bars (MA 0.0236 / AR 0.0274) and showed
-the negative controls are caught (A 0.0945, C 0.0765; B disclosed as no-teeth).
+bundle measured the machine's calibrated bars — MA 0.0236 / AR 0.0274 — and
+showed the negative controls are caught (A 0.0945, C 0.0765; B disclosed as
+no-teeth) `[VERIFIED — doc/research/data/2026-08-01-goal7-a4-validation/validation_output.json, model#172]`.
 
 ## 2. Measured negatives that shaped the design (do not re-learn these)
 
 | finding | where | design consequence |
 |---|---|---|
-| Canonical price-trend has no stable multi-day edge (all 5 canonical signals fail the 20/60d bar) | orchestrator memory + screen docs | plain `ret(k)` arms are calibration references, never candidates |
-| Dividend-tilt: removing the tilt made total-return momentum WORSE at all 4 horizons | `doc/research/2026-07-30-momentum-total-return-prereg.md` + `doc/research/data/2026-07-30-momentum-total-return/` | dividend adjustment is load-bearing; the 43 no-dividend names are verified non-payers, frozen in prereg §2 |
+| Canonical price-trend has no stable multi-day edge — all 5 canonical signals fail the 20/60d bar `[VERIFIED — orchestrator research ledger, GOAL-7 screen line]` | orchestrator memory + screen docs | plain `ret(k)` arms are calibration references, never candidates |
+| Dividend-tilt: removing the tilt made total-return momentum WORSE at all 4 horizons (Δ −0.0075/−0.0088/−0.0107/−0.0103 at h=20/60/120/250) `[VERIFIED — the cited bundle results.json]` | `doc/research/2026-07-30-momentum-total-return-prereg.md` + `doc/research/data/2026-07-30-momentum-total-return/` | dividend adjustment is load-bearing; the 43 no-dividend names are verified non-payers `[VERIFIED — prereg §2 vendor check: 0 dividend events since 2016 for 43/43, 2026-08-01]`, frozen in prereg §2 |
 | Momentum-family screen: the operator-preferred pure-momentum arm did not survive the traded-estimand check | `doc/research/2026-07-29-momentum-family-screen.md` | v1 candidate is RESIDUAL momentum, not raw momentum |
 | Vol-conditioned momentum-reversion screen | `doc/research/2026-07-29-vol-conditioned-momentum-reversion-screen.md` | kept as a v-next direction, not folded into v1 |
 | Two-sided tail prereg + horizon prereg | `doc/research/2026-07-30-goal7-stage1-two-sided-tail-prereg.md`, `…-momentum-horizon-prereg.md` | horizon and tail treatment are frozen inputs to v1, not free parameters |
-| Intraday (phase −1) net edge negative (−6.4bps @ IC 0.03) | orchestrator research ledger | v1 is close-to-close multi-day; no intraday claim |
+| Intraday (phase −1) net edge negative — −6.4bps @ IC 0.03 `[VERIFIED — orchestrator research ledger, phase −1 closure]` | orchestrator research ledger | v1 is close-to-close multi-day; no intraday claim |
 
 ## 3. External literature grounding (why each design choice looks the way it does)
 
@@ -82,10 +83,14 @@ in §1 and the measured record in §2.
 
 ## 4. Where decisions stand
 
-Operator directives on record: 2026-07-29 *"我其实更偏向动量模型"* (preference
-that started GOAL-7); 2026-08-01 *"肯定不放弃！继续探索继续研究"* (RELOCATE
-executed, chain continued); 2026-08-01 *"保留设计文档和reference…行业领先…你有
-权限做任何决策"* (this dossier; full delegation of research-line decisions).
+Operator directives on record (stated in Chinese in conversation; English
+paraphrases here per the English-only docs rule): 2026-07-29 — a stated
+preference for a momentum model (the directive that started GOAL-7);
+2026-08-01 — "definitely not giving up; keep exploring, keep researching"
+(RELOCATE executed, chain continued); 2026-08-01 — "preserve the design
+documents and references; the goal is an industry-leading momentum model; full
+decision authority is delegated" (this dossier; delegation of research-line
+decisions).
 Delegation is exercised WITHIN the standing discipline: frozen prereg decides
 the verdict, negatives are published, RETAIN reaches shadow first, and no gate
 is forced. That discipline is what makes a positive result mean something.
