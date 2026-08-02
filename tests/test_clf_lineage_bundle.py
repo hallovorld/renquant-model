@@ -174,6 +174,7 @@ def test_artifact_fields_have_the_TYPES_the_consumers_assume(lineage):
         assert set(nk) <= VOCAB, sorted(set(nk) - VOCAB)
         assert isinstance(art["feature_means"], dict) and isinstance(art["feature_stds"], dict)
         assert set(art["feature_means"]) == set(art["feature_cols"])
+        assert set(art["feature_stds"]) == set(art["feature_cols"])
 
 
 def test_GOLDEN_artifact_only_scoring_reproduces_the_committed_corpus(lineage, corpus):
