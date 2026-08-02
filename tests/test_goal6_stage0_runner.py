@@ -243,3 +243,27 @@ def test_h2_persistence_veto_requires_both_horizons():
 
 def test_cli_requires_the_explicit_corpus_path():
     assert R.main(["--preflight"]) == 2                 # missing required --xgb-corpus
+
+
+def test_stage2_recommendation_amendment5_guard():
+    """A5's corner: H1 SUPPORTED at 20d, H2 not SUPPORTED -> the tail carries to the
+    60d regime ONLY with 60d confirmation (own t >= 2.0 AND 60d veto); else IC."""
+    h1 = {"verdict": "SUPPORTED", "primary_statistic": "spread"}
+    h2_no = {"verdict": "REFUTED"}
+    ok60, bad60 = {"t": 1.4, "mean": 0.02}, {"t": 0.3, "mean": 0.0}
+    strong, weak = {"t": 2.5}, {"t": 1.1}
+    carried = R.stage2_recommendation(h1, h2_no, strong, ok60)
+    assert carried == {"statistic": "spread", "measurement_horizon": 60,
+                       "cross_horizon_confirmation": {"own_t_60": 2.5,
+                                                      "veto_60_passed": True,
+                                                      "confirmed": True}}
+    for own60, veto in ((weak, ok60), (strong, bad60), (None, ok60)):
+        blocked = R.stage2_recommendation(h1, h2_no, own60, veto)
+        assert blocked["statistic"] == "ic" and "Amendment 5" in blocked["why"]
+    # H2 SUPPORTED -> 20d with the H1 statistic, no guard involved
+    assert R.stage2_recommendation(h1, {"verdict": "SUPPORTED"}, None, None) == \
+        {"statistic": "spread", "measurement_horizon": 20}
+    # H1 not supported -> IC at 60d, guard silent
+    assert R.stage2_recommendation({"verdict": "REFUTED", "primary_statistic": "ic"},
+                                   h2_no, None, None) == \
+        {"statistic": "ic", "measurement_horizon": 60}

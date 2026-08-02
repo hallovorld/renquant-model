@@ -63,7 +63,7 @@ PREREG = REPO / "doc/research/2026-07-28-goal6-stage0-prereg.md"
 AMENDMENTS = tuple(
     REPO / f"doc/research/2026-07-28-goal6-stage0-amendment-1.md" if i == 1 else
     REPO / f"doc/research/2026-08-01-goal6-stage0-amendment-{i}.md"
-    for i in (1, 2, 3, 4))
+    for i in (1, 2, 3, 4, 5))
 
 
 def _sha(p: Path) -> str:
@@ -317,6 +317,33 @@ def decide_h2(t_pair: dict, own_t_20: float | None, d20: float | None,
             "a": a, "b": b, "c": c}
 
 
+def stage2_recommendation(h1: dict, h2: dict, own60: dict | None,
+                          veto60_stat: dict | None) -> dict:
+    """Amendment 5: the Stage-2 hand-off. H2 SUPPORTED -> (H1 statistic, 20d).
+    H1 SUPPORTED but H2 not -> the 20d-selected tail carries into the 60d regime
+    ONLY if confirmed AT 60d (own REAL-perm t >= 2.0 AND the 60d persistence veto
+    passes); otherwise IC per the tie rule. Everything else -> (H1 statistic, 60d),
+    which is IC whenever H1 did not support a tail."""
+    stat = h1.get("primary_statistic", "ic")
+    if h2.get("verdict") == "SUPPORTED":
+        return {"statistic": stat, "measurement_horizon": 20}
+    out = {"statistic": stat, "measurement_horizon": 60}
+    if h1.get("verdict") == "SUPPORTED" and stat != "ic":
+        confirmed = (own60 is not None and own60.get("t") is not None
+                     and own60["t"] >= FROZEN["own_t_bar"]
+                     and _veto_passes(veto60_stat))
+        out["cross_horizon_confirmation"] = {
+            "own_t_60": (own60 or {}).get("t"),
+            "veto_60_passed": _veto_passes(veto60_stat),
+            "confirmed": confirmed,
+        }
+        if not confirmed:
+            out["statistic"] = "ic"
+            out["why"] = ("Amendment 5 guard: the 20d-selected statistic failed 60d "
+                          "confirmation; Stage 2 keeps IC")
+    return out
+
+
 # ------------------------------------------------------------------ preflight ----
 def verify_preconditions(xgb_df: pd.DataFrame | None,
                          xgb_path: Path | None = None) -> dict:
@@ -331,7 +358,7 @@ def verify_preconditions(xgb_df: pd.DataFrame | None,
             out["unresolved"].append(name)
 
     check("prereg_present", PREREG.is_file(), str(PREREG))
-    for i, p in zip((1, 2, 3, 4), AMENDMENTS):
+    for i, p in zip((1, 2, 3, 4, 5), AMENDMENTS):
         check(f"amendment_{i}_present", p.is_file(), str(p))
     check("labels_digest", LABELS.is_file() and _sha(LABELS) == FROZEN["labels_sha256"],
           "Amendment 3 clause 1 — fail-closed, no live-path fallback")
@@ -412,7 +439,9 @@ def execute(xgb_path: Path, json_out: Path | None) -> int:
                            gap_block_t(e["real"][k][sel] - pers["stats"][k], h)}
                        for k in STAT_KEYS}}
             arm_rep[f"h{h}"] = hrep
-        # H1 on h=20 (contrasts among statistics at the same horizon)
+        # H1 horizon: FROZEN at 20d by Amendment 5 (13 vs 4 gapped blocks; the
+        # Holm 3-family needs |t| >= 3.740 at df=3 — structurally near-unresolvable
+        # at 60d). The cross-horizon confirmation guard below is the same amendment.
         h1_h = 20
         e = eff[h1_h]
         perm_means = {k: np.nanmean(e["perm"][k], axis=0) for k in STAT_KEYS}
@@ -456,6 +485,11 @@ def execute(xgb_path: Path, json_out: Path | None) -> int:
         arm_rep["H2"] = {"statistic": stat, "t_pair_blocks_at_60": t_pair,
                          "d20_mean": float(np.nanmean(d20)),
                          "d60_mean": float(np.nanmean(d60)), **h2}
+        own60_stat = gap_block_t(
+            eff[60]["real"][stat] - np.nanmean(eff[60]["perm"][stat], axis=0), 60) \
+            if stat in eff[60]["real"] else None
+        arm_rep["stage2_recommendation"] = stage2_recommendation(
+            h1, h2, own60_stat, veto60.get(stat))
         # H3 profile (descriptive): IC of score(t) vs fwd_20d label at t+lag
         grid = sorted(labels_by[20])
         gpos = {d: i for i, d in enumerate(grid)}
