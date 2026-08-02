@@ -25,10 +25,17 @@ close but short; own-t spread 1.87 / hit 1.45, both under the 2.0 bar. clf: cont
 (b) fails (20d own-t 0.92/0.51 < 2.0). Notably (c) HOLDS both arms — the 20d effect is
 SMALLER (XGB d20 +0.0430 vs d60 +0.0542) — the power hypothesis had it backwards here.
 
-**Persistence vetoes (would have bound if anything had passed):** REAL − persistence
-t ∈ [0.41, 1.86] everywhere — no cell reaches even the 1.0 veto bar except nothing;
-a large share of both arms' apparent edge is shared with their own 60-day-old scores.
-Coverage: 448/508 persistence dates, 100% cell coverage within them.
+**Persistence controls (never reached — H1/H2 are REFUTED on their own conditions,
+independently of any veto):** REAL − persistence block t ranged **0.41 – 1.86**.
+Naming the cells the vetoes WOULD have examined: for H1's would-be tail winners at
+20d — clf spread **1.12** (clears the 1.0 bar), clf hit **0.96** (fails), xgb spread
+**0.41** (fails), xgb hit **1.02** (clears); for H2's would-be IC cells — clf
+**1.86 / 1.16** (both clear), xgb **0.61 / 0.84** (both fail). So the vetoes were a
+mixed bag, and the honest statement is narrower than 'nothing clears': every xgb
+spread/IC cell sits at or below 0.84, no cell anywhere exceeds 1.86 (vs the 2.0
+own-t bar), and the stale-score-inertia reading rests on those LOW cells — the
+verdicts themselves never consulted any of this. Coverage: 448/508 persistence
+dates, 100% cell coverage within them.
 
 ## Diagnostics (no α budget; stated for the record)
 
