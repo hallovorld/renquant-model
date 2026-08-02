@@ -201,7 +201,7 @@ def main() -> int:
             "feature_cols": list(feat_cols),
             "feature_means": {k: float(v) for k, v in zip(feat_cols, list(mu))},
             "feature_stds": {k: float(v) for k, v in zip(feat_cols, list(sd))},
-            "feature_norm_kind": str(norm_kind),
+            "feature_norm_kind": list(norm_kind),
             "booster_raw_json": booster.save_raw("json").decode("utf-8"),
         }
         fold_path = fold_dir / "panel-clf.top-decile.json"
