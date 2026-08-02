@@ -1,5 +1,64 @@
 # GOAL-6 Job B: gbdt WF depth-extension tool — built; golden parity FAILED (input vintage), batch gated off
 
+(PR #185 — `goal6/jobb-gbdt-depth-tool`, fixed by claude)
+
+STATUS:   delivered. Driver + golden gate + `--accept-vintage-seam` mode are
+          landed and tested; the 82-window batch itself is deliberately NOT
+          run — see NEXT.
+
+WHAT:     Adds `tools/wf_gbdt_depth_extension.py`, the GOAL-6 Job B driver
+          that extends the production gbdt WF lineage backward (82 windows,
+          2019-01-14 .. 2023-09-11) behind a golden-parity gate
+          (`require_golden_pass`), plus a `--accept-vintage-seam` mode that
+          admits the batch only when the golden has FAILED and records the
+          seam as first-class provenance in the extension manifest.
+
+WHY/DIR:  GOAL-6 workstream (WF corpus depth). The mandated golden
+          reproduction of the earliest existing window FAILED prediction
+          parity because `data/sec_fundamentals_daily.parquet` was rebuilt
+          2026-08-01 with revised historical values — an input-vintage fact,
+          not a recipe bug (see "Golden verdict — localization" below). Per
+          the operator decision recorded 2026-08-02, regenerating the
+          existing 43-window ladder on the new vintage was rejected (it would
+          break the WF manifest's stamped artifact ties); `--accept-vintage-
+          seam` gives Job B a lawful path to extend the ladder without doing
+          that, by making the vintage drift explicit in the manifest instead
+          of silent.
+
+EVIDENCE: artifact:      `doc/research/data/2026-08-02-jobb-gbdt-depth-extension/
+                         {golden_report.json, extension_plan.json}` (this PR).
+  prod or exp:           EXPERIMENT tooling; read-only over RenQuant/production
+                         paths (`sys.dont_write_bytecode` before any umbrella
+                         import; `--out-dir` refuses to resolve inside the
+                         umbrella). No production data/config/artifact written.
+  existing data:         Golden reproduction against the earliest existing WF
+                         window: max|Δ| = 0.6489841341972351 (target < 1e-6)
+                         over 4380 OOS rows / 15 dates
+                         `[VERIFIED — golden_report.json]`; localized to the 5
+                         fundamental columns' robust-z refit
+                         (`gross_profitability` median Δ = 7.13e-3,
+                         `book_to_price` scale Δ = 9.45e-3) after
+                         `data/sec_fundamentals_daily.parquet` was rebuilt
+                         2026-08-01.
+  best-known?:           N/A — no IC/Sharpe/effect-size number is asserted;
+                         this is a tooling/gate-correctness delivery, not a
+                         research result.
+  scope:                 `renquant-model` tooling only. 82-window batch
+                         computed as a plan (`extension_plan.json`) but NOT
+                         executed; full suite 1334 passed (29 new in
+                         `tests/test_wf_gbdt_depth_extension.py`, baseline
+                         1305).
+
+NEXT:     Launch the 82-window batch with
+          `wf_gbdt_depth_extension.py --accept-vintage-seam`
+          (~19 min measured upper bound) — a single command, not run in this
+          PR per instruction. Both admission paths (no-flag refusal against
+          the real failed golden; seam-mode admission) are verified, the
+          former end-to-end, the latter by unit test; the actual 82-fit
+          training run is deferred to a follow-up.
+
+---
+
 **Bottom line:** the Job B driver (`tools/wf_gbdt_depth_extension.py`) is built and
 verified on its pure surface, the backward ladder is computed (**82 new windows,
 2019-01-14 .. 2023-09-11**, 21-calendar-day grid), but the mandated golden
