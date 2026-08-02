@@ -84,9 +84,41 @@ pinned by digest, not by prose.
   1. **Ordering.** (a) form blocks and drop <10-usable blocks (§2.2);
      (b) if `n_surviving < 40` → `UNRESOLVED-POWER`, controls are NOT run;
      (c) compute `realized_block_sd` = the sample standard deviation of the
-     surviving block means with **ddof=1**; (d) run BOTH control gates below;
-     any violation → `UNRESOLVED-METHOD`, shot consumed, H1/H2 never
-     evaluated; (e) only then evaluate §4 on the real series.
+     surviving block means with **ddof=1**;
+     (c′) **degenerate-scale valve (review round 2).** If `realized_block_sd`
+     is not finite, or is `<= 0.0`: PUBLISH its value and return
+     `UNRESOLVED-METHOD` immediately — controls are NOT run and H1/H2 are
+     NEVER evaluated.
+
+     Both the control generator and the one-sample t are degenerate at that
+     scale, so without this clause the licensed run's verdict would be decided
+     by a library convention rather than by this document. Measured on the
+     runner's own stack — `numpy 2.0.2`,
+     `default_rng(20260801).normal(0.04, scale, 5)`
+     `[VERIFIED — direct run, 2026-08-02]`:
+
+     | `realized_block_sd` | behaviour |
+     |---|---|
+     | `0.0` | returns a CONSTANT vector, no error |
+     | `< 0` | raises `ValueError: scale < 0` |
+     | `nan` | returns an all-`nan` vector, silently |
+     | `inf` | returns a mixture of `+inf` and `-inf` |
+
+     Four different behaviours for four degenerate inputs. THREE of them
+     return silently (`0.0`, `nan`, `inf`); only a negative scale raises.
+     And on a constant vector the one-sample t is `inf` — `sd(ddof=1) = 0.0`,
+     `t = inf` `[VERIFIED — same run]` — which clears ANY finite bar. A frozen
+     plan may not delegate a verdict to a library default, least of all one
+     that PASSES.
+
+     The shot IS consumed. A degenerate scale is a real property of the
+     surviving blocks, not a setup error: it means the geometry produced no
+     dispersion to test against. That is an honest refusal of the same family
+     as (b) and as v1's `bootstrap_max`, and re-running until the blocks
+     disperse is the selection this preregistration exists to prevent.
+     (d) run BOTH control gates below; any violation → `UNRESOLVED-METHOD`,
+     shot consumed, H1/H2 never evaluated; (e) only then evaluate §4 on the
+     real series.
   2. **Generator.** For replication r ∈ {0,…,999}:
      `rng = numpy.random.default_rng(20260801 + r)` (NumPy PCG64; the
      seed-to-rep mapping is this addition, nothing else), draw exactly

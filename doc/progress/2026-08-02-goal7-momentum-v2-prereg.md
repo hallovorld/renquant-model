@@ -32,6 +32,17 @@ EVIDENCE:
                  in this program (Stage-0 gap-blocks + df-aware bars)
   scope:         docs-only; the runner diff is a separate PR gated on this
                  merge; where they disagree, this document governs
+  r2 amendment:  §3 ordering gains (c′), the degenerate-scale valve —
+                 `realized_block_sd` non-finite or `<= 0.0` publishes the
+                 value and returns UNRESOLVED-METHOD before any control runs.
+                 Grounded in MEASURED library behaviour rather than argued:
+                 `numpy 2.0.2` gives four different outcomes for four
+                 degenerate scales and THREE of them return silently, while
+                 the one-sample t on the resulting constant vector is `inf`
+                 — a value that clears ANY finite bar
+                 `[VERIFIED — direct run, 2026-08-02]`. Without the valve the
+                 licensed run's verdict would have been decided by a library
+                 default that happens to PASS.
 NEXT: codex review rounds (v1 needed five amendments — the review IS the
 safety net) → merge = freeze → runner-diff PR → single --execute at the NEW
 run dir → sealed verdict. AC6: N/A — research prereg.
