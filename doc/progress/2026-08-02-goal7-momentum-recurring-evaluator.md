@@ -164,3 +164,43 @@ ledgered, planted bytes untouched.
 | same triple twice | still the append-only duplicate refusal (wording asserted), 1 ledger row | [VERIFIED — `test_cli_second_run_refuses_ledgered_report`, extended] |
 | module tests | 48 passed | [VERIFIED — `pytest -q tests/test_momentum_evaluator.py`, 2.78s] |
 | model suite | 1517 passed, 0 failed | [VERIFIED — `make test 2026-08-02`, 63.09s] |
+
+## Review round 2: settle joins the identity; the requested window reaches the core
+
+Two release-blocking contract gaps (codex, reproduced by them):
+
+**1. `--settle-bdays` changed the maturity boundary but not the identity.**
+Settle moves `eligible_last_date`, i.e. it changes the causal sample — yet
+the report path and the ledger duplicate key carried only (artifact,
+eval_asof, horizon). Settle 1 then settle 2 on one artifact/asof/horizon:
+the second run died REFUSED-REPORT-EXISTS and its maturity contract could
+never be recorded. Fixed by making the durable identity the 4-tuple
+(artifact_content_sha256, eval_asof, label_horizon_bdays, settle_bdays) in
+ALL THREE surfaces: the filename
+(`momentum_eval_h<h>_s<settle>_<sha12>.json`), the reconcile check (the
+report's EMBEDDED artifact sha AND settle must equal the requested ones —
+the filename routes, it is never believed), and
+`evaluate.append_eval_ledger`'s duplicate key. Default settle stays 1 (the
+blend forward-ledger convention).
+
+**2. The CLI pre-filtered immature dates, making the core's mandatory
+refusal unreachable on the only real-reader path.** The old
+`_eligible_dates` silently truncated at the bound before the core ever saw
+the series — a silent filter standing in front of the contract it fed. Now
+the CLI passes the FULL requested window to the core: `_window_dates` is
+maturity-BLIND (declared [first_date, last_date] only, default last =
+the bound as an explicit, persisted request), `--last-date` beyond the
+bound flows through and is REFUSED by the core (exit 3, nothing written),
+and the report's caller_context records the requested window plus the
+no-silent-exclusion invariant `n_window_dates == n_dates +
+n_thin_dates_skipped`. The maturity gate lives in the core ONLY.
+
+| claim | value | provenance |
+|---|---|---|
+| settle 1 then settle 2, same artifact/asof/horizon | two reports (`_s1_`/`_s2_`), two ledger rows, bounds 2026-06-01 / 2026-05-29; same 4-tuple again -> duplicate refusal, still 2 rows | [VERIFIED — `test_cli_TWO_SETTLES_same_artifact_asof_horizon_both_record`] |
+| settle=0 row does not block settle=1 at the API | 2 rows, quadruple dup refused | [VERIFIED — `test_eval_ledger_settle_is_part_of_the_identity`] |
+| wrong-settle report planted at the path | exit 4 naming the embedded settle; never ledgered | [VERIFIED — `test_cli_reconcile_refuses_wrong_settle_at_the_path`] |
+| core refusal REACHABLE on the real path | honest builder + `--last-date` past the bound -> exit 3 REFUSED-MATURITY, nothing written; same builder at the default window -> exit 0 | [VERIFIED — `test_cli_last_date_beyond_the_bound_REACHES_the_core_refusal`] |
+| `_window_dates` is maturity-blind | no-bounds call returns dates past the bound verbatim | [VERIFIED — `test_window_dates_realizes_the_requested_window_verbatim`] |
+| module tests | 52 passed | [VERIFIED — `pytest -q tests/test_momentum_evaluator.py`, 3.64s] |
+| model suite | 1521 passed, 0 failed (baseline 1469 + 52) | [VERIFIED — `make test 2026-08-02`, 75.07s] |

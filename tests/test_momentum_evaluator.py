@@ -567,13 +567,20 @@ def _fake_surfaces(monkeypatch, tmp_path, label_cols=("fwd_20d_excess",)):
 
 
 def _synthetic_builder(series, digests=None, counts=None):
-    def _build(artifact, *, label_col, last_eligible, first_date=None):
-        eligible = series[series.index <= pd.Timestamp(last_eligible)] \
-            if getattr(_build, "truncate", True) else series
-        return (eligible,
+    """Stands in for build_per_date_series: honors the REQUESTED window like
+    the real builder (set `honor_window = False` to simulate a drifted
+    builder that ignores it — the core must then refuse)."""
+    def _build(artifact, *, label_col, first_date=None, last_date=None):
+        window = series
+        if getattr(_build, "honor_window", True):
+            if last_date is not None:
+                window = window[window.index <= pd.Timestamp(last_date)]
+            if first_date is not None:
+                window = window[window.index >= pd.Timestamp(first_date)]
+        return (window,
                 digests or {"synthetic/per_date_series": "ab" * 32},
                 counts or {"n_panel_dates": len(series),
-                           "n_eligible_dates": len(eligible),
+                           "n_window_dates": len(window),
                            "n_thin_dates_skipped": 0})
     return _build
 
@@ -584,11 +591,12 @@ def _write_artifact(tmp_path) -> Path:
     return p
 
 
-def _report_name(art_path, horizon: int = 20) -> str:
-    """The CLI's own basename rule, derived rather than restated (round 1: the path
-    now carries artifact identity, so a hardcoded name would pin one artifact)."""
+def _report_name(art_path, horizon: int = 20, settle: int = 1) -> str:
+    """The CLI's own basename rule, derived rather than restated (rounds 1-2:
+    the path now carries the FULL 4-tuple identity — artifact + horizon +
+    settle — so a hardcoded name would pin one identity)."""
     art = json.loads(pathlib.Path(art_path).read_text(encoding="utf-8"))
-    return CLI.report_basename(horizon, art["content_sha256"])
+    return CLI.report_basename(horizon, settle, art["content_sha256"])
 
 
 def _cli_args(tmp_path, out_root, art_path, **over):
@@ -639,17 +647,26 @@ def test_cli_refuses_unwired_label_column(monkeypatch, capsys, tmp_path):
     assert not out_root.exists()
 
 
-def test_eligible_dates_truncates_at_the_bound_and_first_date():
+def test_window_dates_realizes_the_requested_window_verbatim():
+    """`_window_dates` is maturity-BLIND (codex round 1): it realizes the
+    declared [first_date, last_date] window and nothing else — no bound is
+    known here, so no silent maturity truncation can hide here."""
     dates = pd.bdate_range("2026-05-20", "2026-06-10")
-    got = CLI._eligible_dates(dates, pd.Timestamp(BOUND_H20_S1))
+    got = CLI._window_dates(dates, None, pd.Timestamp(BOUND_H20_S1))
     assert got.max() == pd.Timestamp(BOUND_H20_S1)
     assert (got <= pd.Timestamp(BOUND_H20_S1)).all()
-    got2 = CLI._eligible_dates(dates, pd.Timestamp(BOUND_H20_S1),
-                               first_date="2026-05-27")
+    got2 = CLI._window_dates(dates, "2026-05-27",
+                             pd.Timestamp(BOUND_H20_S1))
     assert got2.min() == pd.Timestamp("2026-05-27")
+    # no bounds -> everything, verbatim: dates PAST any maturity bound
+    # remain — the core, not this function, refuses them
+    got_all = CLI._window_dates(dates)
+    assert list(got_all) == list(dates)
+    assert got_all.max() == pd.Timestamp("2026-06-10") \
+        > pd.Timestamp(BOUND_H20_S1)
     # unsorted + duplicated input comes out sorted-unique
     messy = list(dates[::-1]) + [dates[0]]
-    got3 = CLI._eligible_dates(messy, pd.Timestamp(BOUND_H20_S1))
+    got3 = CLI._window_dates(messy, None, pd.Timestamp(BOUND_H20_S1))
     assert got3.is_monotonic_increasing and not got3.has_duplicates
 
 
@@ -764,14 +781,13 @@ def test_cli_ledger_refusal_leaves_a_reconcilable_report(monkeypatch, capsys,
 
 
 def test_cli_maturity_refusal_writes_nothing(monkeypatch, capsys, tmp_path):
-    """A builder that drifts past the bound (simulated) hits the CORE's
-    refusal: exit 3, no report file, no ledger row — the belt failed and the
-    suspenders held."""
+    """A builder that drifts past the requested window (simulated) hits the
+    CORE's refusal: exit 3, no report file, no ledger row."""
     out_root = _fake_surfaces(monkeypatch, tmp_path)
     art_path = _write_artifact(tmp_path)
     immature = _dated(np.full(100, 0.01), end="2026-06-05")
     builder = _synthetic_builder(immature)
-    builder.truncate = False                    # simulate the drifted filter
+    builder.honor_window = False               # simulate the drifted builder
     monkeypatch.setattr(CLI, "build_per_date_series", builder)
     rc = CLI.main(_cli_args(tmp_path, out_root, art_path))
     out = capsys.readouterr().out
@@ -780,6 +796,134 @@ def test_cli_maturity_refusal_writes_nothing(monkeypatch, capsys, tmp_path):
     assert BOUND_H20_S1 in out
     assert not (out_root / ASOF).exists()
     assert not (out_root / CLI.LEDGER_BASENAME).exists()
+
+
+def test_cli_last_date_beyond_the_bound_REACHES_the_core_refusal(
+        monkeypatch, capsys, tmp_path):
+    """Codex round 1: the old CLI pre-filtered immature dates away, so the
+    core's mandatory maturity refusal was UNREACHABLE on the real path. Now
+    the FULL requested window goes to the core: an HONEST builder + an
+    explicit --last-date past the bound must land at the core's
+    REFUSED-MATURITY (exit 3, nothing written) — the refusal is reachable,
+    not decorative."""
+    out_root = _fake_surfaces(monkeypatch, tmp_path)
+    art_path = _write_artifact(tmp_path)
+    series = _dated(np.full(120, 0.01), end="2026-06-05")   # past the bound
+    builder = _synthetic_builder(series)                    # HONORS window
+    monkeypatch.setattr(CLI, "build_per_date_series", builder)
+    rc = CLI.main(_cli_args(tmp_path, out_root, art_path,
+                            **{"--last-date": "2026-06-05"}))
+    out = capsys.readouterr().out
+    assert rc == 3
+    assert "REFUSED-MATURITY" in out
+    assert BOUND_H20_S1 in out
+    assert not (out_root / ASOF).exists()
+    assert not (out_root / CLI.LEDGER_BASENAME).exists()
+
+    # ...and the SAME honest builder with the default window (the bound)
+    # completes: the refusal above came from the REQUEST, not the fixture.
+    rc = CLI.main(_cli_args(tmp_path, out_root, art_path))
+    out = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert out["status"] in ("COMPLETED", "UNRESOLVED-POWER")
+    assert out["counts"]["n_window_dates"] == out["n_dates"] \
+        + out["counts"]["n_thin_dates_skipped"], \
+        "the no-silent-exclusion invariant must hold"
+
+
+def test_cli_TWO_SETTLES_same_artifact_asof_horizon_both_record(
+        monkeypatch, capsys, tmp_path):
+    """Codex round 2, their repro inverted: settle 1 then settle 2 on the
+    SAME artifact/asof/horizon must yield TWO reports and TWO ledger rows —
+    the old settle-blind identity killed the second run with
+    REFUSED-REPORT-EXISTS, so the second maturity contract could never be
+    recorded. Settle now joins filename + reconcile check + ledger key."""
+    out_root = _fake_surfaces(monkeypatch, tmp_path)
+    art_path = _write_artifact(tmp_path)
+    monkeypatch.setattr(CLI, "build_per_date_series",
+                        _synthetic_builder(_dated(_parity_values())))
+
+    assert CLI.main(_cli_args(tmp_path, out_root, art_path,
+                              **{"--settle-bdays": "1"})) == 0
+    capsys.readouterr()
+    rc = CLI.main(_cli_args(tmp_path, out_root, art_path,
+                            **{"--settle-bdays": "2"}))
+    out = capsys.readouterr().out
+    assert rc == 0, f"the settle=2 run collided: {out}"
+    assert "REFUSED" not in out
+
+    p1 = out_root / ASOF / _report_name(art_path, settle=1)
+    p2 = out_root / ASOF / _report_name(art_path, settle=2)
+    assert p1 != p2 and p1.is_file() and p2.is_file()
+    r1, r2 = (json.loads(p.read_text()) for p in (p1, p2))
+    assert (r1["settle_bdays"], r2["settle_bdays"]) == (1, 2)
+    # the two maturity contracts really differ (hand-pinned bounds)
+    assert r1["eligible_last_date"] == BOUND_H20_S1
+    assert r2["eligible_last_date"] == BOUND_H20_S2
+    rows = load_and_verify_ledger(out_root / CLI.LEDGER_BASENAME,
+                                  required_fields=EVAL_ROW_REQUIRED)
+    assert [r["settle_bdays"] for r in rows] == [1, 2]
+    assert all(r["artifact_content_sha256"]
+               == r1["artifact_content_sha256"] for r in rows)
+
+    # inverse guard: the SAME 4-tuple again is still the duplicate refusal
+    rc = CLI.main(_cli_args(tmp_path, out_root, art_path,
+                            **{"--settle-bdays": "2"}))
+    out = capsys.readouterr().out
+    assert rc == 4
+    assert "append-only" in out
+    assert len(load_and_verify_ledger(
+        out_root / CLI.LEDGER_BASENAME,
+        required_fields=EVAL_ROW_REQUIRED)) == 2
+
+
+def test_cli_reconcile_refuses_wrong_settle_at_the_path(monkeypatch, capsys,
+                                                        tmp_path):
+    """A content-sha-valid report for the SAME artifact but a DIFFERENT
+    settle planted at the path: a different settle is a different causal
+    sample — refused, never reconciled as this policy's evaluation."""
+    out_root = _fake_surfaces(monkeypatch, tmp_path)
+    art_path = _write_artifact(tmp_path)
+    art = json.loads(art_path.read_text())
+    monkeypatch.setattr(CLI, "build_per_date_series",
+                        _synthetic_builder(_dated(_parity_values())))
+    wrong_settle = evaluate_momentum_artifact(
+        _mini_artifact(), eval_asof=ASOF, label_horizon_bdays=20,
+        readers=_readers(_dated(_parity_values())), settle_bdays=0)
+    assert wrong_settle["artifact_content_sha256"] == art["content_sha256"]
+    report_path = out_root / ASOF / _report_name(art_path)
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(wrong_settle, sort_keys=True))
+
+    rc = CLI.main(_cli_args(tmp_path, out_root, art_path))
+    out = capsys.readouterr().out
+    assert rc == 4
+    assert "REFUSED-REPORT-EXISTS" in out
+    assert "settle_bdays=0" in out
+    assert "different causal sample" in out
+    assert not (out_root / CLI.LEDGER_BASENAME).exists(), \
+        "the wrong-settle report must never be ledgered"
+
+
+def test_eval_ledger_settle_is_part_of_the_identity(tmp_path, artifact):
+    """Codex round 1 at the durable layer: settle is IN the duplicate key —
+    a settle=0 row must not block the settle=1 evaluation of the same
+    (artifact, asof, horizon), and the same quadruple still refuses."""
+    ledger = tmp_path / "eval_ledger.jsonl"
+    series = _dated(_parity_values())
+    rep_s0 = evaluate_momentum_artifact(
+        artifact, eval_asof=ASOF, label_horizon_bdays=20,
+        readers=_readers(series), settle_bdays=0)
+    rep_s1 = evaluate_momentum_artifact(
+        artifact, eval_asof=ASOF, label_horizon_bdays=20,
+        readers=_readers(series), settle_bdays=1)
+    append_eval_ledger(rep_s0, ledger)
+    row = append_eval_ledger(rep_s1, ledger)    # same triple, settle differs
+    assert row["row_index"] == 1
+    assert [r["settle_bdays"] for r in load_and_verify_ledger(
+        ledger, required_fields=EVAL_ROW_REQUIRED)] == [0, 1]
+    with pytest.raises(LedgerIntegrityError, match="already exists"):
+        append_eval_ledger(rep_s1, ledger)      # same quadruple: refused
 
 
 @pytest.mark.skipif(not LIVE, reason=OFF_MACHINE)
@@ -797,8 +941,10 @@ def test_cli_dry_run_smoke_on_live_surfaces(tmp_path):
     rep = json.loads(proc.stdout)
     assert rep["dry_run"] is True
     assert rep["eligible_last_date"] == BOUND_H20_S1
+    assert rep["settle_bdays"] == 1                 # the frozen policy
+    assert rep["requested_window"]["last_date"] == BOUND_H20_S1
     assert rep["label_column"] == "fwd_20d_excess"
-    assert rep["n_eligible_dates"] > 0
+    assert rep["n_window_dates"] > 0
     assert "none" in rep["statistics_computed"]
     assert not out_root.exists(), "--dry-run wrote something"
 
@@ -860,9 +1006,11 @@ def test_the_basename_REFUSES_an_unusable_artifact_digest():
     allowed to produce a path, or two artifacts silently share one again."""
     for bad in ("", None, "abc123"):
         with pytest.raises(ValueError, match="too short to identify"):
-            CLI.report_basename(20, bad)
-    good = CLI.report_basename(20, "a" * 64)
-    assert good == "momentum_eval_h20_" + "a" * 12 + ".json"
+            CLI.report_basename(20, 1, bad)
+    good = CLI.report_basename(20, 1, "a" * 64)
+    assert good == "momentum_eval_h20_s1_" + "a" * 12 + ".json"
+    assert CLI.report_basename(20, 2, "a" * 64) != good, \
+        "settle must move the path (round 2)"
 
 
 def test_cli_reconcile_refuses_wrong_artifact_at_the_path(monkeypatch,

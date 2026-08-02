@@ -333,9 +333,13 @@ def append_eval_ledger(report: Mapping[str, Any],
       appending it would consume the (artifact, eval_asof, horizon) key and
       block the corrected re-evaluation forever;
     - a second row for the same (artifact_content_sha256, eval_asof,
-      label_horizon_bdays) — one evaluation per artifact per as-of per
-      horizon; a re-run that disagrees is a dispute to investigate, never a
-      row to overwrite;
+      label_horizon_bdays, settle_bdays) — one evaluation per artifact per
+      as-of per horizon per settle. Settle is IN the durable key (codex
+      round 1 on PR #198): it changes the causal sample via
+      ``eligible_last_date``, so a settle-blind key would let a settle=0
+      run occupy the identity and irreconcilably block the settle=1 run.
+      A re-run that disagrees is a dispute to investigate, never a row to
+      overwrite;
     - a ledger whose existing rows fail chain/self-digest checks."""
     claimed = report.get("content_sha256")
     actual = content_sha256_of(report)
@@ -364,13 +368,14 @@ def append_eval_ledger(report: Mapping[str, Any],
     for r in rows:
         if (r["artifact_content_sha256"] == report["artifact_content_sha256"]
                 and r["eval_asof"] == report["eval_asof"]
-                and r["label_horizon_bdays"]
-                == report["label_horizon_bdays"]):
+                and r["label_horizon_bdays"] == report["label_horizon_bdays"]
+                and r["settle_bdays"] == report["settle_bdays"]):
             raise LedgerIntegrityError(
                 f"a row for artifact "
                 f"{report['artifact_content_sha256'][:12]}… "
                 f"eval_asof={report['eval_asof']} "
                 f"label_horizon_bdays={report['label_horizon_bdays']} "
+                f"settle_bdays={report['settle_bdays']} "
                 f"already exists (row {r['row_index']}) — append-only means "
                 "this run is a dispute to investigate, never a rewrite")
 
