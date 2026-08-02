@@ -44,7 +44,7 @@ so these are nested under `doc/research/` and force-added past the ignore rule):
 
 - A null adequate for ρ₁≈0.93 with oscillatory decay: the candidates already
   proven elsewhere in this program are (a) gap-block resampling with gap ≥ h
-  (the Stage-0 geometry — n_eff ≈ floor((T−h)/2h)+1 ≈ 58 at T=2378, h=20),
+  (the Stage-0 geometry — n_eff = floor((T−h)/2h)+1 = 59 at T=2378, h=20),
   or (b) a bootstrap null on the REAL series (the block-length ledger rule:
   where the real series exists, bootstrap it; never L=h).
 - Any v2 is a NEW preregistration through the same freeze-then-run door, with
