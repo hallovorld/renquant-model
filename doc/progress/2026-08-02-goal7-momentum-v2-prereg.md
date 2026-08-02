@@ -1,15 +1,21 @@
 # GOAL-7 v2 prereg drafted: same candidate, gap-block inference (freeze candidate)
 
-STATUS: proposal (freeze happens ONLY on merge; nothing may execute before).
+STATUS: planned (frozen registration; freeze happens ONLY on merge; NO run
+has been executed before that).
 WHAT: doc/research/2026-08-02-goal7-momentum-v2-prereg.md — the v2
 preregistration: candidate/inputs/estimand carried from v1 BY DIGEST;
-inference replaced by the Stage-0-proven gap-block geometry (h=20 blocks,
-gap=20, block-t with df-aware bars, no HAC/AR/bootstrap in the decision
-path); an adequacy valve on the machine itself (|rho_1(block means)| >= 0.25
-refuses); positive AND negative controls adapted to the block machine with
-frozen rates (>=80% / <=10%, 1,000 seeded reps); v1's decision-map shape,
-MDE ceiling 0.06, placebo discipline, and single-shot execution contract
-retained with a NEW predeclared run dir.
+inference replaced by the Stage-0-proven gap-block geometry (h=20 blocks
+`[VERIFIED — prior work, model#161 §3]`, gap=20
+`[VERIFIED — prior work, model#173 gap>=h independence rule]`, block-t with
+df-aware bars, no HAC/AR/bootstrap in the decision path); an adequacy valve
+on the machine itself (|rho_1(block means)| >= 0.25
+`[ASSUMED — design choice, not separately calibrated]` refuses); positive
+AND negative controls adapted to the block machine with frozen rates
+(>=80% / <=10% `[ASSUMED — design choice, not separately calibrated]`,
+1,000 seeded reps `[ASSUMED — design choice, smaller than v1's 5,000]`);
+v1's decision-map shape, MDE ceiling 0.06
+`[VERIFIED — prior work, model#164 §4]`, placebo discipline, and
+single-shot execution contract retained with a NEW predeclared run dir.
 WHY/DIR: v1 sealed UNRESOLVED-METHOD — the AR(1) family honestly refused the
 measured dependence (rho_1 0.9269, oscillatory; model#189). v2 avoids
 dependence modeling instead of fitting a bigger family that might also fail

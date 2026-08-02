@@ -20,7 +20,8 @@ pinned by digest, not by prose.
 
 - Construction: exactly the merged #161 §2 + #162 protocol as implemented by
   the merged runner lineage (residual momentum vs SPY-TR: window 252, skip 21,
-  min obs 200; F1–F5; composite S = equal-weight z-mean, ≥3 of 5; ETFs no F3;
+  min obs 200 `[VERIFIED — prior work, model#161 §2]`; F1–F5; composite S =
+  equal-weight z-mean, ≥3 of 5; ETFs no F3;
   `total_return_close` from its package home
   `renquant_model_common/total_return.py`, moved verbatim in model#188).
 - Inputs resolve THROUGH the base-data fingerprint manifest exactly as
@@ -30,23 +31,30 @@ pinned by digest, not by prose.
   combined OHLCV
   `4d4638a9f0d69f940fb36a73c28e92883d51b686ab032aebedf559c174c2c1d0`.
   Verify-then-read, per-file sha256, mismatch/absence = UNRESOLVED-DATA,
-  no live-path fallback. The 43 verified non-payers stand as frozen in v1 §2.
+  no live-path fallback. The 43 verified non-payers stand as frozen in v1 §2
+  `[VERIFIED — prior work, model#164 §1, vendor dividend check 43/43]`.
 - Estimand: per-date cross-sectional Spearman IC of S (and of F1 alone)
-  against `fwd_20d_excess`; per-date names floor **50** (below → date skipped
+  against `fwd_20d_excess`; per-date names floor **50**
+  `[VERIFIED — prior work, model#164 §2]` (below → date skipped
   as `thin`, counted and published).
 
 ## 2. Inference — the gap-block machine (REPLACES v1 §4 entirely)
 
 1. **Blocks:** partition the scored-date axis (ascending) into consecutive
    windows of **h = 20** trading dates separated by discarded gaps of
-   **h = 20** dates: block k covers dates [k·2h, k·2h + h). With T scored
+   **h = 20** dates `[VERIFIED — prior work, model#161 §3 (h=20 label
+   horizon); gap := h per Stage-0's gap>=h independence rule, model#173]`:
+   block k covers dates [k·2h, k·2h + h). With T scored
    dates this yields **n_blocks = floor((T − h) / (2h)) + 1**; at v1's
    realized T = 2378 this is **59** `[DERIVED — floor(2358/40)+1; the
    realized T of THIS run governs]`. Dates skipped as thin do not shift the
    partition: the partition is over the realized scored-date sequence.
 2. **Block statistic:** the mean IC within each block (blocks with fewer than
-   **10** usable dates are dropped and counted; if fewer than **40** blocks
-   survive, verdict = `UNRESOLVED-POWER`).
+   **10** usable dates are dropped and counted
+   `[ASSUMED — design choice: minimum usable dates per block, not
+   empirically calibrated]`; if fewer than **40** blocks survive, verdict =
+   `UNRESOLVED-POWER` `[ASSUMED — design choice: power floor, ~2/3 of the
+   nominal 59 blocks at v1's realized T=2378]`).
 3. **Test statistic:** the one-sample t over surviving block means (df =
    n_surviving − 1). The gap ≥ h is what buys approximate independence
    between blocks — the standing block-length rule (`L = h` is the defect;
@@ -57,30 +65,41 @@ pinned by digest, not by prose.
    governs]`).
 5. **Adequacy check on the machine itself (teeth, the A4 lesson):** the runner
    computes the lag-1 autocorrelation OF THE SURVIVING BLOCK MEANS. If
-   |ρ₁(blocks)| ≥ **0.25**, verdict = `UNRESOLVED-METHOD` (the geometry
-   failed to buy independence; published, shot consumed). This is v2's
+   |ρ₁(blocks)| ≥ **0.25**
+   `[ASSUMED — design choice: adequacy threshold mirrors v1's refusal-valve
+   conservatism, not separately calibrated]`, verdict = `UNRESOLVED-METHOD`
+   (the geometry failed to buy independence; published, shot consumed). This is v2's
    refusal valve, mirror of v1's bootstrap_max.
 6. **No HAC, no AR/MA fitting, no bootstrap anywhere in the decision path.**
 
 ## 3. Placebo and controls — v1 discipline, v2 machine
 
 - **Per-date placebo (unchanged):** 5 seeded within-date label permutations
-  (seed **20260801**), centring only; H1 requires placebo mean |IC| < **0.01**.
+  `[VERIFIED — prior work, model#164 §4]` (seed **20260801**
+  `[VERIFIED — prior work, model#164 §4, same seed reused]`), centring only;
+  H1 requires placebo mean |IC| < **0.01**
+  `[VERIFIED — prior work, model#164 §4]`.
 - **Positive control (adapted to the machine):** a seeded synthetic block
-  series with true mean 0.04 and block-sd equal to the REALIZED block-sd must
-  clear the bar in ≥ **80%** of 1,000 seeded replications
-  (seed 20260801) — run BEFORE the real comparison; failure =
+  series with true mean 0.04 (same value as the §4 H1 threshold,
+  `[VERIFIED — prior work, model#164 §4]`) and block-sd equal to the
+  REALIZED block-sd must clear the bar in ≥ **80%** of 1,000 seeded
+  replications `[ASSUMED — design choice: detection rate and rep count not
+  separately calibrated, replication count smaller than v1's 5,000]`
+  (seed 20260801, reused) — run BEFORE the real comparison; failure =
   `UNRESOLVED-METHOD`.
 - **Negative control (adapted):** the same generator with true mean 0 must
-  clear in ≤ **10%**; violation = `UNRESOLVED-METHOD`.
+  clear in ≤ **10%**
+  `[ASSUMED — design choice: false-positive band not separately calibrated]`;
+  violation = `UNRESOLVED-METHOD`.
 
 ## 4. Decision map (shape unchanged from v1)
 
 Let t_S, t_F1 be the block-t statistics; bar = t_{0.975, df}; MDE =
 bar × SE_blocks.
 
-- `MDE > 0.06` → **UNRESOLVED-POWER**.
-- H1: mean IC(S) ≥ **+0.04** AND t_S ≥ bar AND placebo clean. Fail → **KILL**.
+- `MDE > 0.06` `[VERIFIED — prior work, model#164 §4]` → **UNRESOLVED-POWER**.
+- H1: mean IC(S) ≥ **+0.04** `[VERIFIED — prior work, model#164 §4]` AND
+  t_S ≥ bar AND placebo clean. Fail → **KILL**.
 - If H1 passes: t_Δ = block-t of (IC_S − IC_F1). |t_Δ| < bar AND F1
   independently clears (mean ≥ 0.04, t_F1 ≥ bar) → **RETAIN-F1**;
   otherwise → **RETAIN-S**.
@@ -100,6 +119,7 @@ where it and this document disagree, THIS document governs.
 
 - Not claimed: that gap-blocks make the block means exactly independent —
   §2.5 measures and refuses if materially violated.
-- Carried: n ≈ 59 is small; the MDE gate (§4) is what says so honestly.
+- Carried: n ≈ 59 (§2.1, `[DERIVED — floor(2358/40)+1]`) is small; the MDE
+  gate (§4) is what says so honestly.
 - The v1 sealed result (model#189) is untouched evidence; this study is a new
   question to the same data, declared before looking again.
