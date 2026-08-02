@@ -97,3 +97,60 @@ def test_corpus_shape_matches_the_manifest_counts(corpus):
     assert corpus["date"].nunique() == c["n_dates"] == 625
     assert corpus["ticker"].nunique() == c["n_tickers"] == 292
     assert corpus["fold_idx"].nunique() == c["n_folds"] == 43
+
+
+# --- delta, second session ---------------------------------------------------------
+# The five tests above were written by the concurrent claude session and are the
+# substantive verifier; they are stronger than the version I had written in parallel
+# (which I discarded), because they check the embargo MARGIN and pin each artifact's
+# declared oos_window to the corpus's first/last date rather than merely to membership.
+#
+# Three gaps remain, and each is an instance of a shape this programme keeps hitting.
+
+
+def test_the_manifest_DECLARES_the_root_rule_the_test_implements(lineage):
+    """`root_rule` is a field in the shipped manifest, and nothing above reads it.
+
+    So the test hardcodes one formula while the bundle publishes another string, and a
+    divergence between them is invisible: the test keeps passing and the document keeps
+    lying. That is the `asserted-instead-of-measured` shape, one level up — the rule is
+    the artifact's own description of how it may be checked, so it has to be the rule
+    that gets checked.
+    """
+    assert lineage["root_rule"] == (
+        "sha256(recipe_src_sha256 + LF + LF-joined ordered fold shas + LF)")
+    assert lineage["schema"] == "clf-lineage-manifest-v1"
+
+
+def test_the_root_is_ORDER_SENSITIVE(lineage):
+    """Anti-vacuity for the root recompute.
+
+    "LF-joined ORDERED fold shas" is load-bearing: if the rule sorted instead, a
+    manifest whose folds had been permuted would recompute clean and the ordering test
+    would be the only thing standing between a shuffled lineage and a green suite.
+    Swapping two digests must move the root.
+    """
+    shas = [f["artifact_sha256"] for f in lineage["folds"]]
+    shas[0], shas[1] = shas[1], shas[0]
+    payload = lineage["recipe_src_sha256"] + "\n" + "\n".join(shas) + "\n"
+    assert hashlib.sha256(payload.encode()).hexdigest() != lineage["lineage_root_sha"]
+
+
+def test_every_path_this_verifier_READS_is_inside_this_repository(lineage):
+    """The review's actual requirement, made a test instead of a docstring.
+
+    The finding was "use only paths inside this repo". The module says so in prose at
+    the top; nothing enforces it, so the first convenient absolute path added later
+    reintroduces exactly the defect — a verifier CI cannot run, passing locally on the
+    one machine that has the umbrella checkout.
+    """
+    repo = Path(__file__).resolve().parent.parent
+    read = [B / "clf_lineage_manifest.json", B / "clf_wf_manifest.json",
+            B / "clf_wf_scores.parquet",
+            *(B / f["artifact_path"] for f in lineage["folds"])]
+    assert len(read) == 46, len(read)
+    for p in read:
+        assert p.is_file(), p
+        assert p.resolve().is_relative_to(repo), p
+    for f in lineage["folds"]:  # ...and no manifest path escapes the bundle
+        assert not f["artifact_path"].startswith("/") and ".." not in f["artifact_path"]
