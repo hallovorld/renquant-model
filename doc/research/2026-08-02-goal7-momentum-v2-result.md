@@ -5,7 +5,7 @@ positive-control clear-rate 0.5590 against the frozen 0.80 floor (negative
 control 0.0250, inside its 0.10 ceiling). H1/H2 were never evaluated; nothing
 is licensed and nothing is killed. The shot is consumed and sealed (result
 sha256 `9414edab…`), committed byte-verbatim in
-`data/2026-08-02-goal7-momentum-v2-result/` (force-added past the `data/`
+`doc/research/data/2026-08-02-goal7-momentum-v2-result/` (force-added past the `data/`
 ignore rule as this repo's results bundles are).**
 
 ## The refusal, in numbers `[VERIFIED — result.json]`
