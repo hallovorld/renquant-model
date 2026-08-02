@@ -13,18 +13,12 @@ its full JSON output is committed verbatim in a SEPARATE results PR (§6 of the
 prereg). `--preflight` verifies every input digest and amendment-presence gate
 and touches nothing else.
 
-RUNNER-DECLARED CONSTANTS (the frozen design leaves them to the runner; reviewed
-here, stated in the PR):
-  * PERM_SEEDS: the 20 within-date-permutation seeds — `20260801 + i, i = 0..19`.
-    The design freezes the COUNT (20) and the pairing rule (same draws for both
-    arms of every contrast); it never lists seed values.
-  * PAIRING READING: `t_pair` averages the per-seed effect difference across the
-    20 seeds FIRST (per date), then takes the gap-block t of that per-date series.
-    The alternative reading (a t over the 20 per-seed scalars) treats seeds as a
-    time axis and has no block structure; it is not implementable as written.
-  * H2 CROSS-HORIZON BLOCKS: the 20d-vs-60d difference series is blocked at
-    h = 60 (the larger horizon) on the intersection of the two horizons' eligible
-    dates — the conservative choice; stated in every H2 table.
+FORMERLY RUNNER-DECLARED, NOW AMENDMENT-OWNED: the permutation seed values
+(`20260801 + i`), the `t_pair` seed-aggregation object (per-date seed mean →
+gap-block t), the H2 cross-horizon blocking (h = 60 on the eligible-date
+intersection), and the across-seed dispersion diagnostic are all FROZEN by
+Stage-0 Amendment 4 — this runner implements them and gates on the amendment's
+presence; nothing here is a runner choice anymore.
 
 Exit codes: 0 preflight clean / run complete; 2 usage; 3 input-verification or
 gate refusal (UNRESOLVED-DATA).
@@ -277,15 +271,18 @@ def decide_h1(contrasts: dict, own_t: dict, veto: dict | None = None) -> dict:
     hit_ok = sig["hit_vs_ic"] and fav["hit_vs_ic"] and (own_t["hit"] or 0) >= FROZEN["own_t_bar"]
     ic_favoured = any(sig[k] and not fav[k] for k in ("spread_vs_ic", "hit_vs_ic"))
     if spread_ok and hit_ok:
-        ranked = sorted(("spread", "hit"), key=lambda k: -(own_t[k] or 0))
-        survivors = [k for k in ranked if _veto_passes(veto.get(k))]
-        if survivors:
-            return {"verdict": "SUPPORTED", "primary_statistic": survivors[0],
-                    "veto": {k: _veto_passes(veto.get(k)) for k in ranked}}
+        vetoes = {k: _veto_passes(veto.get(k)) for k in ("spread", "hit")}
+        if all(vetoes.values()):
+            winner = "spread" if (own_t["spread"] or 0) >= (own_t["hit"] or 0) else "hit"
+            return {"verdict": "SUPPORTED", "primary_statistic": winner,
+                    "veto": vetoes}
+        # §5 requires BOTH tails for SUPPORTED; a vetoed required tail cannot be
+        # substituted by the other — the hypothesis is INCONCLUSIVE and Stage 2
+        # keeps the current production choice (IC).
         return {"verdict": "INCONCLUSIVE", "primary_statistic": "ic",
-                "why": "§5 persistence veto: no cleared tail statistic has "
+                "why": "§5 persistence veto: a required tail statistic failed "
                        "REAL − persistence positive at t ≥ 1.0",
-                "veto": {k: _veto_passes(veto.get(k)) for k in ranked}}
+                "veto": vetoes}
     if ic_favoured or (not spread_ok and not hit_ok):
         return {"verdict": "REFUTED" if not (spread_ok or hit_ok) else "INCONCLUSIVE",
                 "primary_statistic": "ic"}
@@ -293,20 +290,26 @@ def decide_h1(contrasts: dict, own_t: dict, veto: dict | None = None) -> dict:
 
 
 def decide_h2(t_pair: dict, own_t_20: float | None, d20: float | None,
-              d60: float | None, veto20: dict | None = None) -> dict:
+              d60: float | None, veto20: dict | None = None,
+              veto60: dict | None = None) -> dict:
     """H2 per §5 as amended by Amendment 2: (a)+(b) required; a failure of (c) is
-    graded INCONCLUSIVE, never REFUTED (the SE_HAC discriminator is SUSPENDED);
-    and the §5 persistence veto gates SUPPORTED here too."""
+    graded INCONCLUSIVE, never REFUTED (the SE_HAC discriminator is SUSPENDED).
+    The §5 all-hypotheses persistence veto applies to EACH arm the comparison
+    uses — both the 20d and the 60d persistence controls of the selected
+    statistic must be positive at t ≥ 1.0."""
     a = t_pair["t"] is not None and t_pair["t"] >= FROZEN["own_t_bar"] and (t_pair["mean"] or 0) > 0
     b = (own_t_20 or 0) >= FROZEN["own_t_bar"]
     c = (d20 is not None and d60 is not None and d20 <= d60)
     if a and b and c:
-        if not _veto_passes(veto20):
+        vetoes = {"h20": _veto_passes(veto20), "h60": _veto_passes(veto60)}
+        if not all(vetoes.values()):
+            failed = [k for k, ok in vetoes.items() if not ok]
             return {"verdict": "INCONCLUSIVE", "a": a, "b": b, "c": c,
-                    "veto_passed": False,
+                    "veto_passed": False, "veto": vetoes,
                     "why": "§5 persistence veto: REAL − persistence not positive "
-                           "at t ≥ 1.0 on the 20d arm"}
-        return {"verdict": "SUPPORTED", "a": a, "b": b, "c": c, "veto_passed": True}
+                           f"at t ≥ 1.0 on {'/'.join(failed)}"}
+        return {"verdict": "SUPPORTED", "a": a, "b": b, "c": c,
+                "veto_passed": True, "veto": vetoes}
     if a and b and not c:
         return {"verdict": "INCONCLUSIVE", "a": a, "b": b, "c": c,
                 "why": "Amendment 2: (c) discriminator suspended — never REFUTED on (c)"}
@@ -384,10 +387,17 @@ def execute(xgb_path: Path, json_out: Path | None) -> int:
                 perm_mean = np.nanmean(e["perm"][k], axis=0)
                 delta = e["real"][k] - perm_mean
                 bt = gap_block_t(delta, h)
+                # Amendment 4 item 5: the across-seed dispersion of the per-date
+                # per-seed effect, published so the 20-draw Monte-Carlo noise
+                # floor is visible next to the decision statistic it feeds.
+                delta_seeds = e["real"][k][None, :] - e["perm"][k]
+                seed_sd = np.nanstd(delta_seeds, axis=0, ddof=1)
                 hrep[k] = {
                     "real_mean": float(np.nanmean(e["real"][k])),
                     "perm_mean": float(np.nanmean(perm_mean)),
                     "delta_block": bt,
+                    "across_seed_sd": {"mean": float(np.nanmean(seed_sd)),
+                                       "max": float(np.nanmax(seed_sd))},
                     "se_hac_diagnostic": bartlett_hac_se(delta, FROZEN["se_hac_L"]),
                 }
             # persistence arm (its own dates, own blocks)
@@ -433,8 +443,16 @@ def execute(xgb_path: Path, json_out: Path | None) -> int:
         d60 = np.array([(eff[60]["real"][stat] - np.nanmean(eff[60]["perm"][stat], axis=0))[i60[d]] for d in common])
         t_pair = gap_block_t(d20 - d60, 60)
         own20 = gap_block_t(d20, 20)["t"]
+        pers60 = eff[60]["persist"]
+        veto60 = {}
+        if pers60["dates"]:
+            idx60p = {d: i for i, d in enumerate(eff[60]["dates"])}
+            sel60 = [idx60p[d] for d in pers60["dates"]]
+            veto60 = {k: gap_block_t(eff[60]["real"][k][sel60]
+                                     - pers60["stats"][k], 60)
+                      for k in STAT_KEYS}
         h2 = decide_h2(t_pair, own20, float(np.nanmean(d20)), float(np.nanmean(d60)),
-                       veto20.get(stat))
+                       veto20.get(stat), veto60.get(stat))
         arm_rep["H2"] = {"statistic": stat, "t_pair_blocks_at_60": t_pair,
                          "d20_mean": float(np.nanmean(d20)),
                          "d60_mean": float(np.nanmean(d60)), **h2}

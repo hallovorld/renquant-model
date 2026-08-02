@@ -204,30 +204,41 @@ def test_gap_block_reports_the_terminal_dropped_tail():
     assert out508["n_eff"] == 4 and out508["dropped_tail_dates"] == 28   # 508 - 480
 
 
-def test_h1_persistence_veto_reroutes_or_blocks_supported():
-    """§5 veto: a cleared tail whose REAL − persistence is not positive at t ≥ 1.0
-    cannot win; the other cleared, unvetoed tail takes the win; both vetoed →
-    INCONCLUSIVE naming the veto."""
+def test_h1_one_vetoed_tail_is_inconclusive_never_one_tail_supported():
+    """Review round 2: §5 requires BOTH tails for H1 SUPPORTED. A persistence veto
+    on either otherwise-qualified tail makes the hypothesis INCONCLUSIVE (IC kept);
+    the runner may NOT substitute a one-tail H1."""
     contrasts = {"spread_vs_ic": _c(4.0), "hit_vs_ic": _c(3.5), "spread_vs_hit": _c(0.5)}
     own = {"ic": 1.0, "spread": 3.0, "hit": 2.5}
     veto_spread_fails = {"spread": {"t": 0.4, "mean": 0.01},
                          "hit": {"t": 1.6, "mean": 0.02}}
     out = R.decide_h1(contrasts, own, veto_spread_fails)
-    assert out["verdict"] == "SUPPORTED" and out["primary_statistic"] == "hit"
+    assert out["verdict"] == "INCONCLUSIVE" and out["primary_statistic"] == "ic"
+    assert "persistence veto" in out["why"]
+    assert out["veto"] == {"spread": False, "hit": True}
     both_fail = {"spread": {"t": 0.4, "mean": 0.01},
                  "hit": {"t": 1.2, "mean": -0.01}}      # positive-t but negative mean
     out2 = R.decide_h1(contrasts, own, both_fail)
     assert out2["verdict"] == "INCONCLUSIVE" and "persistence veto" in out2["why"]
 
 
-def test_h2_persistence_veto_blocks_supported():
+def test_h2_persistence_veto_requires_both_horizons():
+    """Review round 2: the §5 all-hypotheses veto applies to EACH arm H2 uses —
+    a failing 60d persistence control blocks SUPPORTED even when 20d passes."""
     t_pair = {"t": 3.0, "mean": 0.05, "n_eff": 4, "df": 3}
+    ok20, ok60 = {"t": 1.4, "mean": 0.02}, {"t": 1.3, "mean": 0.03}
+    bad = {"t": 0.2, "mean": 0.01}
     out = R.decide_h2(t_pair, own_t_20=2.5, d20=0.03, d60=0.05,
-                      veto20={"t": 0.2, "mean": 0.01})
-    assert out["verdict"] == "INCONCLUSIVE" and "persistence veto" in out["why"]
-    ok = R.decide_h2(t_pair, own_t_20=2.5, d20=0.03, d60=0.05,
-                     veto20={"t": 1.4, "mean": 0.02})
-    assert ok["verdict"] == "SUPPORTED" and ok["veto_passed"] is True
+                      veto20=bad, veto60=ok60)
+    assert out["verdict"] == "INCONCLUSIVE" and "h20" in out["why"]
+    out60 = R.decide_h2(t_pair, own_t_20=2.5, d20=0.03, d60=0.05,
+                        veto20=ok20, veto60=bad)
+    assert out60["verdict"] == "INCONCLUSIVE" and "h60" in out60["why"]
+    both = R.decide_h2(t_pair, own_t_20=2.5, d20=0.03, d60=0.05,
+                       veto20=ok20, veto60=ok60)
+    assert both["verdict"] == "SUPPORTED" and both["veto"] == {"h20": True, "h60": True}
+    neither = R.decide_h2(t_pair, own_t_20=2.5, d20=0.03, d60=0.05)
+    assert neither["verdict"] == "INCONCLUSIVE"      # absent veto data fails CLOSED
 
 
 def test_cli_requires_the_explicit_corpus_path():
