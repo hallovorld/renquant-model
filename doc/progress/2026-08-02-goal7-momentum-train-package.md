@@ -114,3 +114,39 @@ path — my first version did, and it failed on a docstring that merely *mention
 `tools/`, which is checking prose rather than behaviour. It now copies the
 package alone into a temp tree with no `tools/` above it and calls `params_v0()`
 in a subprocess: the shape of an installed wheel, asserted by running.
+
+## Review round 2: the ledger append was still ordered before the artifact rename
+
+A HIGH finding on the round-1 fix (which introduced the staging-file + rename):
+`tools/momentum_train_run.py` appended the ledger row, THEN renamed staging to
+final. That reversed the earlier orphan but created the more authoritative
+failure — if the rename fails after the ledger append succeeds (disk full,
+permission, interruption), the append-only ledger permanently records the
+cutoff/params_version with no artifact to match it, and a retry hits the
+duplicate-row refusal with no repair path. The round-2 fix that followed
+(distinguishing `LedgerIntegrityError` as a clean exit 5) addressed a different
+finding and left this ordering unchanged.
+
+**Fixed by reversing the order and adding startup reconciliation.** The
+artifact is now finalized (staging write + atomic `Path.replace`) BEFORE the
+ledger append is attempted. This makes the ONE recoverable failure mode a
+finalized, content-sha-verified artifact with no ledger row — never the
+reverse. On startup, `_reconcile_or_refuse` handles an existing artifact three
+ways: (a) content-sha fails to verify → refuse, never reconcile; (b) a
+matching ledger row already exists → refuse (`REFUSED-ARTIFACT-EXISTS`, the
+common already-processed case); (c) no matching row → reconcile by appending
+the row for the exact bytes on disk, never by re-training (so `trained_at_utc`
+and every other field stay byte-identical across the reconciling retry).
+
+| claim | value | provenance |
+|---|---|---|
+| finalize precedes ledger append | proven by a spy on `append_to_artifact_ledger` asserting the final-named artifact (and no `.tmp`) already exists at call time | `[VERIFIED — test_finalize_happens_before_ledger_append]` |
+| a ledger-append failure leaves a reconcilable artifact, never an orphan | artifact present, `.tmp` absent, ledger empty after the failure; retry reconciles (rc 0) without re-training (content_sha256 unchanged) | `[VERIFIED — test_cli_ledger_refusal_leaves_a_reconcilable_artifact, test_cli_ledger_integrity_refusal_is_clean_exit_5]` |
+| an already-ledgered cutoff still refuses (no double-reconcile) | second run on a fully-processed cutoff returns 4, ledger stays at 1 row | `[VERIFIED — test_cli_refuses_when_artifact_already_ledgered]` |
+| a tampered on-disk artifact is refused, never reconciled | corrupted content_sha256 → exit 4, ledger stays empty | `[VERIFIED — test_cli_refuses_when_existing_artifact_fails_content_sha]` |
+| module tests | 38 passed (35 prior + 3 net new — one prior test renamed to reflect the reversed ordering) | `[VERIFIED — pytest -q tests/test_momentum_train_package.py, 2026-08-02]` |
+| model suite | 1469 passed, 0 failed (this machine has the live surfaces the round-1 fix's 2 skips depend on, so nothing skips here) | `[VERIFIED — pytest -q (== make test), 71.93s, 2026-08-02]` |
+
+Scope: only `tools/momentum_train_run.py` (the CLI's two-file protocol) and its
+tests changed this round — the round-1 packaged-mirror fix for `params_v0()`
+(`src/renquant_model_momentum/_frozen_params_v0.py`, `train.py`) is untouched.

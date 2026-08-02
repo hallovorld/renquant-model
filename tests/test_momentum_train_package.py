@@ -494,14 +494,41 @@ def _wire_fake_cli_surfaces(monkeypatch, tmp_path, world):
     return out_root, asof_str, out_root / asof_str
 
 
-def test_cli_ledger_refusal_leaves_no_orphaned_artifact(monkeypatch, tmp_path,
-                                                        world):
-    """Regression (codex review, PR #196): if append_to_artifact_ledger
-    refuses (tampered/duplicate/stale-sha ledger), the CLI must leave NO
-    artifact file behind — else a retry hits REFUSED-ARTIFACT-EXISTS for a
-    cutoff that was never actually ledgered, with no automatic recovery.
-    Round 2 adds the inverse half: once the failure clears, the SAME retry
-    must SUCCEED end-to-end."""
+def test_finalize_happens_before_ledger_append(monkeypatch, tmp_path, world):
+    """Two-file protocol invariant (codex review round 3, #196): by the time
+    append_to_artifact_ledger is called, the final-named artifact must
+    already exist on disk — proving the order is finalize-THEN-ledger, never
+    the reverse. The reverse order left the more authoritative failure mode:
+    a crash between ledger-append and rename could leave an append-only
+    ledger row permanently pointing at a missing artifact, unrepairable
+    because a retry hits the duplicate-row refusal."""
+    out_root, asof_str, cutoff_dir = _wire_fake_cli_surfaces(
+        monkeypatch, tmp_path, world)
+    real_append = CLI.append_to_artifact_ledger
+    seen = {}
+
+    def _spy(artifact, ledger_path):
+        seen["artifact_exists_at_append_time"] = \
+            (cutoff_dir / CLI.ARTIFACT_BASENAME).is_file()
+        seen["no_tmp_at_append_time"] = not any(cutoff_dir.glob("*.tmp"))
+        return real_append(artifact, ledger_path)
+    monkeypatch.setattr(CLI, "append_to_artifact_ledger", _spy)
+
+    rc = CLI.main(["--asof", asof_str, "--out-root", str(out_root)])
+    assert rc == 0
+    assert seen["artifact_exists_at_append_time"] is True
+    assert seen["no_tmp_at_append_time"] is True
+
+
+def test_cli_ledger_refusal_leaves_a_reconcilable_artifact(monkeypatch,
+                                                           tmp_path, world):
+    """Regression (codex review round 3, PR #196): under the two-file
+    protocol the artifact is finalized BEFORE the ledger append is
+    attempted, so a ledger-append failure leaves the finalized artifact ON
+    DISK (never a bare orphaned .tmp) with the ledger untouched. A retry
+    must RECONCILE — append the row for the artifact already on disk —
+    rather than re-run training (the artifact bytes, including
+    trained_at_utc, must be unchanged by the retry)."""
     out_root, asof_str, cutoff_dir = _wire_fake_cli_surfaces(
         monkeypatch, tmp_path, world)
     real_append = CLI.append_to_artifact_ledger
@@ -513,30 +540,33 @@ def test_cli_ledger_refusal_leaves_no_orphaned_artifact(monkeypatch, tmp_path,
     with pytest.raises(RuntimeError, match="simulated ledger refusal"):
         CLI.main(["--asof", asof_str, "--out-root", str(out_root)])
 
-    assert not (cutoff_dir / CLI.ARTIFACT_BASENAME).exists()
-    assert not any(cutoff_dir.glob("*.tmp")), \
-        "orphaned staging file left behind after a ledger refusal"
+    final = cutoff_dir / CLI.ARTIFACT_BASENAME
+    assert final.is_file(), \
+        "the artifact must already be finalized when the ledger append fails"
+    assert not any(cutoff_dir.glob("*.tmp")), "staging file survived finalize"
+    ledger_path = out_root / CLI.LEDGER_BASENAME
+    assert load_and_verify_ledger(ledger_path) == []
+    original_sha = json.loads(final.read_text())["content_sha256"]
 
-    # RETRY AFTER THE FAILURE CLEARS (codex round 2, reproduction inverted):
-    # restore the real append; the identical invocation must now succeed.
+    # RETRY AFTER THE FAILURE CLEARS: reconcile, never retrain.
     monkeypatch.setattr(CLI, "append_to_artifact_ledger", real_append)
     rc = CLI.main(["--asof", asof_str, "--out-root", str(out_root)])
-    assert rc == 0, "retry after a cleared ledger failure must succeed"
-    final = cutoff_dir / CLI.ARTIFACT_BASENAME
-    assert final.is_file()
-    assert not any(cutoff_dir.glob("*.tmp")), "staging file survived finalize"
-    rows = load_and_verify_ledger(out_root / CLI.LEDGER_BASENAME)
+    assert rc == 0, "retry after a cleared ledger failure must reconcile"
+    assert not any(cutoff_dir.glob("*.tmp"))
+    rows = load_and_verify_ledger(ledger_path)
     assert len(rows) == 1
-    art = json.loads(final.read_text())
-    assert rows[0]["artifact_content_sha256"] == art["content_sha256"], \
-        "ledger row does not bind the finalized artifact bytes' content sha"
+    assert json.loads(final.read_text())["content_sha256"] == original_sha, \
+        "reconciliation must not re-train — the artifact bytes are unchanged"
+    assert rows[0]["artifact_content_sha256"] == original_sha
 
 
 def test_cli_ledger_integrity_refusal_is_clean_exit_5(monkeypatch, tmp_path,
                                                       world, capsys):
     """A LedgerIntegrityError is an EXPECTED refusal, not a crash: clean
-    REFUSED-LEDGER JSON + exit 5, nothing final-named or staged left behind,
-    and the invariant is stated: no final-named artifact without its row."""
+    REFUSED-LEDGER JSON + exit 5. Under the two-file protocol the finalized
+    artifact is already on disk when this refusal fires (never orphaned as a
+    bare .tmp); a retry reconciles that same artifact rather than
+    re-training once the cause clears."""
     out_root, asof_str, cutoff_dir = _wire_fake_cli_surfaces(
         monkeypatch, tmp_path, world)
     real_append = CLI.append_to_artifact_ledger
@@ -553,13 +583,64 @@ def test_cli_ledger_integrity_refusal_is_clean_exit_5(monkeypatch, tmp_path,
     out = capsys.readouterr().out
     assert rc == 5
     assert "REFUSED-LEDGER" in out
-    assert not (cutoff_dir / CLI.ARTIFACT_BASENAME).exists()
+    final = cutoff_dir / CLI.ARTIFACT_BASENAME
+    assert final.is_file(), \
+        "the artifact must already be finalized when the ledger refuses"
     assert not any(cutoff_dir.glob("*.tmp"))
+    original_sha = json.loads(final.read_text())["content_sha256"]
 
     rc = CLI.main(["--asof", asof_str, "--out-root", str(out_root)])
-    assert rc == 0, "retry after the transient refusal must succeed"
-    assert (cutoff_dir / CLI.ARTIFACT_BASENAME).is_file()
+    out = capsys.readouterr().out
+    assert rc == 0, "retry after the transient refusal must reconcile"
+    assert "RECONCILED" in out
+    assert json.loads(final.read_text())["content_sha256"] == original_sha, \
+        "reconciliation must not re-train — the artifact bytes are unchanged"
     assert len(load_and_verify_ledger(out_root / CLI.LEDGER_BASENAME)) == 1
+
+
+def test_cli_refuses_when_artifact_already_ledgered(monkeypatch, tmp_path,
+                                                    world):
+    """The common case: a fully-processed cutoff (artifact finalized AND
+    ledgered) must refuse a second run rather than reconcile — reconciliation
+    is only for a finalized artifact with NO matching ledger row."""
+    out_root, asof_str, cutoff_dir = _wire_fake_cli_surfaces(
+        monkeypatch, tmp_path, world)
+    rc = CLI.main(["--asof", asof_str, "--out-root", str(out_root)])
+    assert rc == 0
+    original_sha = json.loads(
+        (cutoff_dir / CLI.ARTIFACT_BASENAME).read_text())["content_sha256"]
+
+    rc = CLI.main(["--asof", asof_str, "--out-root", str(out_root)])
+    assert rc == 4
+    rows = load_and_verify_ledger(out_root / CLI.LEDGER_BASENAME)
+    assert len(rows) == 1, "the second run must not append a duplicate row"
+    assert json.loads(
+        (cutoff_dir / CLI.ARTIFACT_BASENAME).read_text()
+    )["content_sha256"] == original_sha
+
+
+def test_cli_refuses_when_existing_artifact_fails_content_sha(monkeypatch,
+                                                              tmp_path,
+                                                              world, capsys):
+    """A finalized artifact whose bytes were tampered with (self-carried
+    content_sha256 no longer recomputes) must be refused, not silently
+    reconciled — reconciliation trusts only a verified artifact."""
+    out_root, asof_str, cutoff_dir = _wire_fake_cli_surfaces(
+        monkeypatch, tmp_path, world)
+    final = cutoff_dir / CLI.ARTIFACT_BASENAME
+    final.parent.mkdir(parents=True, exist_ok=True)
+    tampered = dict(json.loads(json.dumps({
+        "kind": "momentum_residual_v0", "cutoff_date": asof_str,
+        "params": {"params_version": "v0"}, "content_sha256": "00" * 32})))
+    final.write_text(json.dumps(tampered))
+
+    rc = CLI.main(["--asof", asof_str, "--out-root", str(out_root)])
+    out = capsys.readouterr().out
+    assert rc == 4
+    assert "REFUSED-ARTIFACT-EXISTS" in out
+    assert "content-sha" in out
+    assert load_and_verify_ledger(out_root / CLI.LEDGER_BASENAME) == [], \
+        "a tampered artifact must never be ledgered"
 
 
 @pytest.mark.skipif(not LIVE, reason=OFF_MACHINE)
