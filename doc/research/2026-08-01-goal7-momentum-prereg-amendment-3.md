@@ -25,8 +25,9 @@ A freeze that pins a moving path pins a deadline, not an input.
    `~/renquant-data-store/momentum-prereg-inputs-20260801`, whose publication is
    EXECUTED — all 294 files copied out of the protected trees, every per-file sha256
    re-verified against the manifest at the destination, then frozen read-only
-   (`chmod -R a-w`); the umbrella cache second, pending its operator-gated deletion
-   under orch#742. Identity is digest-only, so location changes never touch it).
+   (`chmod -R a-w`); the umbrella cache second — orch#742 leaves its
+   delete-or-keep disposition to the operator, and this record presupposes
+   neither. Identity is digest-only, so location changes never touch it).
 2. **This amendment** — §2's inputs are henceforth resolved THROUGH that manifest.
    The NORMATIVE identity pin is `dataset_id = momentum-prereg-inputs-20260801` plus
    the three §2 digests themselves (panel `55811f63…`, sector `ec26bb1e…`, combined
