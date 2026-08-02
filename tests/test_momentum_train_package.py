@@ -277,6 +277,45 @@ def test_params_non_int_constant_refused(world):
                                 readers=world["readers"])
 
 
+@pytest.mark.parametrize("key,bad_value,match", [
+    ("window", 0, "window"),
+    ("skip", -1, "skip"),
+    ("min_obs", 0, "min_obs"),
+    ("min_features", 0, "min_features"),
+    ("min_features", 6, "min_features"),
+    ("names_per_date_floor", 0, "names_per_date_floor"),
+    ("min_side_obs", 0, "min_side_obs"),
+])
+def test_params_v0_domain_violation_refused(world, key, bad_value, match):
+    """Type-valid but out-of-domain v0 params must be refused before reader
+    access (codex review, PR #196) — a permissive-type-only check let a
+    negative skip / zero window / impossible feature floor produce a
+    self-identifying, gate-compatible-looking artifact."""
+    p = params_v0()
+    p[key] = bad_value
+    with pytest.raises(ValueError, match=match):
+        train_momentum_artifact(world["asof"], world["universe"], p,
+                                readers=world["readers"])
+
+
+def test_params_min_obs_greater_than_window_refused(world):
+    p = params_v0()
+    p["min_obs"] = p["window"] + 1
+    with pytest.raises(ValueError, match="min_obs"):
+        train_momentum_artifact(world["asof"], world["universe"], p,
+                                readers=world["readers"])
+
+
+def test_params_unsupported_version_refused(world):
+    """A new params_version must not silently inherit v0's domain semantics —
+    fail closed until an explicit validator is registered for it."""
+    p = params_v0()
+    p["params_version"] = "v1"
+    with pytest.raises(ValueError, match="unsupported params_version"):
+        train_momentum_artifact(world["asof"], world["universe"], p,
+                                readers=world["readers"])
+
+
 # ---------------------------------------------------------- digest recording -
 def test_read_digests_recorded_per_input(artifact, world):
     digs = artifact["inputs"]["read_digests"]
@@ -367,6 +406,44 @@ def test_cli_refuses_when_surfaces_missing(monkeypatch, capsys, tmp_path):
     assert rc == 3
     assert "REFUSED-SURFACES-MISSING" in out
     assert not (tmp_path / "out").exists()
+
+
+def test_cli_ledger_refusal_leaves_no_orphaned_artifact(monkeypatch, tmp_path,
+                                                        world):
+    """Regression (codex review, PR #196): if append_to_artifact_ledger
+    refuses (tampered/duplicate/stale-sha ledger), the CLI must leave NO
+    artifact file behind — else a retry hits REFUSED-ARTIFACT-EXISTS for a
+    cutoff that was never actually ledgered, with no automatic recovery."""
+    ohlcv_market_dir = tmp_path / "ohlcv" / CLI.MARKET
+    ohlcv_market_dir.mkdir(parents=True)
+    (ohlcv_market_dir / "1d.parquet").touch()
+    sectors_path = tmp_path / "sectors.json"
+    sectors_path.write_text("{}")
+    panel_path = tmp_path / "panel.parquet"
+    panel_path.touch()
+
+    monkeypatch.setattr(CLI, "PANEL_PATH", panel_path)
+    monkeypatch.setattr(CLI, "SECTORS_PATH", sectors_path)
+    monkeypatch.setattr(CLI, "OHLCV_ROOT", tmp_path / "ohlcv")
+    monkeypatch.setattr(CLI, "resolve_universe",
+                        lambda asof: (world["universe"], "2024-01-01"))
+    monkeypatch.setattr(world["readers"], "record_digest",
+                        lambda *a, **kw: None, raising=False)
+    monkeypatch.setattr(CLI, "LiveReaders", lambda *a, **kw: world["readers"])
+
+    def _boom(artifact, ledger_path):
+        raise RuntimeError("simulated ledger refusal")
+    monkeypatch.setattr(CLI, "append_to_artifact_ledger", _boom)
+
+    out_root = tmp_path / "out"
+    asof_str = str(world["asof"].date())
+    with pytest.raises(RuntimeError, match="simulated ledger refusal"):
+        CLI.main(["--asof", asof_str, "--out-root", str(out_root)])
+
+    cutoff_dir = out_root / asof_str
+    assert not (cutoff_dir / CLI.ARTIFACT_BASENAME).exists()
+    assert not any(cutoff_dir.glob("*.tmp")), \
+        "orphaned staging file left behind after a ledger refusal"
 
 
 @pytest.mark.skipif(not LIVE, reason=OFF_MACHINE)

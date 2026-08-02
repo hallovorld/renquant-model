@@ -46,17 +46,35 @@ EVIDENCE:
                  tests/test_momentum_train_package.py
   prod or exp:   exp — new package + CLI; nothing schedules it, nothing
                  consumes it yet (slices 3–5); zero touched serving surfaces
-  golden:        synthetic fixture (8 names / 320 bdays): package scores vs
-                 the sealed v1 `assemble_day` — max |delta| = 0.0 over 6
-                 scored names `[VERIFIED — measured 2026-08-02]`; PLUS a
-                 real-data golden (loud env-skip off-machine): 60-name subset
-                 of the 144-name live universe (panel date 2026-05-05) at
-                 asof 2026-07-01 — 60/60 scored on both sides, max |delta| =
-                 0.0, 62 input digests recorded `[VERIFIED — measured
-                 2026-08-02]`
-  tests:         new file 22 passed; full suite 1453 passed, 0 failed
-                 `[VERIFIED — make test 2026-08-02, 62.6s]`; pre-slice
-                 baseline 1431 `[DERIVED — 1453 − 22 new]`
-  live reads:    READ-ONLY (ohlcv parquets, panel ticker/date columns,
-                 ticker_sectors.json); no git and no writes in the umbrella
-                 tree; CLI writes only under --out-root
+  existing data: the sealed v1 runner's `assemble_day`
+                 (tools/goal7_momentum_run.py) is the only existing reference
+                 construction for this score; golden test proves byte-for-byte
+                 score identity against it on a synthetic fixture (8 names /
+                 320 bdays, max |delta| = 0.0 over 6 scored names) AND a
+                 real-data subset (60/144 live-universe names, panel date
+                 2026-05-05, asof 2026-07-01, max |delta| = 0.0, 62 input
+                 digests recorded) `[VERIFIED — measured 2026-08-02]`
+  best-known?:   yes — the only implementation of design §1 TRAIN; nothing
+                 else computes this artifact shape to compare against
+  scope:         this is src/renquant_model_momentum (exp, training internals
+                 only) vs the sealed v1 runner (tools/goal7_momentum_run.py) —
+                 a golden-identity claim only (max |delta| = 0.0), not a new
+                 IC/Sharpe number; no serving/scheduling/strategy-config
+                 surface touched; live reads READ-ONLY (ohlcv parquets, panel
+                 ticker/date columns, ticker_sectors.json); CLI writes only
+                 under --out-root
+  tests:         new file 32 passed (22 original + 10 added in this codex-
+                 review fix pass: params-domain-violation ×9 — 7 parametrized
+                 out-of-domain cases + min_obs>window + unsupported
+                 params_version — and ledger-refusal-leaves-no-artifact ×1);
+                 full suite 1463 passed, 0 failed `[VERIFIED — make test
+                 2026-08-02, 60.45s]`; pre-slice baseline 1431 `[DERIVED —
+                 1463 − 32 new]`
+
+NEXT: codex re-review of this commit's three fixes (ledger write-ordering —
+  atomic tmp-file + rename after ledger success, so a ledger refusal never
+  orphans an artifact; v0 param-domain validation, fail-closed for any
+  non-"v0" params_version; and this progress doc). On APPROVED, this can
+  merge — the #195 design gate is already satisfied (operator comment: #195
+  merged at `8124fd34`, empty reconciliation delta). Slice 3 (TEST/scoring
+  harness) is next in the pipeline build order.

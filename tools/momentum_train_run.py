@@ -173,10 +173,19 @@ def main(argv=None) -> int:
     artifact = train_momentum_artifact(asof, universe, params_v0(),
                                        readers=readers)
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
-    artifact_path.write_text(
+    staging_path = artifact_path.with_suffix(artifact_path.suffix + ".tmp")
+    staging_path.write_text(
         json.dumps(artifact, indent=2, sort_keys=True, allow_nan=False) + "\n",
         encoding="utf-8")
-    row = append_to_artifact_ledger(artifact, ledger_path)
+    try:
+        row = append_to_artifact_ledger(artifact, ledger_path)
+    except Exception:
+        # Ledger refused (tampered/duplicate/stale-sha) — leave NO artifact
+        # file behind so a retry does not hit REFUSED-ARTIFACT-EXISTS for a
+        # cutoff that was never actually ledgered.
+        staging_path.unlink(missing_ok=True)
+        raise
+    staging_path.replace(artifact_path)
     print(json.dumps({
         "status": "TRAINED",
         "cutoff_date": artifact["cutoff_date"],

@@ -58,6 +58,9 @@ _V1_CACHE: Any = None
 _REQUIRED_PARAM_KEYS = ("window", "skip", "min_obs", "min_features",
                         "names_per_date_floor", "min_side_obs")
 
+#: Number of composite features (f1..f5) — the hard ceiling on min_features.
+_N_FEATURES = 5
+
 
 class MomentumReaders(Protocol):
     """Injected input surface — the core never touches disk itself.
@@ -163,6 +166,34 @@ def verify_artifact_content_sha(artifact: Mapping[str, Any]) -> None:
             f"recomputed {actual}")
 
 
+def _validate_v0_domains(p: dict) -> None:
+    """Domain checks for params_version 'v0' — no silent inheritance by future
+    versions (each new version must declare its own explicit validator)."""
+    if p["window"] <= 0:
+        raise ValueError(f"params['window'] must be > 0, got {p['window']}")
+    if p["skip"] < 0:
+        raise ValueError(f"params['skip'] must be >= 0, got {p['skip']}")
+    if p["min_obs"] <= 0:
+        raise ValueError(f"params['min_obs'] must be > 0, got {p['min_obs']}")
+    if p["min_obs"] > p["window"]:
+        raise ValueError(
+            f"params['min_obs']={p['min_obs']} must be <= "
+            f"params['window']={p['window']} — a minimum observation count "
+            "larger than the formation window can never be satisfied")
+    if not (1 <= p["min_features"] <= _N_FEATURES):
+        raise ValueError(
+            f"params['min_features']={p['min_features']} must be in "
+            f"[1, {_N_FEATURES}] — the composite has exactly {_N_FEATURES} "
+            "features (f1..f5), so a higher floor can never be satisfied")
+    if p["names_per_date_floor"] <= 0:
+        raise ValueError(
+            f"params['names_per_date_floor']={p['names_per_date_floor']} "
+            "must be > 0")
+    if p["min_side_obs"] <= 0:
+        raise ValueError(
+            f"params['min_side_obs']={p['min_side_obs']} must be > 0")
+
+
 def _validate_params(params: Mapping[str, Any]) -> dict:
     if not isinstance(params, Mapping):
         raise ValueError("params must be a mapping")
@@ -180,6 +211,13 @@ def _validate_params(params: Mapping[str, Any]) -> dict:
             raise ValueError(f"params[{k!r}] must be an int, got "
                              f"{type(p[k]).__name__}")
         p[k] = int(p[k])
+    if pv != "v0":
+        raise ValueError(
+            f"unsupported params_version {pv!r} — no domain validator is "
+            "registered for it; a new params version must define its own "
+            "explicit domain validator rather than inheriting v0's, and "
+            "must be added here as a fail-closed dispatch")
+    _validate_v0_domains(p)
     return p
 
 
