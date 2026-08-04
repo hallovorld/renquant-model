@@ -726,3 +726,98 @@ def test_v1_fast_domain_violations_refused(world, key, bad, match):
     with pytest.raises(ValueError, match=match):
         train_momentum_artifact(world["asof"], world["universe"], p,
                                 readers=world["readers"])
+
+
+# ----------------------------- CLI params-version selection (#199 item 2) ----
+#
+# The weekly wrapper trains BOTH lanes by invoking this one CLI twice — v0
+# bare (byte-identical to every pre-flag invocation, so an old pinned CLI and
+# a new one agree on the slow lane) and `--params-version v1_fast` into its
+# own out-root. These pin the selection surface: the default IS v0, the flag
+# reaches the real training path, each lane's ledger is independent, and the
+# dated basename stays the SHARED serving convention (the pipeline loader
+# hardcodes momentum_residual_v0.json — a version-derived basename would
+# publish artifacts the current loader can never serve).
+
+def test_cli_default_params_version_is_v0(monkeypatch, capsys, tmp_path, world):
+    """No flag → the slow lane, verbatim: the pre-#199 invocation must keep
+    training v0 so the pinned weekly job's FIRST command never changes
+    meaning under it."""
+    out_root, asof_str, _ = _wire_fake_cli_surfaces(monkeypatch, tmp_path, world)
+    rc = CLI.main(["--asof", asof_str, "--dry-run", "--out-root", str(out_root)])
+    rep = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert rep["params"]["params_version"] == "v0"
+    assert rep["params"]["window"] == 252 and rep["params"]["skip"] == 21
+    assert not out_root.exists(), "--dry-run wrote something"
+
+
+def test_cli_params_version_flag_selects_the_fast_clock(monkeypatch, capsys,
+                                                        tmp_path, world):
+    out_root, asof_str, _ = _wire_fake_cli_surfaces(monkeypatch, tmp_path, world)
+    rc = CLI.main(["--asof", asof_str, "--dry-run", "--out-root", str(out_root),
+                   "--params-version", "v1_fast"])
+    rep = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert rep["params"]["params_version"] == "v1_fast"
+    assert rep["params"]["window"] == 63 and rep["params"]["skip"] == 5
+    assert not out_root.exists(), "--dry-run wrote something"
+
+
+def test_cli_unknown_params_version_is_a_usage_error(capsys):
+    """argparse fail-closed: an unregistered version never reaches training
+    (and never falls back to v0). SystemExit 2 is the CLI usage code the
+    wrapper logs as-is."""
+    with pytest.raises(SystemExit) as exc:
+        CLI.main(["--asof", "2026-07-01", "--params-version", "v2"])
+    assert exc.value.code == 2
+    assert "invalid choice" in capsys.readouterr().err
+
+
+def test_cli_trains_v1_fast_under_the_shared_serving_basename(monkeypatch,
+                                                              tmp_path, world):
+    """The fast lane's REAL training path end-to-end: rc 0, the dated
+    artifact lands at <out>/<cutoff>/ARTIFACT_BASENAME (the SHARED name the
+    pipeline loader hardcodes — NOT a version-derived one), the artifact is
+    the fast clock by identity fields, and the ledger row cross-carries the
+    same params_version."""
+    out_root, asof_str, cutoff_dir = _wire_fake_cli_surfaces(
+        monkeypatch, tmp_path, world)
+    rc = CLI.main(["--asof", asof_str, "--out-root", str(out_root),
+                   "--params-version", "v1_fast"])
+    assert rc == 0
+    dated = cutoff_dir / CLI.ARTIFACT_BASENAME
+    assert dated.is_file(), "fast artifact not at the shared serving basename"
+    assert CLI.ARTIFACT_BASENAME == "momentum_residual_v0.json", \
+        "the shared basename drifted — the pipeline loader hardcodes it"
+    art = json.loads(dated.read_text())
+    assert art["kind"] == "momentum_residual_v1_fast"
+    assert art["params"]["params_version"] == "v1_fast"
+    assert art["params"]["window"] == 63 and art["params"]["skip"] == 5
+    verify_artifact_content_sha(art)
+    rows = load_and_verify_ledger(out_root / CLI.LEDGER_BASENAME)
+    assert len(rows) == 1
+    assert rows[0]["params_version"] == "v1_fast"
+    assert rows[0]["kind"] == "momentum_residual_v1_fast"
+    assert rows[0]["artifact_content_sha256"] == art["content_sha256"]
+
+
+def test_cli_lane_ledgers_are_independent_per_out_root(monkeypatch, tmp_path,
+                                                       world):
+    """The wrapper's two invocations must not couple: same cutoff, two
+    out-roots, one single-row ledger EACH — a v0 append never lands in the
+    fast ledger and vice versa (the serving loader follows one ledger tail,
+    so a mixed ledger would alternate lanes week to week)."""
+    out_slow, asof_str, _ = _wire_fake_cli_surfaces(monkeypatch, tmp_path, world)
+    out_fast = tmp_path / "out_fast"
+    assert CLI.main(["--asof", asof_str, "--out-root", str(out_slow)]) == 0
+    assert CLI.main(["--asof", asof_str, "--out-root", str(out_fast),
+                     "--params-version", "v1_fast"]) == 0
+    slow_rows = load_and_verify_ledger(out_slow / CLI.LEDGER_BASENAME)
+    fast_rows = load_and_verify_ledger(out_fast / CLI.LEDGER_BASENAME)
+    assert [r["params_version"] for r in slow_rows] == ["v0"]
+    assert [r["params_version"] for r in fast_rows] == ["v1_fast"]
+    assert slow_rows[0]["cutoff_date"] == fast_rows[0]["cutoff_date"] == asof_str
+    assert slow_rows[0]["prev_row_sha"] is None
+    assert fast_rows[0]["prev_row_sha"] is None, \
+        "the fast genesis row chained onto the slow ledger"

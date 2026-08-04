@@ -6,6 +6,13 @@ per-file digest RECORDING (not pinning — design §1); writes ONLY under
 --out-root. NO launchd/schedule wiring lives here or anywhere in this slice:
 machine landing is slice 5 and is operator-gated (design build order).
 
+``--params-version`` (model#199 build item 2) selects which FROZEN param set
+to train — v0 (252/21, the slow lane) or v1_fast (63/5, the fast shadow
+lane). One construction, two clocks; each lane publishes into its OWN
+--out-root (own ledger, own dated dirs) under the SHARED dated-artifact
+basename (see ARTIFACT_BASENAME). Default v0: existing invocations are
+unchanged.
+
 Exit codes: 0 ok (incl. --dry-run, and RECONCILED — see below); 2 usage;
 3 surfaces missing / refused; 4 artifact for this cutoff already exists AND
 is already ledgered (append-only: never overwritten; a disagreeing re-run is
@@ -37,7 +44,7 @@ from renquant_model_common.total_return import total_return_close  # noqa: E402
 from renquant_model_momentum import (LedgerIntegrityError,  # noqa: E402
                                      append_to_artifact_ledger,
                                      load_and_verify_ledger, params_v0,
-                                     train_momentum_artifact,
+                                     params_v1_fast, train_momentum_artifact,
                                      verify_artifact_content_sha)
 
 RQ = Path("/Users/renhao/git/github/RenQuant")
@@ -46,8 +53,27 @@ SECTORS_PATH = RQ / "data/ticker_sectors.json"
 OHLCV_ROOT = RQ / "data/ohlcv"
 MARKET = "SPY"
 DEFAULT_OUT_ROOT = Path.home() / "renquant-data-store" / "momentum-train"
+#: Dated-artifact basename — SHARED by every params_version (model#199 item 2).
+#: This is a serving-PATH convention, not an identity claim: the pipeline's
+#: momentum_residual loader hardcodes exactly this basename
+#: (renquant-pipeline momentum_residual_scorer.MOMENTUM_DATED_ARTIFACT_BASENAME)
+#: when following a verified ledger tail to `<ledger dir>/<cutoff>/<basename>`,
+#: so a lane that wrote a version-derived basename would publish artifacts the
+#: current loader can never serve (dated_artifact_missing on every daily run).
+#: Identity lives in the artifact's kind / params_version / content_sha256 and
+#: in the ledger row's cross-checked copies of them — never in the filename.
+#: Follow-up (noted in the #199-item-2 PR): teach the pipeline loader to derive
+#: the basename from the ledger row, then version this name.
 ARTIFACT_BASENAME = "momentum_residual_v0.json"
 LEDGER_BASENAME = "momentum_artifact_ledger.jsonl"
+
+#: The frozen param sets this CLI can train, keyed by their params_version.
+#: Each lane gets its OWN --out-root (its own ledger + dated dirs): the ledger
+#: dedup key is (cutoff_date, params_version) but the dated-artifact path is
+#: version-agnostic (shared basename above), so two lanes sharing one out-root
+#: would collide on the same `<cutoff>/<basename>` file — and the serving
+#: loader follows a single ledger tail, which a mixed ledger would alternate.
+PARAMS_BY_VERSION = {"v0": params_v0, "v1_fast": params_v1_fast}
 
 
 def _sha(p: Path) -> str:
@@ -201,13 +227,22 @@ def main(argv=None) -> int:
     ap.add_argument("--asof", required=True,
                     help="cutoff date YYYY-MM-DD (the artifact's cutoff_date)")
     ap.add_argument("--out-root", default=str(DEFAULT_OUT_ROOT),
-                    help="artifact store root (NEVER a live production path)")
+                    help="artifact store root (NEVER a live production path); "
+                         "one out-root PER params_version — see "
+                         "PARAMS_BY_VERSION")
+    ap.add_argument("--params-version", default="v0",
+                    choices=sorted(PARAMS_BY_VERSION),
+                    help="which frozen param set to train (model#199 item 2: "
+                         "v0 = the slow 252/21 lane, v1_fast = the fast 63/5 "
+                         "shadow lane); default v0 keeps every existing "
+                         "invocation byte-identical in behavior")
     ap.add_argument("--dry-run", action="store_true",
                     help="verify surfaces + resolve the universe + print the "
                          "plan; write NOTHING, digest NOTHING")
     a = ap.parse_args(argv)
     asof = pd.Timestamp(a.asof)
     out_root = Path(a.out_root).expanduser()
+    params = PARAMS_BY_VERSION[a.params_version]()
 
     surfaces = {
         "panel": PANEL_PATH,
@@ -234,7 +269,7 @@ def main(argv=None) -> int:
             "surfaces": {k: str(p) for k, p in surfaces.items()},
             "universe_n": len(universe),
             "universe_date": universe_date,
-            "params": params_v0(),
+            "params": params,
             "would_write": [str(artifact_path), str(ledger_path)],
             "digest_recording": ("real runs only — dry-run reads the panel's "
                                  "ticker/date columns and hashes nothing"),
@@ -247,7 +282,7 @@ def main(argv=None) -> int:
     readers = LiveReaders()
     readers.record_digest("panel:alpha158_291_fundamental_dataset.parquet",
                           PANEL_PATH)
-    artifact = train_momentum_artifact(asof, universe, params_v0(),
+    artifact = train_momentum_artifact(asof, universe, params,
                                        readers=readers)
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
     # TWO-FILE PROTOCOL (codex review round 3 on #196, reversing round 1's
