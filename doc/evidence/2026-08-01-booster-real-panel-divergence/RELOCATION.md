@@ -1,4 +1,10 @@
-# Relocated evidence — same-recipe booster divergence on the real panel
+# Relocated evidence — same-recipe booster divergence (UNREPRODUCED HISTORICAL MEASUREMENT)
+
+STATUS: **an unreproduced historical measurement with partial surviving
+provenance** — NOT a description of production/runtime behavior, and not
+currently re-runnable from this archive alone. Its stated role is a
+non-performance, preregistration-input record for the GOAL-4/GOAL-8
+ensemble premise; nothing here licenses production inference.
 
 RELOCATED 2026-08-04 from `renquant-orchestrator` branch
 `goal4/booster-divergence-on-the-real-panel` (PR orch#712, CLOSED
@@ -11,29 +17,41 @@ out-of-scope). The closure ruling, verbatim:
 > If orchestration ever needs the result, it consumes a versioned summary
 > artifact, not the evaluator.
 
-## Contents (byte-verbatim from the source branch)
+## Provenance manifest (the auditability anchor for the byte-verbatim claim)
 
-- `CLAIMS-original-progress-doc.md` — the authored 2026-08-01 record. The
-  headline: 12 distinct boosters under ONE config fingerprint
-  (`sha256:f8fb2259b…`), scored on the live alpha158 panel's last 20
-  sessions → **median top-decile disagreement 35.7%** (per-date median
-  pairwise Spearman 0.854; worst pair/date 67% replaced). This CORRECTS
-  orch#698's ~60% synthetic figure (~1.7× overstated as a description of
-  production).
-- `divergence.json`, `run.log` — the evidence corpus, as measured.
-- `booster_real_panel_divergence.py` — the evaluator. MACHINE-LOCAL
-  RUNNER: it reads the operator machine's live artifact tree and panel;
-  it is preserved as provenance, not wired into this repo's CI.
-- `test_booster_real_panel_divergence.py` — the original guard test
-  (asserts the real median stays below 0.50). Same machine-local caveat;
-  deliberately NOT under `tests/` so this repo's CI does not measure a
-  disk it does not have.
+Source commit OID (both the PR branch and its `o712-wt` twin resolve to
+the same commit): `6be4e61dde08ca1f64ffbf44f0934b642fc1e8fc`.
 
-## Non-performance claims (carried across, per the ruling)
+sha256 of every relocated file:
 
-The measurement quantifies IDENTITY divergence between same-recipe
-boosters. It does not measure return differences, licenses no production
-inference, and does not claim which booster is better. Its downstream
-use is the GOAL-4/GOAL-8 ensemble premise (diversity exists to be
-exploited) and the WF-gate identity-collapse record (34 artifacts → 14
-boosters under one recipe hash, orch#769 item 10).
+```
+0886674bc0582083d31d031363a0cb17416ae1ac96e014aeeacd91093b676fce  CLAIMS-original-progress-doc.md
+b5bfffd29286c0d6ceb23e0781f9666559990e4f32c3780cab94eabbf02a6c36  divergence.json
+a46ddbb7ecac9a60436f634eb537744bdee2b666292a6d9dfce2627ac314fc93  run.log
+8447532275a6d94bc0eae3dfdfd63dcfc9985a3afee7b1deb338574c6069d35a  booster_real_panel_divergence.py
+ccd242b493f0fe30b87fd0306268b906811b9a396df2a78a6f467a37ec2207f7  test_booster_real_panel_divergence.py
+```
+
+## Why UNREPRODUCED (the honest inventory)
+
+- Inputs are identified by artifact NAMES, one recipe fingerprint
+  (`sha256:f8fb2259b…`), and SHORTENED booster keys — no immutable panel
+  identity and no full per-artifact content identities are preserved, so
+  the exact input set cannot be re-certified from this archive.
+- The corpus records `source_space=panel` as a measurement choice, while
+  the live serving path uses `raw` — the measurement therefore does not
+  even claim to mirror the runtime transform.
+- The evaluator is a MACHINE-LOCAL runner (operator machine's live
+  artifact tree + panel); preserved as provenance, deliberately not in
+  this repo's CI, and not sufficient for replay elsewhere.
+
+## What the historical record claims (summarized; the byte-preserved
+`CLAIMS-original-progress-doc.md` is the authored source)
+
+12 distinct boosters under one config fingerprint, scored on the then-live
+alpha158 panel's last 20 sessions (2026-04-07 → 2026-05-04): median
+top-decile disagreement **35.7%** (median pairwise Spearman 0.854; worst
+pair/date 67% replaced). Within its own framing it corrected orch#698's
+~60% synthetic figure. Under THIS archive's label, both numbers are
+historical measurements of their respective setups — neither is a
+statement about current production behavior.
