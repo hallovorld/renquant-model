@@ -23,7 +23,7 @@ from renquant_model_momentum.ledger import (LedgerIntegrityError,
                                             append_to_artifact_ledger,
                                             load_and_verify_ledger)
 from renquant_model_momentum.train import (ARTIFACT_KIND, MomentumReaders,
-                                           content_sha256_of, params_v0,
+                                           content_sha256_of, params_v0, params_v1_fast,
                                            train_momentum_artifact,
                                            verify_artifact_content_sha)
 
@@ -41,6 +41,7 @@ __all__ = [
     "evaluate_momentum_artifact",
     "load_and_verify_ledger",
     "params_v0",
+    "params_v1_fast",
     "train_momentum_artifact",
     "verify_artifact_content_sha",
 ]

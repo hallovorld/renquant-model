@@ -50,6 +50,7 @@ __all__ = ["ARTIFACT_KIND", "ARTIFACT_SCHEMA_VERSION", "MomentumReaders",
            "verify_artifact_content_sha"]
 
 from . import _frozen_params_v0 as _F
+from . import _frozen_params_v1_fast as _FF
 
 ARTIFACT_KIND = "momentum_residual_v0"
 ARTIFACT_SCHEMA_VERSION = 1
@@ -102,6 +103,28 @@ def params_v0() -> dict:
         "names_per_date_floor": int(_F.NAMES_PER_DATE_FLOOR),
         "min_side_obs": int(_F.MIN_SIDE_OBS),
         "params_source": _F.PARAMS_SOURCE,
+    }
+
+
+def params_v1_fast() -> dict:
+    """The v1_fast params block — the FAST momentum clock (model#199).
+
+    Same construction as v0, different clock: 63-day formation, 5-day
+    short-reversal skip, min_obs scaled to the same coverage ratio. The
+    authority for the numbers is the #199 issue (frozen before any run);
+    `test_params_v1_fast_matches_the_frozen_issue` holds the packaged module
+    to those literals. SHADOW-ONLY lane by the operator's architecture
+    decision — the slow v0 lane is the one bound for the prod MoE.
+    """
+    return {
+        "params_version": "v1_fast",
+        "window": int(_FF.WINDOW),
+        "skip": int(_FF.SKIP),
+        "min_obs": int(_FF.MIN_OBS),
+        "min_features": int(_FF.MIN_FEATURES),
+        "names_per_date_floor": int(_FF.NAMES_PER_DATE_FLOOR),
+        "min_side_obs": int(_FF.MIN_SIDE_OBS),
+        "params_source": _FF.PARAMS_SOURCE,
     }
 
 
