@@ -52,7 +52,15 @@ __all__ = ["ARTIFACT_KIND", "ARTIFACT_SCHEMA_VERSION", "MomentumReaders",
 from . import _frozen_params_v0 as _F
 from . import _frozen_params_v1_fast as _FF
 
+#: Kept as the v0 literal for back-compat imports; the artifact's OWN kind is
+#: DERIVED from its params_version (2026-08-03, model#200 CR follow-through:
+#: with a second clock in the codebase a hardcoded kind would ship a fast
+#: artifact mislabeled as v0 — the version-mislabel class at the kind level).
 ARTIFACT_KIND = "momentum_residual_v0"
+
+
+def artifact_kind_for(params_version: str) -> str:
+    return f"momentum_residual_{params_version}"
 ARTIFACT_SCHEMA_VERSION = 1
 
 
@@ -214,14 +222,59 @@ def _validate_params(params: Mapping[str, Any]) -> dict:
             raise ValueError(f"params[{k!r}] must be an int, got "
                              f"{type(p[k]).__name__}")
         p[k] = int(p[k])
-    if pv != "v0":
+    if pv == "v0":
+        _validate_v0_domains(p)
+    elif pv == "v1_fast":
+        _validate_v1_fast_domains(p)
+    else:
         raise ValueError(
             f"unsupported params_version {pv!r} — no domain validator is "
             "registered for it; a new params version must define its own "
             "explicit domain validator rather than inheriting v0's, and "
             "must be added here as a fail-closed dispatch")
-    _validate_v0_domains(p)
     return p
+
+
+def _validate_v1_fast_domains(p: dict) -> None:
+    """Domain checks for params_version 'v1_fast' (model#199/#200 CR) — its OWN
+    validator, not v0 inherited. Same structural constraints as v0 (the
+    construction is identical; only the clock differs), plus the fast-clock
+    bounds the #199 freeze implies: the formation window must actually be
+    the FAST horizon (shorter than v0's 252), and the skip must stay at the
+    short-reversal scale rather than drifting back to a monthly skip."""
+    if p["window"] <= 0:
+        raise ValueError(f"params['window'] must be > 0, got {p['window']}")
+    if p["window"] >= 252:
+        raise ValueError(
+            f"params['window']={p['window']} is not a FAST clock — v1_fast "
+            "exists to be shorter than v0's 252-day formation; a fast lane "
+            "quietly widened back to the slow horizon is a version mislabel")
+    if p["skip"] < 0:
+        raise ValueError(f"params['skip'] must be >= 0, got {p['skip']}")
+    if p["skip"] >= 21:
+        raise ValueError(
+            f"params['skip']={p['skip']} has drifted to the monthly-skip "
+            "scale — the fast clock's #199 rationale is a ONE-WEEK "
+            "short-reversal skip; a 21d+ skip belongs to v0")
+    if p["min_obs"] <= 0:
+        raise ValueError(f"params['min_obs'] must be > 0, got {p['min_obs']}")
+    if p["min_obs"] > p["window"]:
+        raise ValueError(
+            f"params['min_obs']={p['min_obs']} must be <= "
+            f"params['window']={p['window']} — a minimum observation count "
+            "larger than the formation window can never be satisfied")
+    if not (1 <= p["min_features"] <= _N_FEATURES):
+        raise ValueError(
+            f"params['min_features']={p['min_features']} must be in "
+            f"[1, {_N_FEATURES}] — the composite has exactly {_N_FEATURES} "
+            "features (f1..f5), so a higher floor can never be satisfied")
+    if p["names_per_date_floor"] <= 0:
+        raise ValueError(
+            f"params['names_per_date_floor'] must be > 0, got "
+            f"{p['names_per_date_floor']}")
+    if p["min_side_obs"] <= 0:
+        raise ValueError(
+            f"params['min_side_obs'] must be > 0, got {p['min_side_obs']}")
 
 
 def train_momentum_artifact(asof: Any, universe: list[str],
@@ -295,7 +348,7 @@ def train_momentum_artifact(asof: Any, universe: list[str],
 
     n_scored = int(sum(1 for s in scores.values() if np.isfinite(s)))
     artifact: dict[str, Any] = {
-        "kind": ARTIFACT_KIND,
+        "kind": artifact_kind_for(p["params_version"]),
         "artifact_schema_version": ARTIFACT_SCHEMA_VERSION,
         "trained_at_utc": _utc_now(),
         "cutoff_date": ts.date().isoformat(),

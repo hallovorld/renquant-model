@@ -688,3 +688,41 @@ def test_real_data_golden_subset_matches_v1_assemble_day():
     digs = art["inputs"]["read_digests"]
     assert all(SHA_HEX.match(v) for v in digs.values())
     assert any(k.startswith("ohlcv/") for k in digs)
+
+
+# --------------------------------------------- v1_fast training path (#200 CR) ----
+#
+# [codex on model#200]: the accessor alone could not produce the fast artifact
+# — _validate_params rejected every params_version but v0. These prove the
+# v1_fast block is ACCEPTED by the real training path and stamped verbatim,
+# and that its own domain validator (not v0's, not inherited) fail-closes the
+# fast clock's version-mislabel shapes.
+
+def test_v1_fast_params_train_and_stamp(world):
+    from renquant_model_momentum import params_v1_fast
+
+    art = train_momentum_artifact(world["asof"], world["universe"],
+                                  params_v1_fast(), readers=world["readers"])
+    assert art["params"]["params_version"] == "v1_fast"
+    assert art["params"]["window"] == 63 and art["params"]["skip"] == 5
+    assert art["kind"] == "momentum_residual_v1_fast"
+    assert art["n_scored"] > 0
+    # the content digest verifies over the fast block like any other artifact
+    from renquant_model_momentum import content_sha256_of
+    assert art["content_sha256"] == content_sha256_of(art)
+
+
+@pytest.mark.parametrize("key,bad,match", [
+    ("window", 252, "not a FAST clock"),
+    ("window", 300, "not a FAST clock"),
+    ("skip", 21, "monthly-skip"),
+    ("min_obs", 64, "can never be satisfied"),
+])
+def test_v1_fast_domain_violations_refused(world, key, bad, match):
+    from renquant_model_momentum import params_v1_fast
+
+    p = params_v1_fast()
+    p[key] = bad
+    with pytest.raises(ValueError, match=match):
+        train_momentum_artifact(world["asof"], world["universe"], p,
+                                readers=world["readers"])
