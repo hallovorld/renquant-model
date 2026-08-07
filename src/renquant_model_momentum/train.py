@@ -159,6 +159,31 @@ def _jsonable(obj: Any) -> Any:
     raise TypeError(f"non-jsonable artifact value of type {type(obj).__name__}")
 
 
+def params_config_fingerprint(params: Mapping[str, Any]) -> str:
+    """Training-config identity, in the form the ADMISSION CHECK compares.
+
+    `model_admission._check_config_fingerprint` reads
+    `artifact["config_fingerprint"]` (top level) and rejects with
+    `missing_config_fingerprint` before it ever looks at a lane config's
+    `expected_config_fingerprint`. Measured 2026-08-07 (s104#95): this artifact
+    carried no such key, so both fast blend legs were rejected at load and
+    backfilling the lane configs could not have fixed it.
+
+    The recipe is byte-for-byte `renquant_pipeline.momentum_identity.
+    params_fingerprint`, which exists so the umbrella's stdlib-only pinned-path
+    CI can validate the same string. That module is the CONSUMER's copy; this is
+    the PRODUCER's, and `test_config_fingerprint_matches_the_consumer_recipe`
+    pins them equal rather than making this repo import the pipeline at runtime.
+
+    `params_version` is read from inside `params` — that is where the ledger and
+    `artifact_kind_for` read it from too.
+    """
+    canon = json.dumps(dict(params), sort_keys=True, separators=(",", ":"),
+                       allow_nan=False)
+    digest = hashlib.sha256(canon.encode("utf-8")).hexdigest()[:16]
+    return f"momentum-{params.get('params_version')}-{digest}"
+
+
 def content_sha256_of(artifact: Mapping[str, Any]) -> str:
     """sha256 over the canonical JSON of the artifact WITHOUT content_sha256."""
     body = {k: v for k, v in artifact.items() if k != "content_sha256"}
@@ -366,6 +391,7 @@ def train_momentum_artifact(asof: Any, universe: list[str],
         "formation_window": {"lo_exclusive": lo.date().isoformat(),
                              "hi_inclusive": hi.date().isoformat()},
         "params": dict(p),
+        "config_fingerprint": params_config_fingerprint(p),
         "universe": tickers,
         "n_names": len(tickers),
         "n_missing_series": n_missing_series,
