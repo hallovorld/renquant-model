@@ -27,8 +27,8 @@ WHY/DIR:   s104#95 asked to backfill `expected_config_fingerprint` into two fast
            are pinned equal by a test instead.
 
 EVIDENCE:  artifact:      `tests/test_momentum_config_fingerprint.py` (6 cases)
-           prod-or-exp:   producer only; emits no orders and changes no config
-           existing-data: `pytest tests/ -q` -> 1539 passed, 0 failed
+           prod or exp:   producer only; emits no orders and changes no config
+           existing data: `PYTHONPATH=src:. pytest -q tests/` -> 1539 passed, 0 failed
                           `[VERIFIED — 2026-08-07]`
            best-known?:   yes. The alternative considered and rejected was
                           importing the consumer copy, which would add a
