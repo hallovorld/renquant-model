@@ -33,7 +33,9 @@ import argparse
 import hashlib
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, Mapping
 
 import pandas as pd
 
@@ -51,6 +53,11 @@ RQ = Path("/Users/renhao/git/github/RenQuant")
 PANEL_PATH = RQ / "data/alpha158_291_fundamental_dataset.parquet"
 SECTORS_PATH = RQ / "data/ticker_sectors.json"
 OHLCV_ROOT = RQ / "data/ohlcv"
+#: Where the scorer-identity monitor reads promotion receipts (orchestrator
+#: scorer_identity_monitor.SHADOW_RECEIPT_SUBDIR). The dir name says patchtst
+#: for historical reasons — renaming it is a monitor+ops-manifest change and
+#: deliberately NOT bundled with receipt emission.
+RECEIPTS_DIR = RQ / "logs" / "promote_shadow_patchtst"
 MARKET = "SPY"
 DEFAULT_OUT_ROOT = Path.home() / "renquant-data-store" / "momentum-train"
 #: Dated-artifact basename — SHARED by every params_version (model#199 item 2).
@@ -152,6 +159,78 @@ def resolve_universe(asof: pd.Timestamp) -> tuple[list[str], str]:
     return universe, str(pd.Timestamp(day).date())
 
 
+def _sha256_of_file(path: Path) -> str | None:
+    """sha256 of the file's bytes, or None if it does not exist yet (genesis)."""
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except FileNotFoundError:
+        return None
+
+
+def emit_ledger_append_receipt(receipts_dir: Path, ledger_path: Path,
+                               digest_before: str | None,
+                               artifact: Mapping[str, Any],
+                               row: Mapping[str, Any]) -> Path:
+    """Persist the WRITER-side evidence for one ledger append (orch#909 contract).
+
+    The scorer-identity monitor keys a ledger lane by the LEDGER FILE's byte
+    digest as stamped in run bundles — NOT the artifact's content sha — so
+    identity_before/identity_after carry the ledger file digest straddling the
+    append. Full 64-hex (the monitor compares prefix-aware). identity_before is
+    OMITTED at genesis: the monitor's ``_side_matches`` treats "the lane was
+    absent" and "the receipt names nothing" as the same claim.
+
+    Filename carries the ledger dir stem so two ledgers appended in the same
+    second cannot collide; the monitor's date parse falls through to the
+    payload's ``promoted_at``, which is part of its contract.
+    """
+    digest_after = _sha256_of_file(ledger_path)
+    now = datetime.now(timezone.utc)
+    payload: dict[str, Any] = {
+        "schema": "shadow_promotion_receipt.v1",
+        "kind": "ledger_append",
+        "promoted_at": now.isoformat(),
+        "lane": str(ledger_path),
+        "identity_after": {"expected_content_sha256": f"sha256:{digest_after}"},
+        "append": {
+            "cutoff_date": artifact.get("cutoff_date"),
+            "params_version": artifact.get("params", {}).get("params_version"),
+            "artifact_content_sha256": artifact.get("content_sha256"),
+            "row_index": row.get("row_index"),
+            "row_sha": row.get("row_sha"),
+        },
+    }
+    if digest_before is not None:
+        payload["identity_before"] = {
+            "expected_content_sha256": f"sha256:{digest_before}"}
+    receipts_dir.mkdir(parents=True, exist_ok=True)
+    name = f"{now.strftime('%Y-%m-%dT%H%M%S')}Z__{ledger_path.parent.name}.json"
+    out = receipts_dir / name
+    out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n",
+                   encoding="utf-8")
+    return out
+
+
+def _emit_receipt_or_warn(ledger_path: Path, digest_before: str | None,
+                          artifact: Mapping[str, Any],
+                          row: Mapping[str, Any]) -> None:
+    """A failed receipt write must not fail a run whose append already
+    SUCCEEDED — the monitor going CRITICAL on the unexplained boundary is the
+    designed detection for a missing receipt, so this is fail-closed at the
+    system level, never silent."""
+    try:
+        emit_ledger_append_receipt(RECEIPTS_DIR, ledger_path, digest_before,
+                                   artifact, row)
+    except OSError as exc:
+        print(json.dumps({
+            "status": "WARN-RECEIPT-NOT-WRITTEN",
+            "why": str(exc),
+            "consequence": ("the scorer-identity monitor will report this "
+                            "append as an unexplained boundary — that alarm "
+                            "is the designed backstop, do not silence it"),
+        }, indent=2))
+
+
 def _reconcile_or_refuse(artifact_path: Path, ledger_path: Path) -> int:
     """An artifact already exists at this cutoff's path — reconcile or refuse.
 
@@ -197,6 +276,7 @@ def _reconcile_or_refuse(artifact_path: Path, ledger_path: Path) -> int:
         }, indent=2))
         return 4
 
+    digest_before = _sha256_of_file(ledger_path)
     try:
         row = append_to_artifact_ledger(existing, ledger_path)
     except LedgerIntegrityError as exc:
@@ -208,6 +288,7 @@ def _reconcile_or_refuse(artifact_path: Path, ledger_path: Path) -> int:
             "retry_reconciles": True,
         }, indent=2))
         return 5
+    _emit_receipt_or_warn(ledger_path, digest_before, existing, row)
     print(json.dumps({
         "status": "RECONCILED",
         "why": ("artifact existed with no matching ledger row — a prior run "
@@ -303,6 +384,7 @@ def main(argv=None) -> int:
         json.dumps(artifact, indent=2, sort_keys=True, allow_nan=False) + "\n",
         encoding="utf-8")
     staging_path.replace(artifact_path)
+    digest_before = _sha256_of_file(ledger_path)
     try:
         row = append_to_artifact_ledger(artifact, ledger_path)
     except LedgerIntegrityError as exc:
@@ -314,6 +396,7 @@ def main(argv=None) -> int:
             "retry_reconciles": True,
         }, indent=2))
         return 5
+    _emit_receipt_or_warn(ledger_path, digest_before, artifact, row)
     print(json.dumps({
         "status": "TRAINED",
         "cutoff_date": artifact["cutoff_date"],
