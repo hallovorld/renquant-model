@@ -1,11 +1,14 @@
-"""L3 meta-label experiment — the ONE execution of the frozen prereg.
+"""L3 meta-label experiment — 2026-08-09 execution attempt, re-scoped to
+EXPLORATORY DIAGNOSTICS ONLY (no admissible prereg verdict; see
+doc/research/2026-08-09-l3-meta-label-experiment.md §0).
 
-Contract: doc/design/2026-08-09-l3-classifier-prereg.md (v1, model#207) as
-amended by doc/design/2026-08-09-l3-classifier-prereg-v2.md (v2, model#208).
-Every rule is inherited; nothing here is a choice. Implementation guards
-frozen in the control-validated runner BEFORE real-data execution (positive +
-null controls passed pre-run): min_train=300 rows, min_test=50 rows,
-min_pre_dates=60, min_selected=10 for a fold uplift to be defined.
+Intended contract: doc/design/2026-08-09-l3-classifier-prereg.md (v1,
+model#207) as amended by …-prereg-v2.md (v2, model#208). This run does NOT
+count as that prereg's one execution: leg 3 is target-misaligned (§0.1),
+and the guards below — min_train=300 rows, min_test=50 rows,
+min_pre_dates=60, min_selected=10 for a fold uplift to be defined, plus the
+quarterly BOUNDS grid from 2024-07-01 — were execution-time implementation
+choices validated by pre-run controls, NOT frozen in v1/v2 (§0.2).
 
 Input: the COMMITTED frozen CSV (hash re-checked at start, per the v2 NEXT
 clause). External test: the frozen 34-row identifier list, outcomes joined
@@ -153,8 +156,14 @@ else:
     leg3, ext_note = bool(upl >= 0), f"uplift {upl:+.6f} on n_sel {len(sel)}/34"
 print(f"LEG3: {ext_note} -> {leg3}")
 
-verdict = "PASS" if (leg1 and leg2 and leg3 and leg4) else "KILL"
-summary = {"verdict": verdict, "leg1_fold_consistency": leg1,
+gate = "PASS" if (leg1 and leg2 and leg3 and leg4) else "KILL"
+summary = {"as_run_gate_arithmetic": gate, "admissible_verdict": None,
+           "admissibility_note": (
+               "gate arithmetic over an inadmissible run (leg 3 "
+               "target-misaligned, fold guards unfrozen) — exploratory "
+               "diagnostics only, NOT a prereg verdict; see "
+               "doc/research/2026-08-09-l3-meta-label-experiment.md §0"),
+           "leg1_fold_consistency": leg1,
            "leg2_placebo": leg2, "leg3_external": leg3, "leg4_calibration": leg4,
            "median_uplift_0.5": float(u.median()) if len(u) else None,
            "share_folds_positive": float((u > 0).mean()) if len(u) else None,

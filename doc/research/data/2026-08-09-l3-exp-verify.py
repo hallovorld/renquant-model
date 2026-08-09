@@ -1,10 +1,13 @@
-"""Verifier for the L3 meta-label experiment record — recomputes every leg
+"""Verifier for the L3 meta-label diagnostics record — recomputes every leg
 from the COMMITTED artifacts alone and fails on any drift from the summary.
 
-leg1/leg2 from the folds + placebo CSVs; leg4 from the pooled per-row
-predictions (regenerated deterministically from the frozen dataset — same
-folds, same model — and committed); leg3 from the external CSV. Exits 1 on
-any mismatch with 2026-08-09-l3-exp-summary.json.
+The recomputed four-leg result is AS-RUN GATE ARITHMETIC over an
+inadmissible run (leg 3 target-misaligned, fold guards unfrozen — research
+record §0), NOT an admissible prereg verdict; this script also fails if the
+summary ever records one. leg1/leg2 from the folds + placebo CSVs; leg4
+from the pooled per-row predictions (regenerated deterministically from the
+frozen dataset — same folds, same model — and committed); leg3 from the
+external CSV. Exits 1 on any mismatch with 2026-08-09-l3-exp-summary.json.
 """
 import json, sys
 from pathlib import Path
@@ -41,12 +44,15 @@ sel = e["fwd_return"][e["P"] >= 0.5]
 leg3 = bool(len(sel) and (sel.mean()-e["fwd_return"].mean()) >= 0)
 if leg3 != S["leg3_external"]: bad.append("leg3")
 
-verdict = "PASS" if all(S[k] for k in
+gate = "PASS" if all(S[k] for k in
     ("leg1_fold_consistency", "leg2_placebo", "leg3_external",
      "leg4_calibration")) else "KILL"
-if verdict != S["verdict"]: bad.append("verdict")
+if gate != S["as_run_gate_arithmetic"]: bad.append("as_run_gate_arithmetic")
+if S["admissible_verdict"] is not None: bad.append("admissible_verdict_not_null")
 if bad:
     print("DRIFT:", bad); sys.exit(1)
 print(f"VERIFIED — all four legs recomputed from committed artifacts; "
-      f"verdict {verdict} (median uplift {u.median():+.6f}, p95 {p95:+.6f}, "
+      f"as-run gate arithmetic {gate}, INADMISSIBLE as a prereg verdict — "
+      f"exploratory diagnostics only (research record §0) "
+      f"(median uplift {u.median():+.6f}, p95 {p95:+.6f}, "
       f"slope {slope:+.6f}, external n_sel {int((e['P']>=0.5).sum())}/34)")

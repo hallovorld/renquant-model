@@ -32,11 +32,14 @@ inadmissible as the frozen prereg's single execution:
    were execution-time implementation choices — a pre-run control script
    does not retroactively preregister them.
 
-The committed `…-l3-exp-summary.json` retains its as-run
-`"verdict": "KILL"` field and the verifier reproduces it: that is the
-frozen four-leg gate ARITHMETIC over these artifacts, preserved
-byte-identical for reproducibility. It is not a recorded experiment
-verdict, and this record makes no KILL (and no PASS) claim.
+The committed `…-l3-exp-summary.json` records the frozen four-leg gate
+ARITHMETIC as `"as_run_gate_arithmetic": "KILL"` with
+`"admissible_verdict": null` plus an admissibility note; the verifier
+reproduces the arithmetic and itself exits 1 if the summary ever records
+an admissible verdict. No committed machine surface encodes a prereg
+verdict, and this record makes no KILL (and no PASS) claim. The measured
+values are unchanged and the CSV artifacts remain byte-identical to the
+run.
 
 What a valid fresh prereg must freeze BEFORE its single execution: a
 target-aligned external test (candidate-level `fwd_20d` temporal holdout,
@@ -51,8 +54,8 @@ committed outputs `…-l3-exp-folds-all.csv`, `…-l3-exp-placebo.csv`,
 `…-l3-exp-external.csv`, `…-l3-exp-pooled-predictions.csv`,
 `…-l3-exp-summary.json` · `data/2026-08-09-l3-exp-verify.py` recomputes all
 four leg numbers from the committed artifacts alone and exits 1 on drift
-`[VERIFIED — run this session, exit 0; its printed "verdict KILL" is the
-gate arithmetic described above]`.
+`[VERIFIED — run this session, exit 0; it prints the as-run gate
+arithmetic KILL explicitly marked INADMISSIBLE as a prereg verdict]`.
 
 ## 1 · The four legs — diagnostic arithmetic, not a verdict `[VERIFIED — summary JSON + verifier recomputation]`
 
@@ -155,3 +158,13 @@ design (orch#918 §3 scoped L3 as an independent, severable layer).
   (§0.2), and consequently no prereg verdict — KILL or PASS — is recorded.
   The measured numbers themselves are unchanged and remain reproducible
   from the committed artifacts.
+* A further codex finding on PR #210 (at `db59069`): the machine-readable
+  artifacts still encoded the retracted verdict as canonical — the summary
+  JSON's `"verdict": "KILL"` field, the verifier's printed "verdict KILL",
+  and the run script's "the ONE execution of the frozen prereg" header.
+  All three surfaces were re-labelled fail-closed: the summary now stores
+  `"as_run_gate_arithmetic": "KILL"` + `"admissible_verdict": null` + an
+  admissibility note, the verifier prints INADMISSIBLE wording and exits 1
+  if an admissible verdict is ever recorded, and the run-script header
+  states the re-scope. Measured values unchanged; CSV artifacts remain
+  byte-identical to the run.

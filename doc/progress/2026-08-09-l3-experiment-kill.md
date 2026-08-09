@@ -49,9 +49,12 @@ EVIDENCE:  artifact:      2026-08-09-l3-exp-summary.json [VERIFIED —
 
 TESTS:     data/2026-08-09-l3-exp-verify.py — recomputes the four leg
            numbers from committed artifacts, exits 1 on drift vs the
-           summary [VERIFIED — run after the re-scope, exit 0; its
-           printed "verdict KILL" is the frozen gate arithmetic over
-           these artifacts, not a recorded verdict — record §0].
+           summary OR if the summary ever records an admissible verdict
+           (the summary stores as_run_gate_arithmetic="KILL" with
+           admissible_verdict=null) [VERIFIED — run after the
+           machine-surface relabel, exit 0; it prints the as-run gate
+           arithmetic KILL explicitly marked INADMISSIBLE as a prereg
+           verdict — record §0].
 
 NEXT:      MoE/allocation-machine line continues on L1 (shadow row lands
            2026-08-10 15:30; sigma* decision with the operator) and L2
