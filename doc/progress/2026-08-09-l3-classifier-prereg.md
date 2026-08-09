@@ -11,9 +11,9 @@ WHAT:      doc/design/2026-08-09-l3-classifier-prereg.md — the L3 meta-label
            GBDT descriptive-only); 6 unconditional entry-time features with
            stated exclusions; regime EXCLUDED ENTIRELY (r2 producer
            verdict: live_state_snapshots is a close-of-run audit row and
-           candidate_scores persists first — attribution, not availability) —
-           admitted only if that PR is merged when the run starts, else
-           excluded, resolved once with no mid-run choice; expanding
+           candidate_scores persists first — attribution, not availability;
+           no merge-state gate exists — a future producer-stamped score-time
+           field would require a NEW dated prereg); expanding
            walk-forward with 20-trading-day embargo; ALL-rows training
            declared with mandatory run_type-split metrics (live-only as a
            prereg variant); τ ∈ {0.5, 0.6}; expectancy uplift primary;
@@ -35,10 +35,12 @@ EVIDENCE:  artifact:      orch#928 dataset manifest via read-only module
                           [VERIFIED — module stdout, relocation session]:
                           7,167 rows / 523 dates / 1,275 excluded /
                           selected 135 / base win rate 0.6307 / live 2,189
-                          vs sim 4,978. Regime availability under the
-                          orch#930 r3 head (regime EXCLUDED) [VERIFIED —
-                          read-only rebuild, earlier r1 head]: 2,184 live rows
-                          same_run_snapshot / all sim rows absent.
+                          vs sim 4,978. HISTORICAL r1 EVIDENCE ONLY (withdrawn from
+                          this prereg's basis — measured on the r1
+                          run-identity join before the producer verdict
+                          excluded regime; kept solely as the record of why
+                          the exclusion matters): 2,184 live rows carried a
+                          same-run snapshot / all sim rows absent.
                           trade_evaluations = 64 [VERIFIED — sqlite ro
                           count, same session]. bull_calm-dominant days =
                           1,240 of 2,388 [VERIFIED — argmax over committed
