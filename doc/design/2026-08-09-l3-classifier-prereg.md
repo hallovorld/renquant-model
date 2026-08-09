@@ -86,7 +86,6 @@ Any leg fails ⇒ KILL for this feature set and model class; the record states
 at this history" — a completed outcome. **No feature additions, no threshold
 moves, no model upgrades inside this prereg.** A new attempt is a new dated
 prereg.
-either/or resolved by external merge state before the run begins.
 
 ## 4 · What PASS earns — and does not
 

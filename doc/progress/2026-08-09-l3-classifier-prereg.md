@@ -56,8 +56,8 @@ EVIDENCE:  artifact:      orch#928 dataset manifest via read-only module
                           deliverable and follows this document verbatim.
 
 TESTS:     none — a prose contract; its test is that the run can be judged
-           entirely from §2/§3 with zero live choices (the regime gate
-           resolves from external merge state, not judgment).
+           entirely from §2/§3 with zero live choices (no merge-state gate
+           remains — regime is excluded unconditionally).
 
 NEXT:      orch#929 shrinks to the dataset-contract pointer citing this doc;
            after both merge, execute the experiment exactly as frozen and
