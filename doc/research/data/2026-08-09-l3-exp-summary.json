@@ -1,0 +1,26 @@
+{
+  "as_run_gate_arithmetic": "KILL",
+  "admissible_verdict": null,
+  "admissibility_note": "gate arithmetic over an inadmissible run (leg 3 target-misaligned, fold guards unfrozen) — exploratory diagnostics only, NOT a prereg verdict; see doc/research/2026-08-09-l3-meta-label-experiment.md §0",
+  "leg1_fold_consistency": true,
+  "leg2_placebo": true,
+  "leg3_external": false,
+  "leg4_calibration": false,
+  "median_uplift_0.5": 0.001706043922769275,
+  "share_folds_positive": 0.6666666666666666,
+  "placebo_p95": 0.0,
+  "cal_slope": -0.0007693253275735683,
+  "cal_intercept": 0.5050050885392794,
+  "external_note": "uplift -0.045441 on n_sel 4/34",
+  "n_folds": 9,
+  "n_rows_complete_case": 7027,
+  "n_dropped": 140,
+  "input_csv_sha256": "eecfd050a52fab53f9a5f366ac4d5a69e560d426dfe6c5fa3485ed0ebec45405",
+  "n_placebo": 200,
+  "guards": {
+    "min_train": 300,
+    "min_test": 50,
+    "min_pre_dates": 60,
+    "min_selected": 10
+  }
+}
