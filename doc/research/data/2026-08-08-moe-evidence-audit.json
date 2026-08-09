@@ -1,0 +1,91 @@
+{
+  "comparison_contract": {
+    "arms": [
+      "panel",
+      "classifier",
+      "equal_weight_rank_blend"
+    ],
+    "date_metric": "cross-sectional Spearman IC and mean panel-label outcome of top-N",
+    "free_parameters": 0,
+    "inference": "complete non-overlapping chronological blocks; descriptive only; no pass/fail rule, no selection, no cost or turnover model",
+    "top_n": 3
+  },
+  "coverage": {
+    "date_max": "2026-02-11",
+    "date_min": "2024-02-02",
+    "mean_names_per_date": 289.5,
+    "n_dates": 508,
+    "n_rows": 147066
+  },
+  "daily_means": {
+    "ic_clf": 0.031270164238391816,
+    "ic_equal_blend": 0.044721558982463376,
+    "ic_panel": 0.05376895529233002,
+    "rank_corr_panel_clf": 0.7190345317395099,
+    "top_n_clf": 0.35959953666589256,
+    "top_n_equal_blend": 0.5319831988216105,
+    "top_n_panel": 0.4822867375318296
+  },
+  "incremental_results": {
+    "clf": {
+      "delta_ic_blocks": {
+        "block_size_dates": 60,
+        "block_standard_error": 0.0105965820807326,
+        "descriptive_t": -2.5142075627249345,
+        "mean": -0.026642006806413425,
+        "n_blocks": 8,
+        "n_dates_dropped": 28,
+        "n_dates_used": 480
+      },
+      "delta_top_n_label_blocks": {
+        "block_size_dates": 60,
+        "block_standard_error": 0.1798543461329167,
+        "descriptive_t": -0.9499873755278598,
+        "mean": -0.17085935826008883,
+        "n_blocks": 8,
+        "n_dates_dropped": 28,
+        "n_dates_used": 480
+      },
+      "mean_delta_ic": -0.02249879105393821,
+      "mean_delta_top_n_label": -0.12268720086593703
+    },
+    "equal_blend": {
+      "delta_ic_blocks": {
+        "block_size_dates": 60,
+        "block_standard_error": 0.007956971269566468,
+        "descriptive_t": -1.3269848850045325,
+        "mean": -0.010558780605130028,
+        "n_blocks": 8,
+        "n_dates_dropped": 28,
+        "n_dates_used": 480
+      },
+      "delta_top_n_label_blocks": {
+        "block_size_dates": 60,
+        "block_standard_error": 0.0652894905561933,
+        "descriptive_t": 0.6042509201787003,
+        "mean": 0.03945123474657837,
+        "n_blocks": 8,
+        "n_dates_dropped": 28,
+        "n_dates_used": 480
+      },
+      "mean_delta_ic": -0.00904739630986664,
+      "mean_delta_top_n_label": 0.04969646128978086
+    }
+  },
+  "inputs": {
+    "classifier_path": "/Users/renhao/git/github/renquant-model/doc/research/data/2026-08-01-clf-wf-lineage-bundle/clf_wf_scores.parquet",
+    "classifier_sha256": "46f447fd8d081fa2fa17dc3e653e92fc41d8072c38a60c7a21e4af29491e7ce3",
+    "evaluation_label": "panel fwd_60d_excess only",
+    "panel_path": "/Users/renhao/git/github/RenQuant/data/exp/oos_pick_table_recipe_v2.parquet",
+    "panel_sha256": "0cdadd9e34e164fe02a7a693183a60a848f1ed7beda3259f7c8d1b105d55f20c"
+  },
+  "label_vintage_difference": {
+    "max_absolute_difference": 1.8671482524006784,
+    "mean_absolute_difference": 0.0018745595023645207,
+    "n_material_difference_gt_1pct": 1302,
+    "share_material_difference_gt_1pct": 0.008853167965403289,
+    "spearman": 0.9997678100772714
+  },
+  "purpose": "exploratory evidence audit; not a promotion or selection result",
+  "schema": "moe-evidence-audit-v1"
+}
