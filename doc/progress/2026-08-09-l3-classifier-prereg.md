@@ -9,8 +9,9 @@ WHAT:      doc/design/2026-08-09-l3-classifier-prereg.md — the L3 meta-label
            belong to the model factory; the orchestrator keeps only the
            dataset-contract pointer). Frozen: logistic L2 C=1.0 (depth-2
            GBDT descriptive-only); 6 unconditional entry-time features with
-           stated exclusions; a regime feature block (one-hot + confidence)
-           **gated on orch#930** — the run-identity causal regime join —
+           stated exclusions; regime EXCLUDED ENTIRELY (r2 producer
+           verdict: live_state_snapshots is a close-of-run audit row and
+           candidate_scores persists first — attribution, not availability) —
            admitted only if that PR is merged when the run starts, else
            excluded, resolved once with no mid-run choice; expanding
            walk-forward with 20-trading-day embargo; ALL-rows training
@@ -23,9 +24,11 @@ WHAT:      doc/design/2026-08-09-l3-classifier-prereg.md — the L3 meta-label
 WHY/DIR:   The dataset (orch#928) is merged; the classifier experiment must
            be frozen before results exist to steer it. Two review findings
            on orch#929 drove this shape: P1 — ownership: the prereg moves
-           here; P0 — the merged dataset's date-based regime join is not
-           causal, so regime features may not be frozen against it; they are
-           gated on orch#930's run-identity join instead.
+           here; P0 — no causal score-time regime source exists on any
+           current surface (both the date join and the run-identity join
+           fail, in opposite directions); regime is excluded, and a
+           producer-stamped score-time field is a separate pipeline line
+           whose adoption would be a NEW dated prereg.
 
 EVIDENCE:  artifact:      orch#928 dataset manifest via read-only module
                           rebuild (DB mode=ro, CSV + manifest under /tmp)
@@ -33,8 +36,8 @@ EVIDENCE:  artifact:      orch#928 dataset manifest via read-only module
                           7,167 rows / 523 dates / 1,275 excluded /
                           selected 135 / base win rate 0.6307 / live 2,189
                           vs sim 4,978. Regime availability under the
-                          orch#930 causal join [VERIFIED — read-only rebuild
-                          on the #930 head, same session]: 2,184 live rows
+                          orch#930 r3 head (regime EXCLUDED) [VERIFIED —
+                          read-only rebuild, earlier r1 head]: 2,184 live rows
                           same_run_snapshot / all sim rows absent.
                           trade_evaluations = 64 [VERIFIED — sqlite ro
                           count, same session]. bull_calm-dominant days =
