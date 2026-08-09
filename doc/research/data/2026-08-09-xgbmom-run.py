@@ -1,11 +1,30 @@
 """xgb_mom_60d execution harness — implements model#211's frozen table.
 --control {positive,null} runs synthetic; --real requires --confirm-211-merged.
-Every constant FROM THE DOC; none is a choice here."""
-import argparse, json, sys
+Every constant FROM THE DOC; none is a choice here.
+
+r1 hardening (review on 4d1453f): the feature list is now EMBEDDED (the
+prereg §5 list, 70 names, order preserved from the original freeze so the
+committed control JSONs stay bit-reproducible) and --real asserts the
+prereg's corpus sha256 before reading. The one committed real execution
+predates this hardening and is recorded as NO_ADMISSIBLE_VERDICT — see
+../2026-08-09-xgb-mom-60d-verdict.md. This harness also carries the fold
+construction that review found leaky for a 60d label (no purge/embargo);
+it is retained as the record of what ran, not as a valid template."""
+import argparse, hashlib, json, sys
 import numpy as np, pandas as pd, xgboost as xgb
 from scipy.stats import spearmanr
 
-FEATS = json.load(open('/private/tmp/claude-502/-Users-renhao-git-github-renquant-orchestrator/428feb92-8ee7-4b4f-afed-1e4fa82ef367/scratchpad/xgbmom_freeze.json'))['features']
+FEATS = ('BETA10 BETA20 BETA30 BETA5 BETA60 CNTN10 CNTN20 CNTN30 CNTN5 CNTN60 '
+         'CNTP10 CNTP20 CNTP30 CNTP5 CNTP60 IMAX10 IMAX20 IMAX30 IMAX5 IMAX60 '
+         'IMIN10 IMIN20 IMIN30 IMIN5 IMIN60 MAX10 MAX20 MAX30 MAX5 MAX60 '
+         'MIN10 MIN20 MIN30 MIN5 MIN60 QTLD10 QTLD20 QTLD30 QTLD5 QTLD60 '
+         'QTLU10 QTLU20 QTLU30 QTLU5 QTLU60 RANK10 RANK20 RANK30 RANK5 RANK60 '
+         'ROC10 ROC20 ROC30 ROC5 ROC60 RSV10 RSV20 RSV30 RSV5 RSV60 '
+         'SUMN10 SUMN20 SUMN30 SUMN5 SUMN60 SUMP10 SUMP20 SUMP30 SUMP5 SUMP60'
+         ).split()
+assert len(FEATS) == 70, len(FEATS)
+CORPUS = '/Users/renhao/git/github/RenQuant/data/alpha158_291_fundamental_dataset.parquet'
+CORPUS_SHA256 = '870f68ebad5d2d87e2601f62310f34615d2d8d25df9d9cbf563629b13129bf7e'
 LABEL = 'fwd_60d_excess'
 CUTS = [("2016-01-01","2018-12-31","2019-02-01","2019-12-31"),
         ("2017-01-01","2019-12-31","2020-02-01","2020-12-31"),
@@ -92,7 +111,10 @@ if __name__=="__main__":
     a=ap.parse_args()
     if a.real:
         if not a.confirm_211_merged: print("REFUSED: gated on model#211 merge"); sys.exit(2)
-        panel=pd.read_parquet("/Users/renhao/git/github/RenQuant/data/alpha158_291_fundamental_dataset.parquet")
+        sha=hashlib.sha256(open(CORPUS,'rb').read()).hexdigest()
+        if sha!=CORPUS_SHA256:
+            print(f"REFUSED: corpus sha256 {sha} != prereg {CORPUS_SHA256}"); sys.exit(2)
+        panel=pd.read_parquet(CORPUS)
         panel["date"]=pd.to_datetime(panel["date"]).dt.strftime("%Y-%m-%d")
         r=legs(panel,FEATS)
     else:
