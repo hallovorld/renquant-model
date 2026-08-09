@@ -32,14 +32,17 @@ re-measured in relocation session]`: 7,167 rows / 523 dates / 1,275
 candidates without a forward row excluded-and-counted / selected 135 / base
 win rate 0.6307 / live 2,189 vs sim 4,978.
 
-**REGIME GATE (orch#930):** the merged #928 join takes the run_date's
-latest `live_state_snapshots` row — NOT causal (a later same-day snapshot
-postdates the scoring; codex P0 on orch#929). orch#930 replaces it with the
-join by RUN IDENTITY: the same run's snapshot, whose regime that run
-computed before scoring, with `regime_source = same_run_snapshot | absent`
-and `regime_snapshot_created_at` carried per row. Regime-based features in
-this prereg are therefore **gated on orch#930 being merged** — the
-deterministic rule is in §2.
+**REGIME: EXCLUDED (r2, the producer-level verdict).** The r1 gate premise
+— "the same run's snapshot records the regime that run computed before
+scoring" — is FALSE at the producer: `live_state_snapshots` is documented as
+a CLOSE-OF-RUN audit row (`backtesting/renquant_104/kernel/persistence.py`
+DDL comment), and `RunnerAdapter.commit()` writes `candidate_scores` BEFORE
+the snapshot. Run identity proves attribution, not availability at score
+time. orch#930 accordingly EXCLUDES regime from the dataset. **No regime
+feature appears anywhere in this prereg.** The producer-side path — stamping
+regime/confidence into `candidate_scores` at score time, with ordering and
+provenance tests — is a separate pipeline line; if it ships, admitting
+regime is a NEW dated prereg, never an amendment to this one.
 
 ## 1 · Hypothesis under test
 
@@ -53,10 +56,10 @@ Prado, AFML; the repo's win-rate memory names this the honest lever]`
 
 | element | frozen choice | rationale |
 |---|---|---|
-| model class | **logistic regression, L2, C=1.0** `[ASSUMED — frozen here; scikit-learn default]` | smallest class expressing monotone effects; 7,167 rows `[VERIFIED — manifest]` / 6–11 features (per the regime gate) `[DERIVED — count of the frozen feature lists]` affords nothing exotic |
+| model class | **logistic regression, L2, C=1.0** `[ASSUMED — frozen here; scikit-learn default]` | smallest class expressing monotone effects; 7,167 rows `[VERIFIED — manifest]` / 6 features `[DERIVED — count of the frozen feature list]` affords nothing exotic |
 | secondary (descriptive only) | depth-2 GBDT, 100 trees, lr 0.1 `[ASSUMED — frozen here; conventional defaults]` | nonlinearity probe; carries NO decision weight |
 | features — base (unconditional) | panel_score, mu, sigma, expected_return, rank_score, n_candidates_that_date — 6 features `[DERIVED — count of this list]` | entry-time only; EXCLUDED: selected/blocked_by (post-decision), kelly_target_pct (function of mu/sigma), sector (cardinality vs live sample) |
-| features — regime block (**GATED on orch#930**) | regime one-hot over {bull_calm, bull_volatile, bear, choppy, absent} + regime_confidence (0 when absent) — 5 additional features. **Admitted ONLY if orch#930 (run-identity causal join) is merged when the training run starts; otherwise the run executes on the 6 base features and the block is EXCLUDED.** The gate resolves once, at run start, from merged state — no mid-run choice; admitting the block later is a NEW dated prereg. `[ASSUMED — frozen here]` | under the merged #928 date-join the field is non-causal and may not be frozen (codex P0). Under #930's join regime is honestly live-only — 2,184 of 2,189 live rows carry it, all 4,978 sim rows are `absent` `[VERIFIED — read-only rebuild on the orch#930 head, relocation session]` — so `absent` is encoded as its own recorded category, never imputed, and the run_type-split reporting below is the guard |
+| regime / regime_confidence | **EXCLUDED** — no causal score-time source exists (producer verdict above); admitting them after a producer-side stamp is a NEW dated prereg | exclusions are choices; stated |
 | label | win = fwd_20d > 0 | the dataset's declared primary horizon |
 | split | expanding walk-forward, quarterly steps, **20-trading-day embargo** `[DERIVED — equals the fwd_20d label horizon]` at every boundary | the label overlap horizon; no random splits, ever |
 | training rows | ALL rows (sim + live), **declared**: sim features come from historical model versions — run_type is reported as a metric split, never silently pooled | the alternative (live-only, 2,189 rows `[VERIFIED — manifest]`) is a prereg VARIANT run alongside, not a post-hoc choice |
@@ -82,7 +85,7 @@ Any leg fails ⇒ KILL for this feature set and model class; the record states
 "the panel's entry quality is not predictable from these entry-time features
 at this history" — a completed outcome. **No feature additions, no threshold
 moves, no model upgrades inside this prereg.** A new attempt is a new dated
-prereg. The regime gate (§2) is not a threshold move: it is a frozen
+prereg.
 either/or resolved by external merge state before the run begins.
 
 ## 4 · What PASS earns — and does not
@@ -99,14 +102,11 @@ promotion guards (§10-pattern) like every other layer.
   manifest]` carry features from historical model versions; run_type-split
   metrics are mandatory in the report, and a PASS driven only by sim rows
   with live rows flat is reported as NOT transferable.
-* **Regime collinearity** (only if the §2 regime block is admitted):
-  bull_calm dominates the calendar (1,240 of 2,388 posterior days
-  `[VERIFIED — argmax count over committed renquant-orchestrator/
-  doc/research/data/2026-08-08-regime-posteriors.csv, relocation session]`);
-  regime coefficients may be unidentified — reported, not patched. And since
-  regime is live-only under the causal join, the `absent` category is
-  collinear with run_type=sim by construction — reported alongside the
-  run_type split, never "fixed" by imputation.
+* **Regime absence is a live/sim proxy** — noted for any FUTURE prereg
+  that admits a producer-stamped regime: in the current data the absent
+  category coincides ~exactly with sim provenance, so its coefficient would
+  partially measure provenance. Not applicable to THIS prereg (regime
+  excluded).
 * **Base-rate drift**: the 0.6307 base win rate `[VERIFIED — manifest]` is a
   bull-period artifact; the uplift metric is relative per fold, which is the
   defense, and the placebo is within-date, which preserves each date's base
