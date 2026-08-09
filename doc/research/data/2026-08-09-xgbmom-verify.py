@@ -1,4 +1,9 @@
-"""Recompute the four legs + verdict from the committed result JSON; exit 1 on drift."""
+"""Recompute the four legs + gate arithmetic from the committed result JSON;
+exit 1 on drift. Scope (review r1): this checks the JSON's INTERNAL arithmetic
+only — it cannot establish which corpus/features/folds produced the numbers,
+and the run is recorded as NO_ADMISSIBLE_VERDICT (see
+../2026-08-09-xgb-mom-60d-verdict.md). 'KILL' below is the frozen gate's
+arithmetic applied to inadmissible inputs, not a preregistered outcome."""
 import json, sys
 from pathlib import Path
 import numpy as np
@@ -13,4 +18,6 @@ if legs!=r['legs']: bad.append(f'legs {legs} vs {r["legs"]}')
 v='PASS' if all(legs) else 'KILL'
 if v!=r['verdict']: bad.append('verdict')
 if bad: print('DRIFT:',bad); sys.exit(1)
-print(f'VERIFIED — legs recomputed from committed JSON: {v} (mean real signal {np.nanmean(rs):+.4f}, {int(np.nansum(rs>0))}/8 folds positive)')
+print(f'VERIFIED — internal arithmetic of committed JSON: gate arithmetic {v} '
+      f'(mean real signal {np.nanmean(rs):+.4f}, {int(np.nansum(rs>0))}/8 folds positive); '
+      'NO_ADMISSIBLE_VERDICT — provenance/embargo not established, see verdict doc')
