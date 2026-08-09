@@ -1,0 +1,14 @@
+{
+  "label_note": "outcome = market forward return at the score date; no pairing, no lot ambiguity by construction; acted/not-acted is the selected/blocked_by columns",
+  "n_candidates_without_forward_row_excluded": 1275,
+  "n_dates": 523,
+  "n_rows": 7167,
+  "n_selected": 135,
+  "primary_horizon": "fwd_20d",
+  "rows_by_run_type": {
+    "live": 2189,
+    "sim": 4978
+  },
+  "schema": "l3_candidate_dataset.v2",
+  "win_rate_fwd20_all": 0.6307
+}
