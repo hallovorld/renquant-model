@@ -5,7 +5,10 @@ import argparse, json, sys
 import numpy as np, pandas as pd, xgboost as xgb
 from scipy.stats import spearmanr
 
-FEATS = json.load(open('/private/tmp/claude-502/-Users-renhao-git-github-renquant-orchestrator/428feb92-8ee7-4b4f-afed-1e4fa82ef367/scratchpad/xgbmom_freeze.json'))['features']
+# The frozen 70 features, EMBEDDED (identical to the merged #211 prereg
+# section 5 and to this doc's inheritance) -- the harness is
+# self-contained; no machine-local reads.
+FEATS = ["BETA10", "BETA20", "BETA30", "BETA5", "BETA60", "CNTN10", "CNTN20", "CNTN30", "CNTN5", "CNTN60", "CNTP10", "CNTP20", "CNTP30", "CNTP5", "CNTP60", "IMAX10", "IMAX20", "IMAX30", "IMAX5", "IMAX60", "IMIN10", "IMIN20", "IMIN30", "IMIN5", "IMIN60", "MAX10", "MAX20", "MAX30", "MAX5", "MAX60", "MIN10", "MIN20", "MIN30", "MIN5", "MIN60", "QTLD10", "QTLD20", "QTLD30", "QTLD5", "QTLD60", "QTLU10", "QTLU20", "QTLU30", "QTLU5", "QTLU60", "RANK10", "RANK20", "RANK30", "RANK5", "RANK60", "ROC10", "ROC20", "ROC30", "ROC5", "ROC60", "RSV10", "RSV20", "RSV30", "RSV5", "RSV60", "SUMN10", "SUMN20", "SUMN30", "SUMN5", "SUMN60", "SUMP10", "SUMP20", "SUMP30", "SUMP5", "SUMP60"]
 LABEL = 'fwd_60d_excess'
 CUTS = [  # v2 (model#213): 91-calendar-day gap > ~84-day label window
     ("2016-01-01","2018-12-31","2019-04-01","2019-12-31"),
