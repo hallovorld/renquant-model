@@ -131,6 +131,7 @@ if __name__=="__main__":
     else:
         r=legs(synthetic(a.control),FEATS)
     r["corpus_sha256"]=CORPUS_SHA256 if a.real else None
+    r["artifact_kind"]="result" if a.real else "control"
     r["fold_table"]=CUTS
     import hashlib as _h
     r["features_sha256"]=_h.sha256(json.dumps(FEATS).encode()).hexdigest()

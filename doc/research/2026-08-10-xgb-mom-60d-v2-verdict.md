@@ -28,9 +28,10 @@ hair above zero) / **+0.066 (2023)** / −0.032 / **+0.085 (2025)** /
 Recorded before the run: "KILL or marginal PASS; weaker after leak
 removal is the expected direction." **Direction right — KILL by one
 fold. Magnitude WRONG**: the clean signal is HIGHER than the leaky v1
-diagnostic (+0.0257 vs +0.0221), and the two most recent folds are the
-strongest in the table. The leak was not inflating the average; if
-anything the contaminated folds diluted it.
+diagnostic (+0.0257 vs +0.0221). No causal story is attached: v1 and v2
+differ in embargo, train spans, test starts, and realized samples
+simultaneously, so the comparison settles my prediction and nothing
+more.
 
 ## Honest reading
 
@@ -42,11 +43,11 @@ completed outcome under this prereg: no gate moves, no retry inside it.
 
 ## What this sharpens (hypothesis only, a NEW dated prereg if pursued)
 
-The conditional-activation thesis is now STRONGER than before this run:
-a model positive in 4 of the last 5 folds (and >+0.06 in three of them)
-but negative in quiet mid-decade years is the textbook shape for an
-allocation-layer expert weighted by dispersion/volatility regime — the
-same shape the L2 machinery was built to hold. That design would freeze:
+What is OBSERVED is a recent concentration: positive in 4 of the last 5
+folds (>+0.06 in three). Whether that reflects a dispersion/volatility
+REGIME mechanism — as opposed to secular drift, sample luck across eight
+yearly folds, or anything else — is exactly what a conditional-activation
+prereg would have to TEST, not assume. Such a design would freeze:
 the activation feature, its threshold, and the same embargoed-fold
 discipline, and it inherits the #937/#931 serving gates unchanged.
 

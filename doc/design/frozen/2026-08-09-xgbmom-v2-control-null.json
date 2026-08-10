@@ -89,6 +89,7 @@
   true
  ],
  "corpus_sha256": null,
+ "artifact_kind": "control",
  "fold_table": [
   [
    "2016-01-01",
