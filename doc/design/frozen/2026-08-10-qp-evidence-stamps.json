@@ -1,0 +1,324 @@
+{
+  "fold_1": {
+    "boundaries": {
+      "gate_fit_end": "2017-12-28",
+      "test_end": "2019-12-31",
+      "test_start": "2019-04-01",
+      "train_end": "2018-12-31",
+      "train_start": "2016-01-01",
+      "validation_start": "2017-12-29"
+    },
+    "passed": false,
+    "reason": "score monotonicity failed in active regime(s): BEAR, BULL_CALM",
+    "regimes": {
+      "BEAR": {
+        "eligible": true,
+        "n": 320,
+        "passed": false,
+        "spearman": 0.025532842117598806,
+        "top_bottom_return_spread": -0.004248749863672711
+      },
+      "BULL_CALM": {
+        "eligible": true,
+        "n": 910,
+        "passed": false,
+        "spearman": -0.005444475642604129,
+        "top_bottom_return_spread": -0.0017281176945731277
+      },
+      "CHOPPY": {
+        "eligible": false,
+        "n": 5,
+        "passed": false,
+        "spearman": 0.9999999999999999,
+        "top_bottom_return_spread": 0.07026177360424646
+      }
+    }
+  },
+  "fold_2": {
+    "boundaries": {
+      "gate_fit_end": "2018-12-31",
+      "test_end": "2020-12-31",
+      "test_start": "2020-04-01",
+      "train_end": "2019-12-31",
+      "train_start": "2016-01-01",
+      "validation_start": "2019-01-02"
+    },
+    "passed": false,
+    "reason": "score monotonicity failed in active regime(s): BULL_CALM, BULL_VOLATILE, CHOPPY",
+    "regimes": {
+      "BEAR": {
+        "eligible": true,
+        "n": 120,
+        "passed": true,
+        "spearman": 0.3377109521494548,
+        "top_bottom_return_spread": 0.027512591495858323
+      },
+      "BULL_CALM": {
+        "eligible": true,
+        "n": 1000,
+        "passed": false,
+        "spearman": -0.039603975603975605,
+        "top_bottom_return_spread": -0.012125306837882918
+      },
+      "BULL_VOLATILE": {
+        "eligible": true,
+        "n": 75,
+        "passed": false,
+        "spearman": -0.011977240398293029,
+        "top_bottom_return_spread": -0.011441788134188606
+      },
+      "CHOPPY": {
+        "eligible": true,
+        "n": 40,
+        "passed": false,
+        "spearman": -0.11969981238273922,
+        "top_bottom_return_spread": -0.01323438201249652
+      }
+    }
+  },
+  "fold_3": {
+    "boundaries": {
+      "gate_fit_end": "2020-01-02",
+      "test_end": "2021-12-31",
+      "test_start": "2021-04-01",
+      "train_end": "2020-12-31",
+      "train_start": "2016-01-01",
+      "validation_start": "2020-01-03"
+    },
+    "passed": false,
+    "reason": "score monotonicity failed in active regime(s): BEAR, BULL_CALM, CHOPPY",
+    "regimes": {
+      "BEAR": {
+        "eligible": true,
+        "n": 410,
+        "passed": false,
+        "spearman": 0.01763934406249279,
+        "top_bottom_return_spread": -0.004028134246665741
+      },
+      "BULL_CALM": {
+        "eligible": true,
+        "n": 695,
+        "passed": false,
+        "spearman": 0.013560825790326697,
+        "top_bottom_return_spread": 0.0034445453609726773
+      },
+      "BULL_VOLATILE": {
+        "eligible": true,
+        "n": 100,
+        "passed": true,
+        "spearman": 0.09695769576957695,
+        "top_bottom_return_spread": 0.011314020254365065
+      },
+      "CHOPPY": {
+        "eligible": true,
+        "n": 30,
+        "passed": false,
+        "spearman": -0.11902113459399331,
+        "top_bottom_return_spread": -0.021820255837037096
+      }
+    }
+  },
+  "fold_4": {
+    "boundaries": {
+      "gate_fit_end": "2020-12-31",
+      "test_end": "2022-12-31",
+      "test_start": "2022-04-01",
+      "train_end": "2021-12-31",
+      "train_start": "2016-01-01",
+      "validation_start": "2021-01-04"
+    },
+    "passed": false,
+    "reason": "score monotonicity failed in active regime(s): BULL_CALM, CHOPPY",
+    "regimes": {
+      "BEAR": {
+        "eligible": true,
+        "n": 35,
+        "passed": true,
+        "spearman": 0.4277310924369748,
+        "top_bottom_return_spread": 0.48043750698256216
+      },
+      "BULL_CALM": {
+        "eligible": true,
+        "n": 1005,
+        "passed": false,
+        "spearman": -0.03130632864524219,
+        "top_bottom_return_spread": -0.003295337377867659
+      },
+      "BULL_VOLATILE": {
+        "eligible": true,
+        "n": 105,
+        "passed": true,
+        "spearman": 0.08519593613933236,
+        "top_bottom_return_spread": 0.034372207975207084
+      },
+      "CHOPPY": {
+        "eligible": true,
+        "n": 90,
+        "passed": false,
+        "spearman": -0.34184467218175074,
+        "top_bottom_return_spread": -0.012935961906802672
+      }
+    }
+  },
+  "fold_5": {
+    "boundaries": {
+      "gate_fit_end": "2021-12-30",
+      "test_end": "2023-12-31",
+      "test_start": "2023-04-01",
+      "train_end": "2022-12-30",
+      "train_start": "2016-01-01",
+      "validation_start": "2021-12-31"
+    },
+    "passed": false,
+    "reason": "score monotonicity failed in active regime(s): BEAR, BULL_VOLATILE",
+    "regimes": {
+      "BEAR": {
+        "eligible": true,
+        "n": 795,
+        "passed": false,
+        "spearman": -0.027105634154327554,
+        "top_bottom_return_spread": -0.004215907874830814
+      },
+      "BULL_CALM": {
+        "eligible": true,
+        "n": 370,
+        "passed": true,
+        "spearman": 0.09670467259054467,
+        "top_bottom_return_spread": 0.0067445918412634715
+      },
+      "BULL_VOLATILE": {
+        "eligible": true,
+        "n": 70,
+        "passed": false,
+        "spearman": -0.07980054238474323,
+        "top_bottom_return_spread": -0.023184517462535432
+      }
+    }
+  },
+  "fold_6": {
+    "boundaries": {
+      "gate_fit_end": "2022-12-28",
+      "test_end": "2024-12-31",
+      "test_start": "2024-04-01",
+      "train_end": "2023-12-29",
+      "train_start": "2016-01-01",
+      "validation_start": "2022-12-29"
+    },
+    "passed": true,
+    "reason": "score monotonicity passed in 3 active regime(s)",
+    "regimes": {
+      "BEAR": {
+        "eligible": true,
+        "n": 80,
+        "passed": true,
+        "spearman": 0.17674636661978435,
+        "top_bottom_return_spread": 0.05002364268723247
+      },
+      "BULL_CALM": {
+        "eligible": true,
+        "n": 805,
+        "passed": true,
+        "spearman": 0.1299017680734622,
+        "top_bottom_return_spread": 0.025175187641246242
+      },
+      "BULL_VOLATILE": {
+        "eligible": true,
+        "n": 330,
+        "passed": true,
+        "spearman": 0.09306221194117317,
+        "top_bottom_return_spread": 0.05339664836561307
+      },
+      "CHOPPY": {
+        "eligible": false,
+        "n": 20,
+        "passed": false,
+        "spearman": -0.22857142857142856,
+        "top_bottom_return_spread": -0.08530274474041522
+      }
+    }
+  },
+  "fold_7": {
+    "boundaries": {
+      "gate_fit_end": "2023-12-29",
+      "test_end": "2025-12-31",
+      "test_start": "2025-04-01",
+      "train_end": "2024-12-31",
+      "train_start": "2016-01-01",
+      "validation_start": "2024-01-02"
+    },
+    "passed": false,
+    "reason": "score monotonicity failed in active regime(s): BEAR, BULL_CALM, CHOPPY",
+    "regimes": {
+      "BEAR": {
+        "eligible": true,
+        "n": 30,
+        "passed": false,
+        "spearman": -0.009121245828698554,
+        "top_bottom_return_spread": -0.07974691081522703
+      },
+      "BULL_CALM": {
+        "eligible": true,
+        "n": 1035,
+        "passed": false,
+        "spearman": -0.03136976615237485,
+        "top_bottom_return_spread": -0.008462960919555645
+      },
+      "BULL_VOLATILE": {
+        "eligible": true,
+        "n": 50,
+        "passed": true,
+        "spearman": 0.2067226890756302,
+        "top_bottom_return_spread": 0.020863829881864762
+      },
+      "CHOPPY": {
+        "eligible": true,
+        "n": 120,
+        "passed": false,
+        "spearman": -0.2731717480380582,
+        "top_bottom_return_spread": -0.06018085241811205
+      }
+    }
+  },
+  "fold_8": {
+    "boundaries": {
+      "gate_fit_end": "2024-12-27",
+      "test_end": "2026-05-07",
+      "test_start": "2026-04-01",
+      "train_end": "2025-12-31",
+      "train_start": "2016-01-01",
+      "validation_start": "2024-12-30"
+    },
+    "passed": false,
+    "reason": "score monotonicity failed in active regime(s): BULL_VOLATILE, CHOPPY",
+    "regimes": {
+      "BEAR": {
+        "eligible": true,
+        "n": 215,
+        "passed": true,
+        "spearman": 0.10036706996063657,
+        "top_bottom_return_spread": 0.01738045023034654
+      },
+      "BULL_CALM": {
+        "eligible": true,
+        "n": 935,
+        "passed": true,
+        "spearman": 0.04076564574108346,
+        "top_bottom_return_spread": 0.008720950388434108
+      },
+      "BULL_VOLATILE": {
+        "eligible": true,
+        "n": 45,
+        "passed": false,
+        "spearman": -0.3608695652173913,
+        "top_bottom_return_spread": -0.0689676558451814
+      },
+      "CHOPPY": {
+        "eligible": true,
+        "n": 40,
+        "passed": false,
+        "spearman": -0.1975609756097561,
+        "top_bottom_return_spread": -0.016560938449612192
+      }
+    }
+  }
+}
