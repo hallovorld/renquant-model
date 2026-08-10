@@ -37,9 +37,17 @@ freedom exists.
 1. The harness asserts the corpus sha256 == `870f68ebad5d2d87e2601f62310f34615d2d8d25df9d9cbf563629b13129bf7e`
    BEFORE reading (v1 added this only post-hoc);
 2. the result JSON carries `corpus_sha256`, the literal fold table, and
-   `admissible_verdict` (null until review confirms; the verifier fails
-   if a non-null verdict appears without the doc's counter-signature —
-   the model#210/#212 machine-surface rule);
+   `admissible_verdict` (null until review confirms; the COMMITTED
+   verifier — `doc/design/frozen/2026-08-09-xgbmom-v2-verify.py`,
+   fail-closed tests in `tests/test_xgbmom_v2_verify.py` (review r5) —
+   exits 1 if a non-null verdict appears without this doc's literal
+   counter-signature line
+   `COUNTERSIGN: <artifact-name> admissible_verdict=<verdict>` — the
+   model#210/#212 machine-surface rule. The same verifier also enforces,
+   on every control and result artifact: the frozen feature-list sha256,
+   the literal fold table, the per-fold purge endpoints strictly before
+   each test start, the corpus pin, and the gate arithmetic recomputed
+   from the artifact's own numbers);
 3. pre-run synthetic controls (positive planted + null) re-run under the
    NEW folds and their JSONs are committed with the result.
 

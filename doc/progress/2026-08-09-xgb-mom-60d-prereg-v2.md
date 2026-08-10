@@ -29,7 +29,13 @@ EVIDENCE:  artifact:      the gap arithmetic [DERIVED — 60 trading days
                           shadow-candidacy memo gated on #937/#931.
 
 TESTS:     the committed harness + controls re-run under the new folds
-           (their JSONs committed with the result).
+           (their JSONs committed on this branch, carrying
+           features_sha256 per the final head schema — review r5) + the
+           COMMITTED verifier
+           (doc/design/frozen/2026-08-09-xgbmom-v2-verify.py) with its
+           fail-closed suite tests/test_xgbmom_v2_verify.py: null-
+           until-countersigned verdict, feature/corpus hashes, fold
+           table, purge endpoints, gate arithmetic.
 
-NEXT:      merge → controls → one execution → verdict published with
-           committed JSON + verifier, same day.
+NEXT:      merge → one execution → result JSON committed and checked by
+           the same committed verifier, same day.
