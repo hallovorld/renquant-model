@@ -44,6 +44,10 @@ EVIDENCE:  artifact:      all 60 columns + label present, zero overlap
                           columns excluded, K-bar/level/fundamental
                           columns excluded) so the table is derivable,
                           not curated.
+           scope:         one design doc + this progress doc; no harness
+                          code, no runs, no label-derived numbers; the
+                          harness lands as a separate follow-up PR bound
+                          to the frozen text after this PR merges.
 TESTS:     none run (design doc only — nothing executable on this
            branch). The follow-up harness PR carries the committed
            harness + fail-closed verifier + both control JSONs
