@@ -49,13 +49,32 @@ WHAT:      scripts/qp_evidence_scorer.py — per v2-CUTS fold (CUTS
            the TEST fold days only; emitted as
            fold,date,ticker,recipe_score,regime.
 
-           Committed real-run artifacts (doc/design/frozen/):
-           2026-08-10-qp-evidence-scores.csv,
-           2026-08-10-qp-evidence-stamps.json,
-           2026-08-10-qp-evidence-manifest.json (every input sha,
-           per-fold boundaries, OOS validation day counts, degradation
-           flags, params fingerprints, the orch#956 expected_schedule
-           {fold -> corpus test dates}, and both output shas).
+           Committed real-run artifacts (doc/design/frozen/), schemas
+           AS COMMITTED — the exact shapes the orchestrator's join-only
+           consumer reads directly (orch#956, adapted to these
+           committed artifacts at f24caf5b; no earlier draft contract
+           survives):
+
+           * 2026-08-10-qp-evidence-scores.csv — columns
+             fold,date,ticker,recipe_score,regime; rows sorted by
+             (fold, date, ticker); exactly one regime value per
+             (fold, date); recipe_score empty where a healthy leg
+             could not score the name (NaN propagation).
+           * 2026-08-10-qp-evidence-stamps.json — TOP-LEVEL
+             "fold_<n>" objects (n = 1..8), each carrying
+             boundaries {train_start, train_end, validation_start,
+             gate_fit_end, test_start, test_end}, passed, reason, and
+             regimes {REGIME: {eligible, passed, n, spearman,
+             top_bottom_return_spread}}.
+           * 2026-08-10-qp-evidence-manifest.json —
+             outputs.scores_csv.{path, sha256, n_rows} and
+             outputs.stamps_json.{path, sha256}; inputs.* with every
+             input sha (incl. inputs.frozen_corpus.sha256 and the 293
+             OHLCV read digests); TOP-LEVEL expected_schedule keyed
+             "1".."8" -> the fold's corpus test dates; per-fold
+             boundaries / OOS validation day counts / momentum
+             degradation flags under folds[]; params fingerprints
+             under panel_trainer and momentum.
 
 WHY/DIR:   orch#955 §7 binds the runner; the model-training half
            belongs in renquant-model (the orch#953 P0 boundary, the
@@ -131,9 +150,9 @@ EVIDENCE:  artifact:      doc/design/frozen/2026-08-10-qp-evidence-
            scope:         one new script, one new test file, three
                           committed run artifacts, this progress doc.
                           No src/ package changes, no orchestrator
-                          changes (PR B consumes these artifacts by
-                          sha), no live surface touched, no gate or
-                          config moved. NO labels/joining/statistic/
+                          changes from this PR (orch#956 consumes the
+                          committed schemas directly), no live surface
+                          touched, no gate or config moved. NO labels/joining/statistic/
                           verdict here — fwd_5d_excess is never read.
 
 TESTS:     tests/test_qp_evidence_scorer.py — 7 passed in 2.85s
@@ -162,7 +181,8 @@ RUN:       ~39 min wall under caffeinate (dominated by the 2032-date
            (details in the stamps JSON). No interpretation here — PR B
            applies the stamps unchanged and computes the §5 statistic.
 
-NEXT:      merge this PR -> orchestrator PR B (join-only runner)
+NEXT:      merge this PR -> orch#956 (the join-only runner, ALREADY
+           adapted to the committed schemas above at f24caf5b)
            consumes the three artifacts by sha256, applies the frozen
            stamps to the test-day selections, and publishes the §6
            verdict (PASS | FAIL | POWER_INSUFFICIENT) with the frozen
