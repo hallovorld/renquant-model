@@ -26,15 +26,19 @@ EVIDENCE:  artifact:      2026-08-09-xgbmom-v2-result.json [VERIFIED —
                           endpoint]; controls green committed.
            prod or exp:   experiment; corpus read-only; nothing served
            existing data: the merged v2 prereg + its frozen artifacts
-           best-known?:   yes — the conditional-activation follow-up is
-                          named as a NEW prereg with its inherited
-                          serving gates; nothing smuggled
+           best-known?:   yes — the only admissible execution of this
+                          prereg; the conditional-activation follow-up
+                          is a SEPARATE exploratory hypothesis under its
+                          own prereg (model#215) and inherits NO
+                          evidentiary support from this run; nothing
+                          smuggled
            scope:         no arm enters; P0 sweep pre-publication clean
                           (only the unrelated #209).
 
 TESTS:     committed verifier green on result + both controls.
 
-NEXT:      review countersigns the verdict (or contests it); the
-           conditional-activation prereg is drafted only on operator
-           interest; the serving chain (#931/#937) remains the gate for
-           ANY deployment.
+NEXT:      review countersigns the verdict (or contests it); any
+           conditional-activation follow-up is a separate EXPLORATORY
+           hypothesis under its own frozen prereg (model#215), tested on
+           held-out data — not support earned by this KILL; the serving
+           chain (#931/#937) remains the gate for ANY deployment.
