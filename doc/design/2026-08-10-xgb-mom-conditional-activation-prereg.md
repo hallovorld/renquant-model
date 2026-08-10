@@ -22,7 +22,7 @@ as an activation input; this design never touches it).
 | element | frozen choice |
 |---|---|
 | model + folds + harness | model#213's merged v2 artifacts VERBATIM (embargoed CUTS, per-row purge, params, seeds, 70 features, corpus sha) — this prereg adds ANALYSIS of the pooled OOS predictions; no retraining freedom |
-| activation variable A(t) | cross-sectional dispersion: std across the corpus universe of trailing 21-trading-day returns, computed at t−1 from the corpus's price-derived columns `[ASSUMED — frozen here]` |
+| activation variable A(t) | cross-sectional dispersion: the per-date std across the corpus universe of the corpus's own **ROC20 column** (20-trading-day rate of change — the exact committed data, no recomputation), taken at t−1 `[ASSUMED — frozen here; self-review precision fix: the first draft said "21-day returns", which the corpus does not carry — frozen to the column that exists BEFORE any run]` |
 | activation threshold | A(t)=1 iff dispersion(t−1) > its trailing 252-trading-day median (both t−1-computable; no lookahead by construction) |
 | unit of analysis | per-DAY cross-sectional IC of the fold models' OOS predictions (real and within-date-shuffle), pooled over all embargoed-fold test days |
 | primary contrast | mean daily real-signal IC on A=1 days MINUS A=0 days |
