@@ -1,0 +1,145 @@
+{
+ "purge_per_fold": [
+  {
+   "test_start": "2019-04-01",
+   "n_train_pre_purge": 201495,
+   "n_purged": 0,
+   "max_surviving_label_endpoint": "2019-03-28"
+  },
+  {
+   "test_start": "2020-04-01",
+   "n_train_pre_purge": 271461,
+   "n_purged": 0,
+   "max_surviving_label_endpoint": "2020-03-27"
+  },
+  {
+   "test_start": "2021-04-01",
+   "n_train_pre_purge": 342656,
+   "n_purged": 0,
+   "max_surviving_label_endpoint": "2021-03-30"
+  },
+  {
+   "test_start": "2022-04-01",
+   "n_train_pre_purge": 415847,
+   "n_purged": 0,
+   "max_surviving_label_endpoint": "2022-03-29"
+  },
+  {
+   "test_start": "2023-04-01",
+   "n_train_pre_purge": 489139,
+   "n_purged": 0,
+   "max_surviving_label_endpoint": "2023-03-29"
+  },
+  {
+   "test_start": "2024-04-01",
+   "n_train_pre_purge": 562139,
+   "n_purged": 0,
+   "max_surviving_label_endpoint": "2024-03-27"
+  },
+  {
+   "test_start": "2025-04-01",
+   "n_train_pre_purge": 635723,
+   "n_purged": 0,
+   "max_surviving_label_endpoint": "2025-03-31"
+  },
+  {
+   "test_start": "2026-04-01",
+   "n_train_pre_purge": 708723,
+   "n_purged": 0,
+   "max_surviving_label_endpoint": "2026-03-30"
+  }
+ ],
+ "real_per_fold": [
+  -0.0,
+  0.1869,
+  -0.0489,
+  0.0351,
+  0.1304,
+  -0.0225,
+  0.1436,
+  0.0848
+ ],
+ "shuffle_per_fold": [
+  0.0413,
+  0.098,
+  0.0036,
+  0.0348,
+  0.0649,
+  0.0091,
+  0.0587,
+  -0.0063
+ ],
+ "real_signal_per_fold": [
+  -0.0413,
+  0.089,
+  -0.0525,
+  0.0003,
+  0.0655,
+  -0.0316,
+  0.0849,
+  0.0911
+ ],
+ "mean_real_signal": 0.0257,
+ "n_folds_pos": 5,
+ "aa_seed_std": 0.00071,
+ "legs": [
+  true,
+  false,
+  true,
+  true
+ ],
+ "corpus_sha256": "870f68ebad5d2d87e2601f62310f34615d2d8d25df9d9cbf563629b13129bf7e",
+ "fold_table": [
+  [
+   "2016-01-01",
+   "2018-12-31",
+   "2019-04-01",
+   "2019-12-31"
+  ],
+  [
+   "2016-01-01",
+   "2019-12-31",
+   "2020-04-01",
+   "2020-12-31"
+  ],
+  [
+   "2016-01-01",
+   "2020-12-31",
+   "2021-04-01",
+   "2021-12-31"
+  ],
+  [
+   "2016-01-01",
+   "2021-12-31",
+   "2022-04-01",
+   "2022-12-31"
+  ],
+  [
+   "2016-01-01",
+   "2022-12-31",
+   "2023-04-01",
+   "2023-12-31"
+  ],
+  [
+   "2016-01-01",
+   "2023-12-31",
+   "2024-04-01",
+   "2024-12-31"
+  ],
+  [
+   "2016-01-01",
+   "2024-12-31",
+   "2025-04-01",
+   "2025-12-31"
+  ],
+  [
+   "2016-01-01",
+   "2025-12-31",
+   "2026-04-01",
+   "2026-05-07"
+  ]
+ ],
+ "features_sha256": "0fe065fd2bd0e034edd35f7ff35e730685b05db094705ce4bcf582a2c99428da",
+ "admissible_verdict": null,
+ "gate_arithmetic": "KILL"
+}
