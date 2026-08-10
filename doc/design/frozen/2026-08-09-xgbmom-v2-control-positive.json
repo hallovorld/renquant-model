@@ -1,0 +1,144 @@
+{
+ "purge_per_fold": [
+  {
+   "test_start": "2019-04-01",
+   "n_train_pre_purge": 46860,
+   "n_purged": 0,
+   "max_surviving_label_endpoint": "2019-03-25"
+  },
+  {
+   "test_start": "2020-04-01",
+   "n_train_pre_purge": 62520,
+   "n_purged": 0,
+   "max_surviving_label_endpoint": "2020-03-24"
+  },
+  {
+   "test_start": "2021-04-01",
+   "n_train_pre_purge": 78240,
+   "n_purged": 0,
+   "max_surviving_label_endpoint": "2021-03-25"
+  },
+  {
+   "test_start": "2022-04-01",
+   "n_train_pre_purge": 93900,
+   "n_purged": 0,
+   "max_surviving_label_endpoint": "2022-03-25"
+  },
+  {
+   "test_start": "2023-04-01",
+   "n_train_pre_purge": 109500,
+   "n_purged": 0,
+   "max_surviving_label_endpoint": "2023-03-24"
+  },
+  {
+   "test_start": "2024-04-01",
+   "n_train_pre_purge": 125100,
+   "n_purged": 0,
+   "max_surviving_label_endpoint": "2024-03-22"
+  },
+  {
+   "test_start": "2025-04-01",
+   "n_train_pre_purge": 140820,
+   "n_purged": 0,
+   "max_surviving_label_endpoint": "2025-03-25"
+  },
+  {
+   "test_start": "2026-04-01",
+   "n_train_pre_purge": 156480,
+   "n_purged": 0,
+   "max_surviving_label_endpoint": "2026-03-25"
+  }
+ ],
+ "real_per_fold": [
+  0.3652,
+  0.3765,
+  0.3628,
+  0.3874,
+  0.3611,
+  0.3832,
+  0.3701,
+  0.3565
+ ],
+ "shuffle_per_fold": [
+  -0.0298,
+  0.009,
+  0.0025,
+  -0.0071,
+  -0.0018,
+  -0.0115,
+  -0.0028,
+  0.0031
+ ],
+ "real_signal_per_fold": [
+  0.395,
+  0.3675,
+  0.3603,
+  0.3945,
+  0.3629,
+  0.3947,
+  0.3729,
+  0.3534
+ ],
+ "mean_real_signal": 0.3752,
+ "n_folds_pos": 8,
+ "aa_seed_std": 0.00032,
+ "legs": [
+  true,
+  true,
+  true,
+  true
+ ],
+ "corpus_sha256": null,
+ "fold_table": [
+  [
+   "2016-01-01",
+   "2018-12-31",
+   "2019-04-01",
+   "2019-12-31"
+  ],
+  [
+   "2016-01-01",
+   "2019-12-31",
+   "2020-04-01",
+   "2020-12-31"
+  ],
+  [
+   "2016-01-01",
+   "2020-12-31",
+   "2021-04-01",
+   "2021-12-31"
+  ],
+  [
+   "2016-01-01",
+   "2021-12-31",
+   "2022-04-01",
+   "2022-12-31"
+  ],
+  [
+   "2016-01-01",
+   "2022-12-31",
+   "2023-04-01",
+   "2023-12-31"
+  ],
+  [
+   "2016-01-01",
+   "2023-12-31",
+   "2024-04-01",
+   "2024-12-31"
+  ],
+  [
+   "2016-01-01",
+   "2024-12-31",
+   "2025-04-01",
+   "2025-12-31"
+  ],
+  [
+   "2016-01-01",
+   "2025-12-31",
+   "2026-04-01",
+   "2026-05-07"
+  ]
+ ],
+ "admissible_verdict": null,
+ "gate_arithmetic": "PASS"
+}

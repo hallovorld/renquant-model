@@ -24,6 +24,16 @@ freedom exists.
 
 ## 2 · Run-time integrity duties (the v1 lessons, now frozen as duties)
 
+0. **PER-ROW PURGE IS THE GUARANTEE (review r1)** — the calendar gap in §1
+   is design intent, not the enforcement. The committed harness
+   (`doc/design/frozen/2026-08-09-xgbmom-v2-harness.py`, committed BEFORE
+   any run) computes every training row's realized label endpoint as the 60th
+   trading session after its date ON THE CORPUS'S OWN CALENDAR and drops
+   any row whose endpoint is not strictly before the fold's test start;
+   fold-wise purge counts and the max surviving endpoint are persisted in
+   the result artifact. The controls under the new folds are committed
+   beside it (positive PASS +0.3752 / null KILL +0.0017, hard exit codes;
+   purge machinery exercised — endpoints computed and bounded per fold).
 1. The harness asserts the corpus sha256 == `870f68ebad5d2d87e2601f62310f34615d2d8d25df9d9cbf563629b13129bf7e`
    BEFORE reading (v1 added this only post-hoc);
 2. the result JSON carries `corpus_sha256`, the literal fold table, and
