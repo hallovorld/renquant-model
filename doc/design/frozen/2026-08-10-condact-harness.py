@@ -159,11 +159,19 @@ if __name__=="__main__":
     a=ap.parse_args()
     if a.real:
         if not a.confirm_215_merged: print("REFUSED: gated on model#215 merge"); sys.exit(2)
-        import hashlib
+        import ast as _ast, hashlib
+        # the v2 harness defines CORPUS_SHA256 inside main(); read the pin
+        # from its SOURCE via ast (the committed text is the authority --
+        # the same pattern as the v2 verifier), not from module attributes
+        _pin=None
+        for _n in _ast.walk(_ast.parse(open("/Users/renhao/git/github/renquant-model/doc/design/frozen/2026-08-09-xgbmom-v2-harness.py").read())):
+            if isinstance(_n,_ast.Assign) and getattr(_n.targets[0],"id","")=="CORPUS_SHA256":
+                _pin=_ast.literal_eval(_n.value)
+        assert _pin, "corpus pin not found in the v2 harness source"
         cp="/Users/renhao/git/github/RenQuant/data/alpha158_291_fundamental_dataset.parquet"
-        assert hashlib.sha256(open(cp,"rb").read()).hexdigest()==_v2.CORPUS_SHA256
+        assert hashlib.sha256(open(cp,"rb").read()).hexdigest()==_pin
         panel=pd.read_parquet(cp); panel["date"]=pd.to_datetime(panel["date"]).dt.strftime("%Y-%m-%d")
-        r=gates(panel); r["artifact_kind"]="result"; r["corpus_sha256"]=_v2.CORPUS_SHA256
+        r=gates(panel); r["artifact_kind"]="result"; r["corpus_sha256"]=_pin
     else:
         r=gates(synthetic(a.control)); r["artifact_kind"]="control"
     print(json.dumps(r,indent=1))
