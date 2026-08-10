@@ -1,0 +1,100 @@
+{
+ "stage": "E-exploratory",
+ "slow_axis": "ROC60",
+ "med_months": 12,
+ "n_A1_days": 644,
+ "n_A0_days": 759,
+ "n_A1_months": 30,
+ "n_A0_months": 35,
+ "effective_months_total": 65,
+ "month_guard_min_per_arm": 12,
+ "month_guard_met": true,
+ "per_fold": {
+  "2019-04-01": {
+   "months_A1": 4,
+   "months_A0": 5,
+   "months_total": 9,
+   "days_A1": 89,
+   "days_A0": 108
+  },
+  "2020-04-01": {
+   "months_A1": 4,
+   "months_A0": 5,
+   "months_total": 9,
+   "days_A1": 86,
+   "days_A0": 111
+  },
+  "2021-04-01": {
+   "months_A1": 5,
+   "months_A0": 4,
+   "months_total": 9,
+   "days_A1": 110,
+   "days_A0": 87
+  },
+  "2022-04-01": {
+   "months_A1": 5,
+   "months_A0": 4,
+   "months_total": 9,
+   "days_A1": 109,
+   "days_A0": 87
+  },
+  "2023-04-01": {
+   "months_A1": 3,
+   "months_A0": 6,
+   "months_total": 9,
+   "days_A1": 65,
+   "days_A0": 130
+  },
+  "2024-04-01": {
+   "months_A1": 2,
+   "months_A0": 7,
+   "months_total": 9,
+   "days_A1": 46,
+   "days_A0": 151
+  },
+  "2025-04-01": {
+   "months_A1": 5,
+   "months_A0": 4,
+   "months_total": 9,
+   "days_A1": 112,
+   "days_A0": 85
+  },
+  "2026-04-01": {
+   "months_A1": 2,
+   "months_A0": 0,
+   "months_total": 2,
+   "days_A1": 27,
+   "days_A0": 0
+  }
+ },
+ "roc60_exclusions": {},
+ "admissible": true,
+ "features_sha256": "0fe065fd2bd0e034edd35f7ff35e730685b05db094705ce4bcf582a2c99428da",
+ "bootstrap": {
+  "algo": "stationary-geometric",
+  "mean_block": 21,
+  "n_resamples": 2000,
+  "seed": 99
+ },
+ "mean_real_sig_A1": 0.1489,
+ "mean_real_sig_A0": 0.1203,
+ "ci_A1": [
+  0.1221,
+  0.1778
+ ],
+ "ci_contrast": [
+  -0.0091,
+  0.0669
+ ],
+ "folds_with_A1": 8,
+ "gates": [
+  true,
+  false,
+  true,
+  true
+ ],
+ "gate_arithmetic": "KILL",
+ "admissible_verdict": null,
+ "artifact_kind": "control",
+ "corpus_sha256": null
+}
