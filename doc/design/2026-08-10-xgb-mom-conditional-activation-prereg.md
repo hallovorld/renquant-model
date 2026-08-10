@@ -29,7 +29,40 @@ as an activation input; this design never touches it).
 | uncertainty | stationary block bootstrap on the daily IC series, mean block 21 trading days, 2,000 resamples, percentile CIs — no borrowed critical values `[ASSUMED — frozen here; the borrowed-critical-values and block-length lessons applied]` |
 | guards | n(A=1) ≥ 100 AND n(A=0) ≥ 100 pooled test days, else NO ADMISSIBLE VERDICT (fail-closed) |
 
-## 3 · Gates (all required for PASS)
+## 2b · TWO-STAGE STRUCTURE (review r2 — the post-selection BLOCKER is
+accepted in full)
+
+The hypothesis, variable, and threshold were formed AFTER inspecting the
+same eight v2 folds — re-slicing those predictions cannot be confirmatory.
+This prereg is therefore two stages with hard separation:
+
+**Stage E (exploratory, the seen folds)**: the §2/§3 analysis runs on the
+v2 OOS predictions but carries NO verdict authority — its output is
+labeled hypothesis-refinement diagnostics, and no PASS/KILL is recorded
+from it. Its committed artifacts are marked `stage: "E-exploratory"`.
+
+**Stage C (confirmatory, unseen data — frozen HERE, before anyone looks)**:
+the SAME frozen rule (ROC20-dispersion vs its 252d median, threshold and
+definition immutable from this document) is evaluated on the corpus
+EXTENSION window (entry dates from 2026-05-08 onward — data outside every
+v2 training set, outside the fold windows that generated the hypothesis,
+and requiring the orch#939 corpus extension). The §3 gates and §2
+bootstrap apply verbatim. VERDICT TIMING IS DETERMINISTIC, NOT
+DISCRETIONARY: the confirmatory verdict is recorded on the first date the
+frozen sample guards (n(A=1) ≥ 100 and n(A=0) ≥ 100 entry days with
+REALIZED fwd_60d labels in the extension window) are met — by calendar
+arithmetic roughly November 2026; earlier looks at the extension outcomes
+are prohibited and the harness refuses to emit gate arithmetic before the
+guards are met (fail-closed). An interim sign-only reading on the ~3
+realized-label extension days available today is explicitly NOT provided:
+below the guards, no number is published.
+
+The honest sentence for the operator, in the doc where it belongs:
+confirmatory evidence about "when does this model work" cannot be
+conjured from the data that suggested the question — Stage C's clock is
+the price of a real answer.
+
+## 3 · Gates (all required for a Stage-C PASS; Stage E records no verdict)
 
 1. real-signal IC on A=1 days > 0 (bootstrap 95% CI excludes 0);
 2. the A=1 − A=0 contrast > 0 (bootstrap 95% CI excludes 0);
