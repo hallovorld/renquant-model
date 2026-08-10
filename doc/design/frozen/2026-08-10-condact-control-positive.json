@@ -1,0 +1,34 @@
+{
+ "admissible": true,
+ "stage": "E-exploratory",
+ "n_A1": 581,
+ "n_A0": 822,
+ "features_sha256": "0fe065fd2bd0e034edd35f7ff35e730685b05db094705ce4bcf582a2c99428da",
+ "bootstrap": {
+  "algo": "stationary-geometric",
+  "mean_block": 21,
+  "n_resamples": 2000,
+  "seed": 99
+ },
+ "mean_real_sig_A1": 0.1949,
+ "mean_real_sig_A0": 0.002,
+ "ci_A1": [
+  0.1812,
+  0.2071
+ ],
+ "ci_contrast": [
+  0.1778,
+  0.2075
+ ],
+ "folds_with_A1": 7,
+ "gates": [
+  true,
+  true,
+  true,
+  true
+ ],
+ "roc20_exclusions": {},
+ "gate_arithmetic": "PASS",
+ "admissible_verdict": null,
+ "artifact_kind": "control"
+}
