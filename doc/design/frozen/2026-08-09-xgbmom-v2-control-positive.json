@@ -139,6 +139,7 @@
    "2026-05-07"
   ]
  ],
+ "features_sha256": "0fe065fd2bd0e034edd35f7ff35e730685b05db094705ce4bcf582a2c99428da",
  "admissible_verdict": null,
  "gate_arithmetic": "PASS"
 }
