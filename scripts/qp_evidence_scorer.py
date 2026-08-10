@@ -25,20 +25,18 @@ asserted against the harness pin):
                60-session label endpoint strictly before
                validation_start (endpoint map on the corpus's own
                calendar). momentum leg: train_momentum_artifact with
-               params_v0() replayed at HISTORICAL WEEKLY CUTOFFS (last
-               trading day <= each Saturday, corpus calendar): every
-               validation entry day d is served by its OWN latest
-               weekly cutoff <= d — the live publish cadence replayed
-               per date, never one segment-fixed artifact (review
-               m221-r2: a map fixed at validation_start is not the
-               ledger tail for later days; later weekly cutoffs see
-               newer market data and can change rankings). Golden
-               checks per the module (content sha, frozen params
+               params_v0() at the latest weekly cutoff (last trading
+               day <= a Saturday, corpus calendar) <= validation_start;
+               golden checks per the module (content sha, frozen params
                fingerprint momentum-v0-fd65161a…, composite golden
-               reproduction, names floor) run at EVERY cutoff — a
-               failing cutoff DROPS the leg for exactly the dates it
-               serves (their composite degrades to z(panel) alone,
-               freeze §4 fallback) and is recorded per cutoff.
+               reproduction, names floor) — a failing cutoff DROPS the
+               leg for the affected window and records a degradation
+               flag (composite degrades to z(panel) alone, freeze §4).
+               ONE artifact serves the whole validation segment BY THE
+               FREEZE'S OWN BOUND: §4(i) caps the gate-fit momentum
+               recipe cutoffs at validation_start, and every validation
+               day is >= that bound, so the latest admissible weekly
+               cutoff is the ledger tail for all of them.
   validation   the gate-fit models score the validation segment OUT-OF-
                SAMPLE: blend z+z per validation day (z cross-sectional,
                ddof=0, NaN propagates — blend_scorer.py semantics),
@@ -55,10 +53,16 @@ asserted against the harness pin):
                into the stamps JSON.
   full-train   panel leg: train <= train_end with per-row purge against
                the fold's test start (harness convention); momentum
-               leg: the same per-date weekly-cadence replay — each test
-               day d is served by its latest weekly cutoff <= d, with
-               the golden checks at every cutoff. These score the TEST
-               fold days only; emitted as
+               leg: LIVE WEEKLY CADENCE THROUGH THE TEST FOLD (freeze
+               §4 scorer bullet, "historical weekly cutoffs mirroring
+               the live publish cadence"; review P0 2026-08-10) — each
+               test day d is scored by the artifact at the LATEST
+               weekly cutoff <= d, the cutoffs advancing weekly through
+               the fold, each artifact causal (its formation window
+               ends before its own cutoff); golden checks per serving
+               cutoff, a failing cutoff dropping the leg for exactly
+               the days it serves. These score the TEST fold days only;
+               emitted as
                fold,date,ticker,recipe_score,regime (regime from
                build_regime_series for the test dates, so PR B stays
                join-only; an undetermined regime is recorded UNKNOWN —
@@ -66,9 +70,8 @@ asserted against the harness pin):
 
 Outputs (committed, hash-pinned): the test-day scores CSV, the stamps
 JSON, and a manifest recording every input sha, per-fold boundaries,
-OOS validation day counts, per-date momentum cutoff schedules with
-per-cutoff golden-check records, momentum degradation flags,
-seeds/params fingerprints, and the sha256 of both output files. NO labels are read
+OOS validation day counts, momentum degradation flags, seeds/params
+fingerprints, and the sha256 of both output files. NO labels are read
 beyond fwd_60d_excess for training; fwd_5d_excess is never touched.
 
 Usage:
@@ -203,12 +206,31 @@ def weekly_cutoff_grid(sessions: list[str]) -> list[str]:
 
 
 def serving_cutoff(grid: list[str], bound: str) -> str:
-    """Latest weekly cutoff <= bound — the ledger tail an arm would
-    serve on every scored day (all scored days are >= bound)."""
+    """Latest weekly cutoff <= bound. For the GATE-FIT arm this is the
+    ONE artifact the whole validation segment is scored by: freeze
+    §4(i) caps the gate-fit momentum recipe cutoffs at
+    validation_start, and every validation day is >= that bound, so
+    this cutoff is the ledger tail for all of them."""
     ok = [c for c in grid if c <= bound]
     if not ok:
         raise ValueError(f"no weekly cutoff <= {bound}")
     return ok[-1]
+
+
+def serving_cutoff_map(grid: list[str], days: list[str]) -> dict[str, str]:
+    """LIVE WEEKLY CADENCE (freeze §4 scorer bullet; review P0
+    2026-08-10): day -> the latest weekly cutoff <= day. Used for the
+    FULL-TRAIN arm over the test fold, where the cutoffs advance weekly
+    THROUGH the fold — causal by construction (an artifact at cutoff c
+    reads only data from before c)."""
+    import bisect  # noqa: PLC0415
+    out: dict[str, str] = {}
+    for d in days:
+        i = bisect.bisect_right(grid, d) - 1
+        if i < 0:
+            raise ValueError(f"no weekly cutoff <= {d}")
+        out[d] = grid[i]
+    return out
 
 
 # ── panel leg (production trainer, verbatim) ────────────────────────────
@@ -269,15 +291,15 @@ def _zvec(vals: np.ndarray) -> np.ndarray | None:
 
 
 def composite_over_frame(scored: pd.DataFrame,
-                         mom_scores_of: dict) -> tuple[np.ndarray, dict]:
+                         mom_scores_of) -> tuple[np.ndarray, dict]:
     """Per-day blend z(panel) + z(momentum) over a frame with columns
-    date, ticker, panel_raw (RangeIndex). The momentum leg is served
-    PER DATE: mom_scores_of maps each date to that date's own weekly-
-    cutoff score map (review m221-r2 — live publish cadence, never one
-    segment-fixed map). NaN propagates for names a healthy leg could
-    not score; a degenerate leg contributes 0 and is reason-recorded; a
-    date whose cutoff DROPPED (mom_scores_of[date] is None) degrades to
-    z(panel) alone (freeze §4 fallback), reason-recorded."""
+    date, ticker, panel_raw (RangeIndex). ``mom_scores_of(date)``
+    returns the momentum leg's {ticker -> score} for that day's SERVING
+    artifact (constant for the gate-fit arm; the advancing weekly
+    artifact for the full-train arm) or None where the leg is dropped.
+    NaN propagates for names a healthy leg could not score; a
+    degenerate leg contributes 0 and is reason-recorded; a dropped leg
+    degrades the composite to z(panel) alone (freeze §4 fallback)."""
     comp = np.full(len(scored), np.nan)
     reasons: dict[str, list[str]] = {}
     for d, g in scored.groupby("date", sort=True):
@@ -288,10 +310,8 @@ def composite_over_frame(scored: pd.DataFrame,
             reasons.setdefault(str(d), []).append("panel_degenerate")
         else:
             total = total + z_p
-        mom_scores = mom_scores_of.get(d)
-        if mom_scores is None:
-            reasons.setdefault(str(d), []).append("momentum_dropped")
-        else:
+        mom_scores = mom_scores_of(str(d))
+        if mom_scores is not None:
             mv = np.array([mom_scores.get(t, np.nan) for t in g["ticker"]],
                           dtype=float)
             z_m = _zvec(mv)
@@ -546,73 +566,88 @@ def compute_stamps(trades: pd.DataFrame, evaluator) -> dict:
 
 # ── per-fold nested replay ──────────────────────────────────────────────
 
-def serve_momentum(days: list[str], grid: list[str], momentum_arm,
-                   memo: dict) -> tuple[dict, dict, dict]:
-    """Per-date weekly-cadence momentum serving (review m221-r2, freeze
-    §4): every day in `days` is served by its OWN latest weekly cutoff
-    <= that day. Returns (date -> scores|None, date -> cutoff,
-    cutoff -> arm info). momentum_arm is memoised per cutoff in `memo`
-    (the artifact at a cutoff is deterministic, so one compute serves
-    every date mapped to it — and every fold sharing it)."""
-    cutoff_of = {d: serving_cutoff(grid, d) for d in days}
-    served: dict[str, dict | None] = {}
-    infos: dict[str, dict] = {}
-    for d in days:
-        c = cutoff_of[d]
-        if c not in memo:
-            memo[c] = momentum_arm(c)
-        scores_c, info_c = memo[c]
-        served[d] = scores_c
-        infos[c] = info_c
-    return served, cutoff_of, infos
-
-
 def run_fold(corpus: pd.DataFrame, feat_cols: list[str], sessions: list[str],
              idx: dict, ep: dict, cut: tuple, fold_no: int, *,
              close_of, spy_close: pd.Series, regime_of, momentum_arm,
              evaluator, weekly_grid: list[str] | None = None,
              params: dict | None = None,
-             num_boost_round: int = DEFAULT_N_ROUNDS) -> dict:
+             num_boost_round: int = DEFAULT_N_ROUNDS,
+             skip_validation: bool = False,
+             prev_validation_meta: dict | None = None) -> dict:
     """One fold's full nested replay (freeze §4 gate bullet, splits
     i/ii/iii). Returns test scores + frozen stamps + per-fold metadata;
-    NOTHING here reads labels beyond training fwd_60d_excess."""
+    NOTHING here reads labels beyond training fwd_60d_excess.
+
+    ``skip_validation`` (review P0 2026-08-10 re-run scope): the
+    gate-fit arm and its frozen stamps are UNCHANGED by the cadence
+    fix, so a test-scores-only regeneration skips splits (i)/(ii) and
+    carries ``prev_validation_meta`` (the prior execution's recorded
+    validation block, incl. the gate-fit momentum info) forward
+    verbatim instead of recomputing it."""
     b = fold_boundaries(sessions, idx, cut)
     it = idx[b["train_end"]]
     grid = weekly_grid if weekly_grid is not None else weekly_cutoff_grid(sessions)
-    mom_memo: dict = {}
-
-    # (i) GATE-FIT models — see NOTHING from the validation segment.
-    # (The momentum leg is not fitted here: it is a deterministic price
-    # transform served per entry day below at the live weekly cadence,
-    # review m221-r2.)
-    gate_booster, gate_meta = train_panel_arm(
-        corpus, feat_cols, ep, train_start=b["train_start"],
-        max_date=b["gate_fit_end"], endpoint_before=b["validation_start"],
-        params=params, num_boost_round=num_boost_round)
-
-    # (ii) VALIDATION segment — OOS scoring by the gate-fit models; entry
-    # days capped so every exit lands on/before train_end (freeze: every
-    # gate input ends by the fold's train end).
     segment = sessions[it - (VALIDATION_SESSIONS - 1): it + 1]
     entry_days = [d for d in segment if idx[d] + HOLD_SESSIONS <= it]
-    val_served, val_cutoff_of, val_mom_infos = serve_momentum(
-        entry_days, grid, momentum_arm, mom_memo)
-    val_rows = corpus[corpus.date.isin(entry_days)][["date", "ticker"]].copy()
-    val_rows = val_rows.sort_values(["date", "ticker"]).reset_index(drop=True)
-    val_rows["panel_raw"] = score_panel(
-        gate_booster, corpus.loc[
-            corpus.date.isin(entry_days)].sort_values(["date", "ticker"]),
-        feat_cols)
-    val_comp, val_reasons = composite_over_frame(val_rows, val_served)
-    val_rows["composite"] = val_comp
-    trades = simulate_validation_trades(
-        val_rows, entry_days, sessions, idx,
-        close_of=close_of, spy_close=spy_close, regime_of=regime_of)
-    if len(trades) and trades["exit_date"].max() > b["train_end"]:
-        raise AssertionError(
-            f"fold {fold_no}: a validation trade exits after train_end "
-            f"({trades['exit_date'].max()} > {b['train_end']})")
-    stamps = compute_stamps(trades, evaluator)
+
+    if skip_validation:
+        if not prev_validation_meta:
+            raise ValueError(
+                "skip_validation requires prev_validation_meta (the prior "
+                "execution's recorded validation block)")
+        stamps = None
+        trades = pd.DataFrame(
+            columns=["entry_date", "exit_date", "ticker",
+                     "entry_rank_score", "pnl_pct", "entry_regime"])
+        val_meta = prev_validation_meta
+        gate_dropped = bool((prev_validation_meta.get("momentum") or {})
+                            .get("dropped"))
+    else:
+        # (i) GATE-FIT models — see NOTHING from the validation segment.
+        # ONE momentum artifact by the freeze's own §4(i) bound: cutoffs
+        # <= validation_start, and every validation day >= that bound.
+        gate_booster, gate_meta = train_panel_arm(
+            corpus, feat_cols, ep, train_start=b["train_start"],
+            max_date=b["gate_fit_end"], endpoint_before=b["validation_start"],
+            params=params, num_boost_round=num_boost_round)
+        gate_cutoff = serving_cutoff(grid, b["validation_start"])
+        gate_mom_scores, gate_mom_info = momentum_arm(gate_cutoff)
+
+        # (ii) VALIDATION segment — OOS scoring by the gate-fit models;
+        # entry days capped so every exit lands on/before train_end
+        # (freeze: every gate input ends by the fold's train end).
+        val_rows = corpus[corpus.date.isin(entry_days)][["date", "ticker"]].copy()
+        val_rows = val_rows.sort_values(["date", "ticker"]).reset_index(drop=True)
+        val_rows["panel_raw"] = score_panel(
+            gate_booster, corpus.loc[
+                corpus.date.isin(entry_days)].sort_values(["date", "ticker"]),
+            feat_cols)
+        val_comp, val_reasons = composite_over_frame(
+            val_rows, lambda d: gate_mom_scores)
+        val_rows["composite"] = val_comp
+        trades = simulate_validation_trades(
+            val_rows, entry_days, sessions, idx,
+            close_of=close_of, spy_close=spy_close, regime_of=regime_of)
+        if len(trades) and trades["exit_date"].max() > b["train_end"]:
+            raise AssertionError(
+                f"fold {fold_no}: a validation trade exits after train_end "
+                f"({trades['exit_date'].max()} > {b['train_end']})")
+        stamps = compute_stamps(trades, evaluator)
+        n_trades = int(len(trades))
+        n_trades_scored = int(np.isfinite(
+            trades["pnl_pct"].to_numpy(dtype=float)).sum()) if n_trades else 0
+        val_meta = {
+            "n_segment_days": len(segment),
+            "n_entry_days": len(entry_days),
+            "n_trades": n_trades,
+            "n_trades_with_pnl": n_trades_scored,
+            "n_regime_unknown_entry_days": int(sum(
+                1 for d in entry_days if regime_of(d) == "UNKNOWN")),
+            "panel": gate_meta,
+            "momentum": gate_mom_info,
+            "degenerate_leg_days": {k: v for k, v in val_reasons.items()},
+        }
+        gate_dropped = bool(gate_mom_info.get("dropped"))
 
     # (iii) TEST fold — FULL-TRAIN models, retrained only after the gate
     # stamps above are frozen; the stamps never touch these scores here
@@ -622,16 +657,38 @@ def run_fold(corpus: pd.DataFrame, feat_cols: list[str], sessions: list[str],
         max_date=b["train_end"], endpoint_before=b["test_start"],
         params=params, num_boost_round=num_boost_round)
 
+    # Momentum leg: LIVE WEEKLY CADENCE through the test fold (freeze §4
+    # scorer bullet; review P0 2026-08-10) — test day d is scored by the
+    # artifact at the LATEST weekly cutoff <= d. Only cutoffs that serve
+    # at least one test day are trained: an enumerated cutoff superseded
+    # before the first test day (inside the 91-day embargo gap) can
+    # never be a day's latest cutoff, so it produces no artifact.
     test_days = [d for d in sessions if b["test_start"] <= d <= b["test_end"]]
-    test_served, test_cutoff_of, test_mom_infos = serve_momentum(
-        test_days, grid, momentum_arm, mom_memo)
+    day_cutoff = serving_cutoff_map(grid, test_days)
+    enumerated = [c for c in grid if b["train_end"] <= c <= b["test_end"]]
+    serving = sorted(set(day_cutoff.values()))
+    mom_by_cutoff: dict[str, dict | None] = {}
+    serving_infos: dict[str, dict] = {}
+    for c in serving:
+        scores_c, info_c = momentum_arm(c)
+        mom_by_cutoff[c] = scores_c
+        served = [d for d in test_days if day_cutoff[d] == c]
+        info_c = dict(info_c)
+        info_c["n_test_days_served"] = len(served)
+        info_c["serves_first"] = served[0] if served else None
+        info_c["serves_last"] = served[-1] if served else None
+        serving_infos[c] = info_c
+    dropped_cutoffs = [c for c in serving
+                       if serving_infos[c].get("dropped")]
+
     test_rows = corpus[corpus.date.isin(test_days)][["date", "ticker"]].copy()
     test_rows = test_rows.sort_values(["date", "ticker"]).reset_index(drop=True)
     test_rows["panel_raw"] = score_panel(
         full_booster, corpus.loc[
             corpus.date.isin(test_days)].sort_values(["date", "ticker"]),
         feat_cols)
-    test_comp, test_reasons = composite_over_frame(test_rows, test_served)
+    test_comp, test_reasons = composite_over_frame(
+        test_rows, lambda d: mom_by_cutoff[day_cutoff[d]])
     scores_df = pd.DataFrame({
         "fold": fold_no,
         "date": test_rows["date"],
@@ -640,36 +697,10 @@ def run_fold(corpus: pd.DataFrame, feat_cols: list[str], sessions: list[str],
         "regime": [regime_of(d) for d in test_rows["date"]],
     })
 
-    n_trades = int(len(trades))
-    n_trades_scored = int(np.isfinite(
-        trades["pnl_pct"].to_numpy(dtype=float)).sum()) if n_trades else 0
-    val_dropped = sorted(c for c, i in val_mom_infos.items()
-                         if i.get("dropped"))
-    test_dropped = sorted(c for c, i in test_mom_infos.items()
-                          if i.get("dropped"))
-    mom_rule = ("per-date live weekly cadence: latest weekly cutoff <= "
-                "the scored day (review m221-r2, freeze §4)")
     meta = {
         "fold": fold_no,
         "boundaries": b,
-        "validation": {
-            "n_segment_days": len(segment),
-            "n_entry_days": len(entry_days),
-            "n_trades": n_trades,
-            "n_trades_with_pnl": n_trades_scored,
-            "n_regime_unknown_entry_days": int(sum(
-                1 for d in entry_days if regime_of(d) == "UNKNOWN")),
-            "panel": gate_meta,
-            "momentum": {
-                "rule": mom_rule,
-                "cutoff_schedule": val_cutoff_of,
-                "n_cutoffs": len(val_mom_infos),
-                "dropped_cutoffs": val_dropped,
-                "cutoffs": {c: val_mom_infos[c]
-                            for c in sorted(val_mom_infos)},
-            },
-            "degenerate_leg_days": {k: v for k, v in val_reasons.items()},
-        },
+        "validation": val_meta,
         "test": {
             "n_days": len(test_days),
             "n_rows": int(len(scores_df)),
@@ -677,16 +708,24 @@ def run_fold(corpus: pd.DataFrame, feat_cols: list[str], sessions: list[str],
                 1 for d in test_days if regime_of(d) == "UNKNOWN")),
             "panel": full_meta,
             "momentum": {
-                "rule": mom_rule,
-                "cutoff_schedule": test_cutoff_of,
-                "n_cutoffs": len(test_mom_infos),
-                "dropped_cutoffs": test_dropped,
-                "cutoffs": {c: test_mom_infos[c]
-                            for c in sorted(test_mom_infos)},
+                "cadence": ("live weekly publish cadence through the test "
+                            "fold: day -> latest weekly cutoff <= day "
+                            "(freeze §4 scorer bullet; review P0 "
+                            "2026-08-10)"),
+                "enumerated_cutoffs_train_end_to_test_end": enumerated,
+                "n_serving_cutoffs": len(serving),
+                "serving_cutoffs": serving_infos,
+                # The review's auditable schedule: the cutoff identity for
+                # EVERY score date, verbatim.
+                "cutoff_schedule": {d: day_cutoff[d] for d in test_days},
+                "dropped_cutoffs": dropped_cutoffs,
+                "non_serving_note": (
+                    "enumerated cutoffs superseded before the first test "
+                    "day serve no day and train no artifact"),
             },
             "degenerate_leg_days": {k: v for k, v in test_reasons.items()},
         },
-        "momentum_degraded": bool(val_dropped or test_dropped),
+        "momentum_degraded": bool(gate_dropped or dropped_cutoffs),
     }
     return {"scores": scores_df, "stamps": stamps, "meta": meta,
             "trades": trades}
@@ -751,15 +790,24 @@ def assert_scores_contract(scores_df: pd.DataFrame,
 
 
 def write_outputs(out_dir: str | Path, scores_df: pd.DataFrame,
-                  stamps: dict) -> dict:
+                  stamps: dict | None) -> dict:
+    """Write the scores CSV (always) and the stamps JSON (only when
+    ``stamps`` is given). ``stamps=None`` is the test-scores-only
+    regeneration: the frozen committed stamps file is left
+    byte-untouched and merely hashed into the outputs block."""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     scores_path = out / SCORES_BASENAME
     stamps_path = out / STAMPS_BASENAME
     scores_df.to_csv(scores_path, index=False)
-    stamps_path.write_text(
-        json.dumps(stamps, indent=2, sort_keys=True, allow_nan=False) + "\n",
-        encoding="utf-8")
+    if stamps is not None:
+        stamps_path.write_text(
+            json.dumps(stamps, indent=2, sort_keys=True, allow_nan=False)
+            + "\n", encoding="utf-8")
+    elif not stamps_path.is_file():
+        raise FileNotFoundError(
+            f"test-scores-only regeneration expects the frozen stamps file "
+            f"to already exist at {stamps_path}")
     return {
         "scores_csv": {"path": str(scores_path),
                        "sha256": file_sha256(scores_path),
@@ -812,8 +860,24 @@ def main(argv=None) -> int:
     ap.add_argument("--prod-artifact", required=True)
     ap.add_argument("--renquant-root", required=True)
     ap.add_argument("--out-dir", required=True)
+    ap.add_argument("--test-scores-only", action="store_true",
+                    help="review P0 2026-08-10 re-run scope: the gate-fit "
+                         "arm and frozen stamps are unchanged by the "
+                         "momentum-cadence fix, so regenerate ONLY the "
+                         "test-day scores CSV (+ manifest); requires "
+                         "--prev-manifest")
+    ap.add_argument("--prev-manifest", default=None,
+                    help="the prior execution's manifest: source of the "
+                         "carried-forward validation blocks, the stamps sha "
+                         "to verify, and the input-vintage digests that "
+                         "authorize regime-map reuse from the prior CSV")
     a = ap.parse_args(argv)
     rq = Path(a.renquant_root)
+    prev = None
+    if a.test_scores_only:
+        if not a.prev_manifest:
+            ap.error("--test-scores-only requires --prev-manifest")
+        prev = json.loads(Path(a.prev_manifest).read_text())
 
     h = harness_constants(a.harness)
     cuts = h["CUTS"]
@@ -850,45 +914,86 @@ def main(argv=None) -> int:
         f"{FROZEN_TEST_DAY_COUNTS}")
 
     # Production regime series — the WF gate's own constructor, called the
-    # run_wf_gate.py:2701 way; ONE call over every date we stamp or emit.
-    if str(rq) not in sys.path:
-        sys.path.insert(0, str(rq))
-    from scripts.analyze_manifest_sanity_placebo import (  # noqa: PLC0415
-        STRATEGY_DIR,
-        build_regime_series,
-    )
-    all_dates: set[str] = set()
-    for fold, b in boundaries_by_fold.items():
-        it = idx[b["train_end"]]
-        segment = sessions[it - (VALIDATION_SESSIONS - 1): it + 1]
-        all_dates.update(d for d in segment if idx[d] + HOLD_SESSIONS <= it)
-        all_dates.update(d for d in sessions
-                         if b["test_start"] <= d <= b["test_end"])
-    print(f"building production regime series for {len(all_dates)} dates…",
-          flush=True)
-    regimes_df = build_regime_series(sorted(all_dates),
-                                     strategy_dir=STRATEGY_DIR)
-    regime_map = {
-        pd.Timestamp(r["date"]).strftime("%Y-%m-%d"):
-            (str(r["regime"]) if r["regime"] else "UNKNOWN")
-        for _, r in regimes_df.iterrows()}
+    # run_wf_gate.py:2701 way. In --test-scores-only mode the per-date
+    # regime values are REUSED from the prior execution's committed CSV
+    # (they came from the same constructor), but only after verifying the
+    # constructor's inputs are byte-identical to the prior manifest's
+    # recorded digests (SPY OHLCV + strategy_config) — vintage-proof reuse,
+    # not trust.
+    regime_ctor_block = None
+    if a.test_scores_only:
+        spy_path = rq / "data" / "ohlcv" / "SPY" / "1d.parquet"
+        spy_sha = file_sha256(spy_path)
+        prev_spy = prev["inputs"]["ohlcv_read_digests"].get(
+            "ohlcv/SPY/1d.parquet")
+        assert spy_sha == prev_spy, (
+            f"SPY OHLCV drifted since the prior run ({spy_sha[:12]}… != "
+            f"{str(prev_spy)[:12]}…) — regime reuse refused; recompute")
+        prev_ctor = prev["inputs"]["regime_constructor"]
+        cfg_path = Path(prev_ctor["strategy_dir"]) / "strategy_config.json"
+        assert file_sha256(cfg_path) == prev_ctor["strategy_config_sha256"], (
+            "strategy_config drifted since the prior run — regime reuse "
+            "refused; recompute")
+        prev_csv = Path(a.out_dir) / SCORES_BASENAME
+        prev_scores = pd.read_csv(prev_csv, dtype={"date": str, "regime": str})
+        prev_csv_sha = file_sha256(prev_csv)
+        assert prev_csv_sha == prev["outputs"]["scores_csv"]["sha256"], (
+            "on-disk prior scores CSV is not the prior manifest's — refuse")
+        regime_map = {}
+        pairs = prev_scores[["date", "regime"]].drop_duplicates()
+        for d, r in pairs.itertuples(index=False):
+            if d in regime_map and regime_map[d] != str(r):
+                raise AssertionError(f"prior CSV carries two regimes for {d}")
+            regime_map[d] = str(r)
+        regime_ctor_block = dict(prev_ctor)
+        regime_ctor_block["reuse"] = (
+            "per-date regimes reused from the prior execution's committed "
+            f"scores CSV (sha {prev_csv_sha[:12]}…) after verifying the "
+            "constructor inputs (SPY OHLCV, strategy_config) byte-identical "
+            "to the prior manifest's digests")
+    else:
+        if str(rq) not in sys.path:
+            sys.path.insert(0, str(rq))
+        from scripts.analyze_manifest_sanity_placebo import (  # noqa: PLC0415
+            STRATEGY_DIR,
+            build_regime_series,
+        )
+        all_dates: set[str] = set()
+        for fold, b in boundaries_by_fold.items():
+            it = idx[b["train_end"]]
+            segment = sessions[it - (VALIDATION_SESSIONS - 1): it + 1]
+            all_dates.update(d for d in segment
+                             if idx[d] + HOLD_SESSIONS <= it)
+            all_dates.update(d for d in sessions
+                             if b["test_start"] <= d <= b["test_end"])
+        print(f"building production regime series for {len(all_dates)} "
+              "dates…", flush=True)
+        regimes_df = build_regime_series(sorted(all_dates),
+                                         strategy_dir=STRATEGY_DIR)
+        regime_map = {
+            pd.Timestamp(r["date"]).strftime("%Y-%m-%d"):
+                (str(r["regime"]) if r["regime"] else "UNKNOWN")
+            for _, r in regimes_df.iterrows()}
+        regime_ctor_block = {
+            "module": "scripts/analyze_manifest_sanity_placebo.py",
+            "path": str(rq / "scripts" /
+                        "analyze_manifest_sanity_placebo.py"),
+            "sha256": file_sha256(
+                rq / "scripts" / "analyze_manifest_sanity_placebo.py"),
+            "strategy_dir": str(STRATEGY_DIR),
+            "strategy_config_sha256": file_sha256(
+                Path(STRATEGY_DIR) / "strategy_config.json"),
+            "called_as": ("build_regime_series(dates, strategy_dir="
+                          "STRATEGY_DIR) — the run_wf_gate.py:2701 shape"),
+        }
 
     def regime_of(d: str) -> str:
         return regime_map.get(d, "UNKNOWN")
 
     store = OhlcvStore(rq / "data" / "ohlcv")
     readers = CorpusMomentumReaders(store, rq / "data" / "ticker_sectors.json")
-    raw_momentum_arm = make_real_momentum_arm(
+    momentum_arm = make_real_momentum_arm(
         readers, corpus[["date", "ticker"]])
-    # Cross-fold memo: the artifact at a weekly cutoff is deterministic,
-    # and folds' validation/test windows overlap on the calendar — one
-    # compute per unique cutoff serves every date and fold mapped to it.
-    _arm_memo: dict[str, tuple] = {}
-
-    def momentum_arm(cutoff: str):
-        if cutoff not in _arm_memo:
-            _arm_memo[cutoff] = raw_momentum_arm(cutoff)
-        return _arm_memo[cutoff]
     spy_close = store.close("SPY")
     assert spy_close is not None, "SPY OHLCV missing"
     evaluator = load_monotonicity_evaluator(rq)
@@ -897,26 +1002,42 @@ def main(argv=None) -> int:
     for fold, cut in enumerate(cuts, start=1):
         print(f"fold {fold}: nested replay starting "
               f"({boundaries_by_fold[fold]})", flush=True)
+        prev_val = (prev["folds"][fold - 1]["validation"]
+                    if a.test_scores_only else None)
         res = run_fold(corpus, feat_cols, sessions, idx, ep, cut, fold,
                        close_of=store.close, spy_close=spy_close,
                        regime_of=regime_of, momentum_arm=momentum_arm,
-                       evaluator=evaluator, weekly_grid=grid)
+                       evaluator=evaluator, weekly_grid=grid,
+                       skip_validation=a.test_scores_only,
+                       prev_validation_meta=prev_val)
         all_scores.append(res["scores"])
-        stamps[f"fold_{fold}"] = {
-            "boundaries": res["meta"]["boundaries"],
-            **res["stamps"],
-        }
+        if res["stamps"] is not None:
+            stamps[f"fold_{fold}"] = {
+                "boundaries": res["meta"]["boundaries"],
+                **res["stamps"],
+            }
         fold_meta.append(res["meta"])
-        print(f"fold {fold}: {res['meta']['validation']['n_trades']} "
-              f"validation trades, stamps passed={res['stamps']['passed']} "
-              f"({res['stamps']['reason']}); "
+        mom_t = res["meta"]["test"]["momentum"]
+        stamp_note = ("stamps UNCHANGED (carried; validation skipped)"
+                      if res["stamps"] is None else
+                      f"stamps passed={res['stamps']['passed']} "
+                      f"({res['stamps']['reason']})")
+        print(f"fold {fold}: {stamp_note}; "
+              f"{mom_t['n_serving_cutoffs']} serving momentum cutoffs "
+              f"({len(mom_t['dropped_cutoffs'])} dropped); "
               f"{res['meta']['test']['n_rows']} test rows", flush=True)
 
     scores_df = pd.concat(all_scores, ignore_index=True)
     assert_no_validation_leak(scores_df, boundaries_by_fold)
     schedule = expected_schedule(sessions, boundaries_by_fold)
     assert_scores_contract(scores_df, schedule)
-    outputs = write_outputs(a.out_dir, scores_df, stamps)
+    outputs = write_outputs(a.out_dir, scores_df,
+                            None if a.test_scores_only else stamps)
+    if a.test_scores_only:
+        assert (outputs["stamps_json"]["sha256"]
+                == prev["outputs"]["stamps_json"]["sha256"]), (
+            "frozen stamps file changed on disk — test-scores-only mode "
+            "must leave it byte-identical")
 
     manifest = {
         "design": {
@@ -945,18 +1066,7 @@ def main(argv=None) -> int:
                 "thresholds": "verbatim defaults (min_n_per_regime 30, "
                               "min_spearman 0.02, positive spread)",
             },
-            "regime_constructor": {
-                "module": "scripts/analyze_manifest_sanity_placebo.py",
-                "path": str(rq / "scripts" /
-                            "analyze_manifest_sanity_placebo.py"),
-                "sha256": file_sha256(
-                    rq / "scripts" / "analyze_manifest_sanity_placebo.py"),
-                "strategy_dir": str(STRATEGY_DIR),
-                "strategy_config_sha256": file_sha256(
-                    Path(STRATEGY_DIR) / "strategy_config.json"),
-                "called_as": ("build_regime_series(dates, strategy_dir="
-                              "STRATEGY_DIR) — the run_wf_gate.py:2701 shape"),
-            },
+            "regime_constructor": regime_ctor_block,
             "ohlcv_read_digests": readers.read_digests(),
         },
         "panel_trainer": {
@@ -977,16 +1087,14 @@ def main(argv=None) -> int:
             "params": params_v0(),
             "config_fingerprint": FROZEN_MOMENTUM_FP,
             "weekly_cutoff_rule": (
-                "last trading day <= each Saturday on the corpus calendar; "
-                "EVERY scored day (validation entry days and test days "
-                "alike) is served by its OWN latest weekly cutoff <= that "
-                "day — the live publish cadence replayed per date (review "
-                "m221-r2: a segment-fixed map is NOT the ledger tail for "
-                "later days; later weekly cutoffs see newer market data). "
-                "Per-fold date->cutoff schedules and per-cutoff golden-"
-                "check records live under folds[].validation.momentum and "
-                "folds[].test.momentum."),
-            "n_unique_cutoffs_computed": len(_arm_memo),
+                "cutoff grid = last trading day <= each Saturday on the "
+                "corpus calendar. GATE-FIT arm: ONE artifact at the latest "
+                "cutoff <= validation_start (freeze §4(i) bounds the "
+                "gate-fit recipe cutoffs there; every validation day is >= "
+                "that bound). FULL-TRAIN arm: LIVE WEEKLY CADENCE through "
+                "the test fold — each test day is scored by the artifact "
+                "at the latest cutoff <= that day, advancing weekly "
+                "(freeze §4 scorer bullet; review P0 2026-08-10)"),
             "golden_checks": ["content_sha_recomputes",
                              "params_fingerprint_is_frozen",
                              "composite_golden_reproduction_1e-9",
@@ -1025,6 +1133,20 @@ def main(argv=None) -> int:
             "xgboost": __import__("xgboost").__version__,
             "pandas": pd.__version__,
             "numpy": np.__version__,
+            "mode": ("test-scores-only (review P0 2026-08-10: full-train "
+                     "momentum leg corrected to live weekly cadence "
+                     "through the test fold; gate-fit arm and frozen "
+                     "stamps unchanged, carried from the prior "
+                     "execution)" if a.test_scores_only else "full"),
+            "prior_execution": (
+                {"manifest": str(a.prev_manifest),
+                 "executed_at_utc": prev["run"]["executed_at_utc"],
+                 "stamps_sha256_verified_unchanged":
+                     prev["outputs"]["stamps_json"]["sha256"],
+                 "validation_blocks": "carried forward verbatim",
+                 "regime_map": "reused from the prior committed scores "
+                               "CSV after input-vintage verification"}
+                if a.test_scores_only else None),
         },
     }
     manifest_path = Path(a.out_dir) / MANIFEST_BASENAME
