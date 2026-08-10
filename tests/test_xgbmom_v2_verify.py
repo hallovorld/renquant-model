@@ -4,7 +4,9 @@ The committed verifier must (a) verify both committed control artifacts
 clean, and fail closed on: (b) a non-null admissible_verdict lacking the
 design doc's countersignature, (c) feature-hash drift or absence — the r5
 finding itself, (d) a fold-table edit, (e) a purge endpoint touching its
-test interval, (f) gate arithmetic that no longer recomputes.
+test interval, (f) gate arithmetic that no longer recomputes, and (g) the
+artifact_kind schema branch (model#214 review r3): an absent or unknown
+kind, a result without the pinned corpus, or a control carrying one.
 """
 import json
 import subprocess
@@ -74,3 +76,50 @@ def test_purge_endpoint_inside_test_interval_fails(tmp_path):
 def test_gate_arithmetic_drift_fails(tmp_path):
     p = mutated(tmp_path, lambda a: a.update(n_folds_pos=99))
     assert run_verifier(p).returncode == 1
+
+
+RESULT = FROZEN / "2026-08-09-xgbmom-v2-result.json"
+
+
+def mutated_result(tmp_path, fn):
+    """Like mutated(), but from the committed RESULT artifact — the r3
+    negative cases are defined against a copy of the real result."""
+    artifact = json.loads(RESULT.read_text())
+    fn(artifact)
+    p = tmp_path / RESULT.name
+    p.write_text(json.dumps(artifact))
+    return p
+
+
+def test_committed_result_verifies_clean():
+    r = run_verifier(RESULT)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_missing_artifact_kind_fails_closed(tmp_path):
+    p = mutated_result(tmp_path, lambda a: a.pop("artifact_kind"))
+    r = run_verifier(p)
+    assert r.returncode == 1
+    assert "artifact_kind" in r.stdout
+
+
+def test_wrong_artifact_kind_fails_closed(tmp_path):
+    p = mutated_result(tmp_path, lambda a: a.update(artifact_kind="shadow"))
+    r = run_verifier(p)
+    assert r.returncode == 1
+    assert "artifact_kind" in r.stdout
+
+
+def test_result_without_corpus_pin_fails_closed(tmp_path):
+    p = mutated_result(tmp_path, lambda a: a.update(corpus_sha256=None))
+    r = run_verifier(p)
+    assert r.returncode == 1
+    assert "pinned corpus" in r.stdout
+
+
+def test_control_with_corpus_pin_fails_closed(tmp_path):
+    pin = json.loads(RESULT.read_text())["corpus_sha256"]
+    p = mutated(tmp_path, lambda a: a.update(corpus_sha256=pin))
+    r = run_verifier(p)
+    assert r.returncode == 1
+    assert "corpus_sha256 null" in r.stdout
