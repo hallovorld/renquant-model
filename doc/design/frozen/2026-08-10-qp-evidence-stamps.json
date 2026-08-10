@@ -9,27 +9,27 @@
       "validation_start": "2017-12-29"
     },
     "passed": false,
-    "reason": "score monotonicity failed in active regime(s): BEAR",
+    "reason": "score monotonicity failed in active regime(s): BEAR, BULL_CALM",
     "regimes": {
       "BEAR": {
         "eligible": true,
         "n": 320,
         "passed": false,
-        "spearman": 0.05403421908417074,
-        "top_bottom_return_spread": -0.0016778303422443335
+        "spearman": 0.025532842117598806,
+        "top_bottom_return_spread": -0.004248749863672711
       },
       "BULL_CALM": {
         "eligible": true,
         "n": 910,
-        "passed": true,
-        "spearman": 0.07325536765929763,
-        "top_bottom_return_spread": 0.005131997503853568
+        "passed": false,
+        "spearman": -0.005444475642604129,
+        "top_bottom_return_spread": -0.0017281176945731277
       },
       "CHOPPY": {
         "eligible": false,
         "n": 5,
         "passed": false,
-        "spearman": 0.7999999999999999,
+        "spearman": 0.9999999999999999,
         "top_bottom_return_spread": 0.07026177360424646
       }
     }
@@ -44,35 +44,35 @@
       "validation_start": "2019-01-02"
     },
     "passed": false,
-    "reason": "score monotonicity failed in active regime(s): BULL_CALM",
+    "reason": "score monotonicity failed in active regime(s): BULL_CALM, BULL_VOLATILE, CHOPPY",
     "regimes": {
       "BEAR": {
         "eligible": true,
         "n": 120,
         "passed": true,
-        "spearman": 0.20631293839849987,
-        "top_bottom_return_spread": 0.021858575568270294
+        "spearman": 0.3377109521494548,
+        "top_bottom_return_spread": 0.027512591495858323
       },
       "BULL_CALM": {
         "eligible": true,
         "n": 1000,
         "passed": false,
-        "spearman": -0.027222603222603222,
-        "top_bottom_return_spread": -0.012079290654033126
+        "spearman": -0.039603975603975605,
+        "top_bottom_return_spread": -0.012125306837882918
       },
       "BULL_VOLATILE": {
         "eligible": true,
         "n": 75,
-        "passed": true,
-        "spearman": 0.08995732574679943,
-        "top_bottom_return_spread": 0.016807224599621372
+        "passed": false,
+        "spearman": -0.011977240398293029,
+        "top_bottom_return_spread": -0.011441788134188606
       },
       "CHOPPY": {
         "eligible": true,
         "n": 40,
-        "passed": true,
-        "spearman": 0.10262664165103191,
-        "top_bottom_return_spread": 0.00492215647145465
+        "passed": false,
+        "spearman": -0.11969981238273922,
+        "top_bottom_return_spread": -0.01323438201249652
       }
     }
   },
@@ -86,35 +86,35 @@
       "validation_start": "2020-01-03"
     },
     "passed": false,
-    "reason": "score monotonicity failed in active regime(s): BULL_VOLATILE, CHOPPY",
+    "reason": "score monotonicity failed in active regime(s): BEAR, BULL_CALM, CHOPPY",
     "regimes": {
       "BEAR": {
         "eligible": true,
         "n": 410,
-        "passed": true,
-        "spearman": 0.15838166794567485,
-        "top_bottom_return_spread": 0.03035573789697957
+        "passed": false,
+        "spearman": 0.01763934406249279,
+        "top_bottom_return_spread": -0.004028134246665741
       },
       "BULL_CALM": {
         "eligible": true,
         "n": 695,
-        "passed": true,
-        "spearman": 0.05932610167455818,
-        "top_bottom_return_spread": 0.004788881473446942
+        "passed": false,
+        "spearman": 0.013560825790326697,
+        "top_bottom_return_spread": 0.0034445453609726773
       },
       "BULL_VOLATILE": {
         "eligible": true,
         "n": 100,
-        "passed": false,
-        "spearman": 0.1066186618661866,
-        "top_bottom_return_spread": -0.005626274135391069
+        "passed": true,
+        "spearman": 0.09695769576957695,
+        "top_bottom_return_spread": 0.011314020254365065
       },
       "CHOPPY": {
         "eligible": true,
         "n": 30,
         "passed": false,
-        "spearman": -0.3343715239154616,
-        "top_bottom_return_spread": -0.019222908917253534
+        "spearman": -0.11902113459399331,
+        "top_bottom_return_spread": -0.021820255837037096
       }
     }
   },
@@ -128,35 +128,35 @@
       "validation_start": "2021-01-04"
     },
     "passed": false,
-    "reason": "score monotonicity failed in active regime(s): BULL_CALM",
+    "reason": "score monotonicity failed in active regime(s): BULL_CALM, CHOPPY",
     "regimes": {
       "BEAR": {
         "eligible": true,
         "n": 35,
         "passed": true,
-        "spearman": 0.23781512605042018,
-        "top_bottom_return_spread": 0.047501367395550116
+        "spearman": 0.4277310924369748,
+        "top_bottom_return_spread": 0.48043750698256216
       },
       "BULL_CALM": {
         "eligible": true,
         "n": 1005,
         "passed": false,
-        "spearman": -0.027769719909714573,
-        "top_bottom_return_spread": -0.016965741759935843
+        "spearman": -0.03130632864524219,
+        "top_bottom_return_spread": -0.003295337377867659
       },
       "BULL_VOLATILE": {
         "eligible": true,
         "n": 105,
         "passed": true,
-        "spearman": 0.11788306033589052,
-        "top_bottom_return_spread": 0.007415106629049857
+        "spearman": 0.08519593613933236,
+        "top_bottom_return_spread": 0.034372207975207084
       },
       "CHOPPY": {
         "eligible": true,
         "n": 90,
-        "passed": true,
-        "spearman": 0.15569823434991975,
-        "top_bottom_return_spread": 0.060987206565311806
+        "passed": false,
+        "spearman": -0.34184467218175074,
+        "top_bottom_return_spread": -0.012935961906802672
       }
     }
   },
@@ -170,28 +170,28 @@
       "validation_start": "2021-12-31"
     },
     "passed": false,
-    "reason": "score monotonicity failed in active regime(s): BEAR, BULL_CALM, BULL_VOLATILE",
+    "reason": "score monotonicity failed in active regime(s): BEAR, BULL_VOLATILE",
     "regimes": {
       "BEAR": {
         "eligible": true,
         "n": 795,
         "passed": false,
-        "spearman": -0.012342640917146926,
-        "top_bottom_return_spread": 0.0017501545354751283
+        "spearman": -0.027105634154327554,
+        "top_bottom_return_spread": -0.004215907874830814
       },
       "BULL_CALM": {
         "eligible": true,
         "n": 370,
-        "passed": false,
-        "spearman": -0.1323907958974687,
-        "top_bottom_return_spread": -0.009622455410398887
+        "passed": true,
+        "spearman": 0.09670467259054467,
+        "top_bottom_return_spread": 0.0067445918412634715
       },
       "BULL_VOLATILE": {
         "eligible": true,
         "n": 70,
         "passed": false,
-        "spearman": -0.18253871052401363,
-        "top_bottom_return_spread": -0.03856460795620089
+        "spearman": -0.07980054238474323,
+        "top_bottom_return_spread": -0.023184517462535432
       }
     }
   },
@@ -211,29 +211,29 @@
         "eligible": true,
         "n": 80,
         "passed": true,
-        "spearman": 0.11591654946085327,
-        "top_bottom_return_spread": 0.02504592296350444
+        "spearman": 0.17674636661978435,
+        "top_bottom_return_spread": 0.05002364268723247
       },
       "BULL_CALM": {
         "eligible": true,
         "n": 805,
         "passed": true,
-        "spearman": 0.09276718759668666,
-        "top_bottom_return_spread": 0.02306842099055006
+        "spearman": 0.1299017680734622,
+        "top_bottom_return_spread": 0.025175187641246242
       },
       "BULL_VOLATILE": {
         "eligible": true,
         "n": 330,
         "passed": true,
-        "spearman": 0.21629767031836838,
-        "top_bottom_return_spread": 0.06490642037726345
+        "spearman": 0.09306221194117317,
+        "top_bottom_return_spread": 0.05339664836561307
       },
       "CHOPPY": {
         "eligible": false,
         "n": 20,
         "passed": false,
-        "spearman": -0.4270676691729323,
-        "top_bottom_return_spread": -0.08467077302180939
+        "spearman": -0.22857142857142856,
+        "top_bottom_return_spread": -0.08530274474041522
       }
     }
   },
@@ -246,36 +246,36 @@
       "train_start": "2016-01-01",
       "validation_start": "2024-01-02"
     },
-    "passed": true,
-    "reason": "score monotonicity passed in 4 active regime(s)",
+    "passed": false,
+    "reason": "score monotonicity failed in active regime(s): BEAR, BULL_CALM, CHOPPY",
     "regimes": {
       "BEAR": {
         "eligible": true,
         "n": 30,
-        "passed": true,
-        "spearman": 0.2387096774193548,
-        "top_bottom_return_spread": 0.05222559056731607
+        "passed": false,
+        "spearman": -0.009121245828698554,
+        "top_bottom_return_spread": -0.07974691081522703
       },
       "BULL_CALM": {
         "eligible": true,
         "n": 1035,
-        "passed": true,
-        "spearman": 0.03983756573950839,
-        "top_bottom_return_spread": 0.005989996924477742
+        "passed": false,
+        "spearman": -0.03136976615237485,
+        "top_bottom_return_spread": -0.008462960919555645
       },
       "BULL_VOLATILE": {
         "eligible": true,
         "n": 50,
         "passed": true,
-        "spearman": 0.3467466986794718,
-        "top_bottom_return_spread": 0.14989943758584406
+        "spearman": 0.2067226890756302,
+        "top_bottom_return_spread": 0.020863829881864762
       },
       "CHOPPY": {
         "eligible": true,
         "n": 120,
-        "passed": true,
-        "spearman": 0.1702896034446836,
-        "top_bottom_return_spread": 0.028820556025076934
+        "passed": false,
+        "spearman": -0.2731717480380582,
+        "top_bottom_return_spread": -0.06018085241811205
       }
     }
   },
@@ -289,35 +289,35 @@
       "validation_start": "2024-12-30"
     },
     "passed": false,
-    "reason": "score monotonicity failed in active regime(s): BEAR, BULL_CALM, BULL_VOLATILE, CHOPPY",
+    "reason": "score monotonicity failed in active regime(s): BULL_VOLATILE, CHOPPY",
     "regimes": {
       "BEAR": {
         "eligible": true,
         "n": 215,
-        "passed": false,
-        "spearman": 0.018435605786181745,
-        "top_bottom_return_spread": -0.002358694511625327
+        "passed": true,
+        "spearman": 0.10036706996063657,
+        "top_bottom_return_spread": 0.01738045023034654
       },
       "BULL_CALM": {
         "eligible": true,
         "n": 935,
-        "passed": false,
-        "spearman": -0.05755853710885831,
-        "top_bottom_return_spread": -0.004150297443308642
+        "passed": true,
+        "spearman": 0.04076564574108346,
+        "top_bottom_return_spread": 0.008720950388434108
       },
       "BULL_VOLATILE": {
         "eligible": true,
         "n": 45,
         "passed": false,
-        "spearman": 0.11620553359683794,
-        "top_bottom_return_spread": -0.004137425645698374
+        "spearman": -0.3608695652173913,
+        "top_bottom_return_spread": -0.0689676558451814
       },
       "CHOPPY": {
         "eligible": true,
         "n": 40,
         "passed": false,
-        "spearman": -0.25647279549718577,
-        "top_bottom_return_spread": -0.03112409628907334
+        "spearman": -0.1975609756097561,
+        "top_bottom_return_spread": -0.016560938449612192
       }
     }
   }

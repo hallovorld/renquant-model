@@ -23,7 +23,18 @@ Controls:
       synthetic readers passes all checks; a tampered artifact fails;
   (f) a dropped momentum leg records the degradation flag and still
       emits scores + stamps (freeze §4 fallback: z(panel) alone);
-  (g) the frozen momentum fingerprint literal matches params_v0().
+  (g) the frozen momentum fingerprint literal matches params_v0();
+  (h) per-date weekly-cadence momentum serving (review m221-r2): each
+      scored day maps to its OWN latest weekly cutoff <= that day, the
+      arm is asked for exactly the scheduled cutoffs, and a later date
+      is provably scored by the later cutoff's (changed) score map;
+  (i) cross-PR contract pin (review m221-r1): the COMMITTED artifacts
+      in doc/design/frozen/ carry exactly the shapes the orch#956
+      join-only consumer reads — nested manifest sha pins that
+      recompute over the committed files, top-level fold_<n> stamps
+      with regimes maps, the frozen scores CSV header — so a producer-
+      side schema change breaks tests here before it breaks the
+      orchestrator handoff.
 """
 import importlib.util
 import json
@@ -263,15 +274,81 @@ def test_momentum_golden_checks_real_artifact_and_tamper():
 
 
 def test_dropped_momentum_leg_records_degradation(world):
-    # (f) golden-check failure -> leg dropped, flag recorded, composite
-    # degrades to z(panel) alone but scores + stamps still emit
+    # (f) golden-check failure -> the failing cutoffs' dates drop the
+    # leg, degradation recorded per cutoff, composite degrades to
+    # z(panel) alone but scores + stamps still emit
     res = _run(world, world["closes_mono"], mom_arm=_mom_arm_dropped)
     assert res["meta"]["momentum_degraded"] is True
-    assert res["meta"]["validation"]["momentum"]["dropped"] is True
-    assert res["meta"]["test"]["momentum"]["dropped"] is True
+    vm = res["meta"]["validation"]["momentum"]
+    tm = res["meta"]["test"]["momentum"]
+    assert vm["dropped_cutoffs"] == sorted(vm["cutoffs"])
+    assert tm["dropped_cutoffs"] == sorted(tm["cutoffs"])
+    dropped_days = [d for d, r in
+                    res["meta"]["test"]["degenerate_leg_days"].items()
+                    if "momentum_dropped" in r]
+    assert len(dropped_days) == res["meta"]["test"]["n_days"]
     assert len(res["scores"]) > 0
     assert np.isfinite(res["scores"]["recipe_score"]).all()
     assert "BULL_CALM" in res["stamps"]["regimes"]
+
+
+def test_per_date_weekly_cutoff_schedule(world, run_mono):
+    # (h) review m221-r2: every scored day is served by its OWN latest
+    # weekly cutoff <= that day (live publish cadence), never one
+    # segment-fixed artifact; the schedule is emitted per fold
+    grid = world["grid"]
+    for seg in ("validation", "test"):
+        sched = run_mono["meta"][seg]["momentum"]["cutoff_schedule"]
+        assert sched, seg
+        for d, c in sched.items():
+            assert c == qp.serving_cutoff(grid, d)
+            assert c <= d
+        by_date = [sched[d] for d in sorted(sched)]
+        assert by_date == sorted(by_date)      # cutoffs advance with the date
+        assert len(set(by_date)) > 1           # genuinely weekly, not fixed
+    assert len(run_mono["meta"]["validation"]["momentum"]["cutoff_schedule"]) \
+        == run_mono["meta"]["validation"]["n_entry_days"]
+    assert len(run_mono["meta"]["test"]["momentum"]["cutoff_schedule"]) \
+        == run_mono["meta"]["test"]["n_days"]
+
+
+def test_run_fold_requests_every_scheduled_cutoff(world):
+    # (h) wiring: run_fold asks the arm for EXACTLY the scheduled
+    # cutoffs, memoised one compute per cutoff — not the r1 two-cutoff
+    # shape (one per segment)
+    calls: list[str] = []
+
+    def capturing_arm(cutoff):
+        calls.append(cutoff)
+        return _mom_arm(cutoff)
+
+    res = _run(world, world["closes_mono"], mom_arm=capturing_arm)
+    want = (set(res["meta"]["validation"]["momentum"]["cutoff_schedule"].values())
+            | set(res["meta"]["test"]["momentum"]["cutoff_schedule"].values()))
+    assert set(calls) == want
+    assert len(calls) == len(set(calls))       # memoised per cutoff
+    assert len(want) > 2                       # r1 served exactly 2 artifacts
+
+
+def test_later_dates_use_later_cutoff_scores():
+    # (h) the review's exact fixture: the weekly inputs CHANGE across
+    # cutoffs — a later score date must be scored by the LATER cutoff's
+    # map. Panel leg is degenerate (all zeros) so composite == z(mom).
+    days = ["2017-05-15", "2017-05-22"]
+    frame = pd.DataFrame({
+        "date": np.repeat(days, 4),
+        "ticker": np.tile(["A", "B", "C", "D"], 2),
+        "panel_raw": 0.0,
+    })
+    up = {t: float(i) for i, t in enumerate(["A", "B", "C", "D"])}
+    down = {t: -float(i) for i, t in enumerate(["A", "B", "C", "D"])}
+    comp, reasons = qp.composite_over_frame(
+        frame, {days[0]: up, days[1]: down})
+    d0, d1 = comp[:4], comp[4:]
+    assert d0[3] > d0[0]                       # early date: early map's ranking
+    assert d1[3] < d1[0]                       # later date: the LATER map's
+    assert np.allclose(d0, -d1)                # exact per-date maps, no bleed
+    assert all("panel_degenerate" in v for v in reasons.values())
 
 
 def test_frozen_momentum_fingerprint_literal():
@@ -281,3 +358,42 @@ def test_frozen_momentum_fingerprint_literal():
         params_v0,
     )
     assert qp.FROZEN_MOMENTUM_FP == params_config_fingerprint(params_v0())
+
+
+def test_committed_artifacts_match_consumer_contract():
+    # (i) review m221-r1 regression pin: the committed handoff artifacts
+    # ARE the shapes orch#956 reads (nested manifest sha pins, top-level
+    # fold_<n> stamps, frozen CSV header), and the recorded shas
+    # recompute over the committed files themselves.
+    import hashlib
+
+    frozen = REPO / "doc" / "design" / "frozen"
+    man = json.loads((frozen / qp.MANIFEST_BASENAME).read_text())
+
+    def _sha(p):
+        return hashlib.sha256(p.read_bytes()).hexdigest()
+
+    # the consumer's exact pin paths (orch#956 runner: the pins dict)
+    assert man["outputs"]["scores_csv"]["sha256"] == _sha(
+        frozen / qp.SCORES_BASENAME)
+    assert man["outputs"]["stamps_json"]["sha256"] == _sha(
+        frozen / qp.STAMPS_BASENAME)
+    assert man["inputs"]["frozen_corpus"]["sha256"] == qp.FROZEN_CORPUS_SHA256
+
+    # expected_schedule: top-level, keyed "1".."8", the frozen day counts
+    sched = man["expected_schedule"]
+    assert sorted(sched) == sorted(str(i) for i in range(1, 9))
+    assert tuple(len(sched[str(i)]) for i in range(1, 9)) \
+        == qp.FROZEN_TEST_DAY_COUNTS
+
+    # stamps: TOP-LEVEL fold_<n> objects with the consumer-read fields
+    stamps = json.loads((frozen / qp.STAMPS_BASENAME).read_text())
+    assert sorted(stamps) == sorted(f"fold_{i}" for i in range(1, 9))
+    for fs in stamps.values():
+        assert {"boundaries", "passed", "reason", "regimes"} <= set(fs)
+        for st in fs["regimes"].values():
+            assert {"eligible", "passed"} <= set(st)
+
+    # scores CSV: the frozen header the consumer asserts verbatim
+    with open(frozen / qp.SCORES_BASENAME) as f:
+        assert f.readline().strip() == "fold,date,ticker,recipe_score,regime"

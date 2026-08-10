@@ -25,17 +25,20 @@ asserted against the harness pin):
                60-session label endpoint strictly before
                validation_start (endpoint map on the corpus's own
                calendar). momentum leg: train_momentum_artifact with
-               params_v0() at the latest weekly cutoff (last trading
-               day <= a Saturday, corpus calendar) <= validation_start;
-               golden checks per the module (content sha, frozen params
+               params_v0() replayed at HISTORICAL WEEKLY CUTOFFS (last
+               trading day <= each Saturday, corpus calendar): every
+               validation entry day d is served by its OWN latest
+               weekly cutoff <= d — the live publish cadence replayed
+               per date, never one segment-fixed artifact (review
+               m221-r2: a map fixed at validation_start is not the
+               ledger tail for later days; later weekly cutoffs see
+               newer market data and can change rankings). Golden
+               checks per the module (content sha, frozen params
                fingerprint momentum-v0-fd65161a…, composite golden
-               reproduction, names floor) — a failing cutoff DROPS the
-               leg for the fold and records a degradation flag
-               (composite degrades to z(panel) alone, freeze §4).
-               Serving one artifact per arm is EQUIVALENT to per-day
-               live-cadence serving under the arm's cutoff bound: every
-               scored day is >= the bound, so the latest admissible
-               weekly cutoff is the ledger tail for all of them.
+               reproduction, names floor) run at EVERY cutoff — a
+               failing cutoff DROPS the leg for exactly the dates it
+               serves (their composite degrades to z(panel) alone,
+               freeze §4 fallback) and is recorded per cutoff.
   validation   the gate-fit models score the validation segment OUT-OF-
                SAMPLE: blend z+z per validation day (z cross-sectional,
                ddof=0, NaN propagates — blend_scorer.py semantics),
@@ -52,8 +55,10 @@ asserted against the harness pin):
                into the stamps JSON.
   full-train   panel leg: train <= train_end with per-row purge against
                the fold's test start (harness convention); momentum
-               leg: latest weekly cutoff <= train_end, same golden
-               checks. These score the TEST fold days only; emitted as
+               leg: the same per-date weekly-cadence replay — each test
+               day d is served by its latest weekly cutoff <= d, with
+               the golden checks at every cutoff. These score the TEST
+               fold days only; emitted as
                fold,date,ticker,recipe_score,regime (regime from
                build_regime_series for the test dates, so PR B stays
                join-only; an undetermined regime is recorded UNKNOWN —
@@ -61,8 +66,9 @@ asserted against the harness pin):
 
 Outputs (committed, hash-pinned): the test-day scores CSV, the stamps
 JSON, and a manifest recording every input sha, per-fold boundaries,
-OOS validation day counts, momentum degradation flags, seeds/params
-fingerprints, and the sha256 of both output files. NO labels are read
+OOS validation day counts, per-date momentum cutoff schedules with
+per-cutoff golden-check records, momentum degradation flags,
+seeds/params fingerprints, and the sha256 of both output files. NO labels are read
 beyond fwd_60d_excess for training; fwd_5d_excess is never touched.
 
 Usage:
@@ -263,12 +269,15 @@ def _zvec(vals: np.ndarray) -> np.ndarray | None:
 
 
 def composite_over_frame(scored: pd.DataFrame,
-                         mom_scores: dict | None) -> tuple[np.ndarray, dict]:
+                         mom_scores_of: dict) -> tuple[np.ndarray, dict]:
     """Per-day blend z(panel) + z(momentum) over a frame with columns
-    date, ticker, panel_raw (RangeIndex). NaN propagates for names a
-    healthy leg could not score; a degenerate leg contributes 0 and is
-    reason-recorded; a DROPPED momentum leg (mom_scores None) degrades
-    the composite to z(panel) alone (freeze §4 fallback)."""
+    date, ticker, panel_raw (RangeIndex). The momentum leg is served
+    PER DATE: mom_scores_of maps each date to that date's own weekly-
+    cutoff score map (review m221-r2 — live publish cadence, never one
+    segment-fixed map). NaN propagates for names a healthy leg could
+    not score; a degenerate leg contributes 0 and is reason-recorded; a
+    date whose cutoff DROPPED (mom_scores_of[date] is None) degrades to
+    z(panel) alone (freeze §4 fallback), reason-recorded."""
     comp = np.full(len(scored), np.nan)
     reasons: dict[str, list[str]] = {}
     for d, g in scored.groupby("date", sort=True):
@@ -279,7 +288,10 @@ def composite_over_frame(scored: pd.DataFrame,
             reasons.setdefault(str(d), []).append("panel_degenerate")
         else:
             total = total + z_p
-        if mom_scores is not None:
+        mom_scores = mom_scores_of.get(d)
+        if mom_scores is None:
+            reasons.setdefault(str(d), []).append("momentum_dropped")
+        else:
             mv = np.array([mom_scores.get(t, np.nan) for t in g["ticker"]],
                           dtype=float)
             z_m = _zvec(mv)
@@ -534,6 +546,27 @@ def compute_stamps(trades: pd.DataFrame, evaluator) -> dict:
 
 # ── per-fold nested replay ──────────────────────────────────────────────
 
+def serve_momentum(days: list[str], grid: list[str], momentum_arm,
+                   memo: dict) -> tuple[dict, dict, dict]:
+    """Per-date weekly-cadence momentum serving (review m221-r2, freeze
+    §4): every day in `days` is served by its OWN latest weekly cutoff
+    <= that day. Returns (date -> scores|None, date -> cutoff,
+    cutoff -> arm info). momentum_arm is memoised per cutoff in `memo`
+    (the artifact at a cutoff is deterministic, so one compute serves
+    every date mapped to it — and every fold sharing it)."""
+    cutoff_of = {d: serving_cutoff(grid, d) for d in days}
+    served: dict[str, dict | None] = {}
+    infos: dict[str, dict] = {}
+    for d in days:
+        c = cutoff_of[d]
+        if c not in memo:
+            memo[c] = momentum_arm(c)
+        scores_c, info_c = memo[c]
+        served[d] = scores_c
+        infos[c] = info_c
+    return served, cutoff_of, infos
+
+
 def run_fold(corpus: pd.DataFrame, feat_cols: list[str], sessions: list[str],
              idx: dict, ep: dict, cut: tuple, fold_no: int, *,
              close_of, spy_close: pd.Series, regime_of, momentum_arm,
@@ -546,27 +579,31 @@ def run_fold(corpus: pd.DataFrame, feat_cols: list[str], sessions: list[str],
     b = fold_boundaries(sessions, idx, cut)
     it = idx[b["train_end"]]
     grid = weekly_grid if weekly_grid is not None else weekly_cutoff_grid(sessions)
+    mom_memo: dict = {}
 
     # (i) GATE-FIT models — see NOTHING from the validation segment.
+    # (The momentum leg is not fitted here: it is a deterministic price
+    # transform served per entry day below at the live weekly cadence,
+    # review m221-r2.)
     gate_booster, gate_meta = train_panel_arm(
         corpus, feat_cols, ep, train_start=b["train_start"],
         max_date=b["gate_fit_end"], endpoint_before=b["validation_start"],
         params=params, num_boost_round=num_boost_round)
-    gate_cutoff = serving_cutoff(grid, b["validation_start"])
-    gate_mom_scores, gate_mom_info = momentum_arm(gate_cutoff)
 
     # (ii) VALIDATION segment — OOS scoring by the gate-fit models; entry
     # days capped so every exit lands on/before train_end (freeze: every
     # gate input ends by the fold's train end).
     segment = sessions[it - (VALIDATION_SESSIONS - 1): it + 1]
     entry_days = [d for d in segment if idx[d] + HOLD_SESSIONS <= it]
+    val_served, val_cutoff_of, val_mom_infos = serve_momentum(
+        entry_days, grid, momentum_arm, mom_memo)
     val_rows = corpus[corpus.date.isin(entry_days)][["date", "ticker"]].copy()
     val_rows = val_rows.sort_values(["date", "ticker"]).reset_index(drop=True)
     val_rows["panel_raw"] = score_panel(
         gate_booster, corpus.loc[
             corpus.date.isin(entry_days)].sort_values(["date", "ticker"]),
         feat_cols)
-    val_comp, val_reasons = composite_over_frame(val_rows, gate_mom_scores)
+    val_comp, val_reasons = composite_over_frame(val_rows, val_served)
     val_rows["composite"] = val_comp
     trades = simulate_validation_trades(
         val_rows, entry_days, sessions, idx,
@@ -584,17 +621,17 @@ def run_fold(corpus: pd.DataFrame, feat_cols: list[str], sessions: list[str],
         corpus, feat_cols, ep, train_start=b["train_start"],
         max_date=b["train_end"], endpoint_before=b["test_start"],
         params=params, num_boost_round=num_boost_round)
-    full_cutoff = serving_cutoff(grid, b["train_end"])
-    full_mom_scores, full_mom_info = momentum_arm(full_cutoff)
 
     test_days = [d for d in sessions if b["test_start"] <= d <= b["test_end"]]
+    test_served, test_cutoff_of, test_mom_infos = serve_momentum(
+        test_days, grid, momentum_arm, mom_memo)
     test_rows = corpus[corpus.date.isin(test_days)][["date", "ticker"]].copy()
     test_rows = test_rows.sort_values(["date", "ticker"]).reset_index(drop=True)
     test_rows["panel_raw"] = score_panel(
         full_booster, corpus.loc[
             corpus.date.isin(test_days)].sort_values(["date", "ticker"]),
         feat_cols)
-    test_comp, test_reasons = composite_over_frame(test_rows, full_mom_scores)
+    test_comp, test_reasons = composite_over_frame(test_rows, test_served)
     scores_df = pd.DataFrame({
         "fold": fold_no,
         "date": test_rows["date"],
@@ -606,6 +643,12 @@ def run_fold(corpus: pd.DataFrame, feat_cols: list[str], sessions: list[str],
     n_trades = int(len(trades))
     n_trades_scored = int(np.isfinite(
         trades["pnl_pct"].to_numpy(dtype=float)).sum()) if n_trades else 0
+    val_dropped = sorted(c for c, i in val_mom_infos.items()
+                         if i.get("dropped"))
+    test_dropped = sorted(c for c, i in test_mom_infos.items()
+                          if i.get("dropped"))
+    mom_rule = ("per-date live weekly cadence: latest weekly cutoff <= "
+                "the scored day (review m221-r2, freeze §4)")
     meta = {
         "fold": fold_no,
         "boundaries": b,
@@ -617,7 +660,14 @@ def run_fold(corpus: pd.DataFrame, feat_cols: list[str], sessions: list[str],
             "n_regime_unknown_entry_days": int(sum(
                 1 for d in entry_days if regime_of(d) == "UNKNOWN")),
             "panel": gate_meta,
-            "momentum": gate_mom_info,
+            "momentum": {
+                "rule": mom_rule,
+                "cutoff_schedule": val_cutoff_of,
+                "n_cutoffs": len(val_mom_infos),
+                "dropped_cutoffs": val_dropped,
+                "cutoffs": {c: val_mom_infos[c]
+                            for c in sorted(val_mom_infos)},
+            },
             "degenerate_leg_days": {k: v for k, v in val_reasons.items()},
         },
         "test": {
@@ -626,11 +676,17 @@ def run_fold(corpus: pd.DataFrame, feat_cols: list[str], sessions: list[str],
             "n_regime_unknown_days": int(sum(
                 1 for d in test_days if regime_of(d) == "UNKNOWN")),
             "panel": full_meta,
-            "momentum": full_mom_info,
+            "momentum": {
+                "rule": mom_rule,
+                "cutoff_schedule": test_cutoff_of,
+                "n_cutoffs": len(test_mom_infos),
+                "dropped_cutoffs": test_dropped,
+                "cutoffs": {c: test_mom_infos[c]
+                            for c in sorted(test_mom_infos)},
+            },
             "degenerate_leg_days": {k: v for k, v in test_reasons.items()},
         },
-        "momentum_degraded": bool(gate_mom_info.get("dropped")
-                                  or full_mom_info.get("dropped")),
+        "momentum_degraded": bool(val_dropped or test_dropped),
     }
     return {"scores": scores_df, "stamps": stamps, "meta": meta,
             "trades": trades}
@@ -822,8 +878,17 @@ def main(argv=None) -> int:
 
     store = OhlcvStore(rq / "data" / "ohlcv")
     readers = CorpusMomentumReaders(store, rq / "data" / "ticker_sectors.json")
-    momentum_arm = make_real_momentum_arm(
+    raw_momentum_arm = make_real_momentum_arm(
         readers, corpus[["date", "ticker"]])
+    # Cross-fold memo: the artifact at a weekly cutoff is deterministic,
+    # and folds' validation/test windows overlap on the calendar — one
+    # compute per unique cutoff serves every date and fold mapped to it.
+    _arm_memo: dict[str, tuple] = {}
+
+    def momentum_arm(cutoff: str):
+        if cutoff not in _arm_memo:
+            _arm_memo[cutoff] = raw_momentum_arm(cutoff)
+        return _arm_memo[cutoff]
     spy_close = store.close("SPY")
     assert spy_close is not None, "SPY OHLCV missing"
     evaluator = load_monotonicity_evaluator(rq)
@@ -913,10 +978,15 @@ def main(argv=None) -> int:
             "config_fingerprint": FROZEN_MOMENTUM_FP,
             "weekly_cutoff_rule": (
                 "last trading day <= each Saturday on the corpus calendar; "
-                "each arm serves its latest cutoff <= the arm's bound "
-                "(gate-fit: validation_start; full-train: train_end) — "
-                "equivalent to per-day live-cadence serving because every "
-                "scored day is >= the bound"),
+                "EVERY scored day (validation entry days and test days "
+                "alike) is served by its OWN latest weekly cutoff <= that "
+                "day — the live publish cadence replayed per date (review "
+                "m221-r2: a segment-fixed map is NOT the ledger tail for "
+                "later days; later weekly cutoffs see newer market data). "
+                "Per-fold date->cutoff schedules and per-cutoff golden-"
+                "check records live under folds[].validation.momentum and "
+                "folds[].test.momentum."),
+            "n_unique_cutoffs_computed": len(_arm_memo),
             "golden_checks": ["content_sha_recomputes",
                              "params_fingerprint_is_frozen",
                              "composite_golden_reproduction_1e-9",
