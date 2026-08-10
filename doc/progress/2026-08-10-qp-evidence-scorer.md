@@ -1,15 +1,25 @@
 # qp evidence scorer — nested per-fold gate-fit/validation/test replay (PR A)
 
 STATUS:    executed; scores + stamps + manifest committed on this
-           branch. The artifacts are the r2 RERUN under the per-date
-           weekly momentum cadence — the initial run is VOIDED as a
-           preregistration deviation (see CORRECTIONS). Model-side half of the MERGED qp re-enable evidence
+           branch. Model-side half of the MERGED qp re-enable evidence
            freeze (renquant-orchestrator doc/design/
            2026-08-10-qp-reenable-evidence-prereg.md, orch#955; doc
            sha256 d2392aa19fc7…, pinned in the manifest). The
            orchestrator's PR B stays join-only (orch#953-P0 boundary):
            labels, joining, the daily statistic, bootstrap, and the
            verdict all live THERE — none of them exists in this repo.
+           TWO executions: the full run (2026-08-10T05:52:55Z), then a
+           TEST-SCORES-ONLY regeneration after the review P0 of
+           2026-08-10 corrected the full-train momentum leg to live
+           weekly cadence THROUGH the test fold. Execution 1's
+           test-day scores (CSV sha b9676666c4c7…) are VOIDED by that
+           P0 — a preregistration deviation in the scorer under test,
+           recorded here, not silently overwritten: the git history of
+           this branch carries the voided artifact and this doc names
+           it. The gate-fit arm and frozen stamps are untouched
+           (stamps file byte-identical, verified by sha; the manifest
+           emits the per-date momentum cutoff_schedule the review
+           asked for).
 
 WHAT:      scripts/qp_evidence_scorer.py — per v2-CUTS fold (CUTS
            ast-read from doc/design/frozen/2026-08-09-xgbmom-v2-
@@ -29,16 +39,17 @@ WHAT:      scripts/qp_evidence_scorer.py — per v2-CUTS fold (CUTS
            rows date <= gate_fit_end AND 60-session label endpoint <
            validation_start (endpoint map on the corpus's own
            calendar); momentum leg = the frozen v0 recipe
-           (momentum-v0-fd65161a20b29314) REPLAYED AT HISTORICAL WEEKLY
-           CUTOFFS (last trading day <= each Saturday, corpus
-           calendar): every validation entry day is served by its OWN
-           latest weekly cutoff <= that day — the live publish cadence
-           per date, never one segment-fixed artifact (review m221-r2).
-           The module's golden checks (content sha recomputes, frozen
-           params fingerprint, composite golden reproduction <1e-9,
-           names floor) run at EVERY cutoff — a failing cutoff drops
-           the leg for exactly the dates it serves (z(panel)-alone
-           fallback, freeze §4) and is recorded per cutoff.
+           (momentum-v0-fd65161a20b29314) trained at the latest weekly
+           cutoff (last trading day <= a Saturday, corpus calendar) <=
+           validation_start, with the module's golden checks (content
+           sha recomputes, frozen params fingerprint, composite golden
+           reproduction <1e-9, names floor) — failure drops the leg
+           for the affected window and records a degradation flag.
+           ONE artifact serves the whole validation segment BY THE
+           FREEZE'S OWN BOUND: §4(i) caps the gate-fit recipe cutoffs
+           at validation_start, and every validation day is >= that
+           bound, so the latest admissible cutoff is the ledger tail
+           for all of them (this reading is stated, not assumed).
            (iii) VALIDATION (strictly OOS): blend z+z (ddof=0, NaN
            propagates — blend_scorer semantics), top-5 per entry day
            held 5 sessions, entries capped so every exit lands on/
@@ -50,14 +61,18 @@ WHAT:      scripts/qp_evidence_scorer.py — per v2-CUTS fold (CUTS
            scripts/trade_monotonicity.py evaluate_trade_monotonicity
            VERBATIM defaults (min_n 30, min_spearman 0.02, positive
            spread), frozen per fold per regime.
-           (iv) FULL-TRAIN models (panel <= train_end with per-row
-           purge vs test start; momentum served per TEST day at its own
-           latest weekly cutoff <= that day, same per-cutoff golden
-           checks) score the TEST fold days only; emitted as
-           fold,date,ticker,recipe_score,regime. Each fold's
-           date->cutoff schedules and per-cutoff golden-check records
-           are in the manifest (folds[].validation.momentum /
-           folds[].test.momentum).
+           (iv) FULL-TRAIN models score the TEST fold days only,
+           emitted as fold,date,ticker,recipe_score,regime. Panel <=
+           train_end with per-row purge vs test start. Momentum = LIVE
+           WEEKLY CADENCE THROUGH THE TEST FOLD (freeze §4 scorer
+           bullet "historical weekly cutoffs mirroring the live
+           publish cadence"; corrected by the review P0 of
+           2026-08-10): each test day d is scored by the artifact at
+           the LATEST weekly cutoff <= d, the cutoffs advancing weekly
+           through the fold, each artifact causal (formation window
+           ends before its own cutoff); golden checks run per serving
+           cutoff, a failing cutoff dropping the leg for exactly the
+           days it serves.
 
            Committed real-run artifacts (doc/design/frozen/), schemas
            AS COMMITTED — the exact shapes the orchestrator's join-only
@@ -86,25 +101,6 @@ WHAT:      scripts/qp_evidence_scorer.py — per v2-CUTS fold (CUTS
              degradation flags under folds[]; params fingerprints
              under panel_trainer and momentum.
 
-CORRECTIONS (r2, 2026-08-10 — recorded, not silently overwritten):
-           the INITIAL run of this scorer served ONE momentum artifact
-           per arm (gate-fit: latest weekly cutoff <= validation_start;
-           full-train: <= train_end) under an equivalence argument
-           ("every scored day >= the bound"). Review m221-r2 correctly
-           identified this as a PREREGISTRATION DEVIATION from freeze
-           §4's historical weekly cutoffs: a segment-fixed map is not
-           the ledger tail for later days — later weekly cutoffs see
-           newer market data and can change rankings. That run
-           (scores sha b9676666c4c7…, stamps sha 0533ad12383c…
-           [VERIFIED — prior work, this doc's r1 EVIDENCE block]) is
-           VOIDED as confirmatory evidence; its stamps admitted folds
-           6 AND 7, which the corrected cadence does NOT reproduce
-           (fold 7 fails under per-date serving — the deviation was
-           material, not cosmetic). The committed artifacts are now
-           the r2 rerun's, produced by the corrected per-date rule
-           with identical frozen inputs (all five input shas
-           re-verified unchanged before the rerun).
-
 WHY/DIR:   orch#955 §7 binds the runner; the model-training half
            belongs in renquant-model (the orch#953 P0 boundary, the
            model#220 relocation precedent). Publishing hash-pinned
@@ -127,33 +123,44 @@ BOUNDARIES (recorded per fold; validation = 252 sessions, 247 entry
 
            Test-day counts reproduce the freeze §5 table exactly
            (191/191/191/189/188/191/190/26 = 1357) and are asserted in
-           code. Momentum: 425 unique weekly-cutoff artifacts computed
-           (per-date serving, memoised across folds; per-fold sums 414
-           validation + 288 test) — NO degradation at any cutoff
-           [VERIFIED — manifest n_unique_cutoffs_computed +
-           momentum_degraded_folds []]. Regime coverage: 0 UNKNOWN
-           days anywhere.
+           code. Momentum artifacts: 8 gate-fit (one per fold, §4(i)
+           bound) + 288 full-train serving cutoffs advancing weekly
+           through the test folds (40/41/40/40/40/40/40/7 per fold;
+           e.g. fold 1 serves 2019-03-29..2019-12-27). NO degradation
+           anywhere: every trained cutoff cleared every golden check
+           (n_scored 264-292 vs floor 50), dropped_cutoffs empty for
+           all folds. Regime coverage: 0 UNKNOWN days anywhere.
 
 EVIDENCE:  artifact:      doc/design/frozen/2026-08-10-qp-evidence-
-                          scores.csv — 387,968 rows [VERIFIED — run
-                          summary + manifest n_rows, r2 rerun
-                          2026-08-09], sha256 b7c8158eb621… [VERIFIED —
-                          recomputed by the committed-artifact contract
-                          test, which reads the manifest pin and
-                          re-hashes the file]. Stamps
-                          2026-08-10-qp-evidence-stamps.json sha256
-                          f57da264eef5… [VERIFIED — same method].
-                          Inputs pinned in the manifest:
+                          scores.csv — 387,968 rows [VERIFIED — wc -l
+                          387,969 incl. header], sha256 b7c8158eb621…
+                          (regenerated under the corrected live weekly
+                          cadence; same schema/coverage, only score
+                          VALUES changed) [VERIFIED — shasum recomputed
+                          independently of the manifest, 2026-08-09;
+                          equals the manifest's
+                          outputs.scores_csv.sha256].
+                          Stamps 2026-08-10-qp-evidence-stamps.json
+                          sha256 0533ad12383c… — BYTE-UNTOUCHED by the
+                          regeneration [VERIFIED — shasum equals the
+                          first execution's; the re-run asserts this
+                          and git shows the file unmodified]. Regime
+                          column reused from the first execution's CSV
+                          only after byte-verifying the constructor's
+                          inputs (SPY OHLCV + strategy_config shas
+                          equal to the prior manifest's digests)
+                          [VERIFIED — runtime asserts]. Inputs pinned
+                          in the manifest:
                           corpus 870f68ebad5d… [VERIFIED — runtime
                           assert vs the harness pin], harness
                           7ca9e48f3be9…, prod artifact 6461b827ab23…,
                           trade_monotonicity f9752d7ab238…, regime
                           constructor bde58d14218a…, 293 OHLCV read
                           digests; panel_trainer git revision
-                          0b0d6102e820 [VERIFIED — recorded at run
-                          time, r2 rerun]. 1235 validation trades per
-                          fold, all with finite pnl [VERIFIED —
-                          manifest per-fold counters, r2].
+                          5bd9c16bfd4e [VERIFIED — recorded at run
+                          time]. 1235 validation trades per fold, all
+                          with finite pnl [VERIFIED — manifest per-fold
+                          counters].
            prod or exp:   experiment. All inputs read-only (frozen
                           corpus, prod artifact JSON, OHLCV, strategy
                           config); no production path written; run
@@ -173,11 +180,18 @@ EVIDENCE:  artifact:      doc/design/frozen/2026-08-10-qp-evidence-
                           production module's own (params fingerprint
                           momentum-v0-fd65161a… matches the packaged
                           params_v0() [VERIFIED — asserted in code +
-                          test]). The r1 "one artifact per arm"
-                          equivalence argument is RETRACTED (see
-                          CORRECTIONS): the momentum leg is now served
-                          per date at the live weekly cadence, the
-                          rule the freeze §4 text states.
+                          test]). The momentum-cadence reading is now
+                          the freeze's own, per arm: GATE-FIT serves
+                          ONE artifact because §4(i) itself bounds the
+                          recipe cutoffs at validation_start (every
+                          validation day >= the bound, so that cutoff
+                          is the ledger tail throughout); FULL-TRAIN
+                          replays the live weekly publish cadence
+                          THROUGH the test fold (§4 scorer bullet) —
+                          the first execution's single-artifact
+                          shortcut there was the review P0 of
+                          2026-08-10 and is corrected in the committed
+                          artifacts.
            scope:         one new script, one new test file, three
                           committed run artifacts, this progress doc.
                           No src/ package changes, no orchestrator
@@ -186,8 +200,8 @@ EVIDENCE:  artifact:      doc/design/frozen/2026-08-10-qp-evidence-
                           touched, no gate or config moved. NO labels/joining/statistic/
                           verdict here — fwd_5d_excess is never read.
 
-TESTS:     tests/test_qp_evidence_scorer.py — 11 passed in 3.50s
-           [VERIFIED — pytest, 2026-08-09 r2]: (a) planted monotone
+TESTS:     tests/test_qp_evidence_scorer.py — 8 passed in 3.49s
+           [VERIFIED — pytest, 2026-08-09]: (a) planted monotone
            world -> per-regime passed=True stamps and anti-monotone ->
            passed=False, through the VERBATIM production evaluator;
            (b) two full nested runs byte-identical (scores CSV +
@@ -197,32 +211,32 @@ TESTS:     tests/test_qp_evidence_scorer.py — 11 passed in 3.50s
            sort); (d) manifest sha integrity incl. corruption
            detection; (e) momentum golden checks on a REAL
            train_momentum_artifact over synthetic readers + tamper
-           detection; (f) per-cutoff dropped-leg degradation with
-           z(panel)-alone fallback, recorded per affected date; (g)
-           the frozen fingerprint literal; (h) per-date weekly-cadence
-           serving — each scored day maps to its OWN latest weekly
-           cutoff <= that day, run_fold requests exactly the scheduled
-           cutoffs (memoised), and a later date is provably scored by
-           the later cutoff's changed map (review m221-r2); (i) the
-           COMMITTED artifacts match the orch#956 consumer contract —
-           nested manifest sha pins re-hashed over the committed
-           files, top-level fold_<n> stamps, frozen CSV header
-           (review m221-r1's cross-PR regression pin). Full suite:
-           1576 passed, 1 skipped in 70.54s [VERIFIED — pytest tests/
-           in the worktree with ../RenQuant/.venv python, 2026-08-09
-           r2].
+           detection; (f) dropped-leg degradation flag with z(panel)-
+           alone fallback; (g) the frozen fingerprint literal;
+           (h) CADENCE ADVANCE (review P0): two adjacent test days
+           straddling a weekly cutoff are scored by DIFFERENT momentum
+           artifacts when the recipe outputs differ — the post-flip
+           artifact scores half the universe, so the served days'
+           finite-composite sets differ exactly by that half
+           (threshold-free value-level proof). Full suite: 1573
+           passed, 1 skipped in 68.22s [VERIFIED — make test in the
+           worktree with sibling-repo PYTHONPATH and
+           ../RenQuant/.venv python, 2026-08-09].
 
-RUN:       r2 rerun ~4 min wall under caffeinate (the r1 run's 2032-
-           date regime series and OHLCV reads were already cached;
-           425 weekly momentum artifacts + 16 XGB trainings)
-           [VERIFIED — run log timestamps 23:31:40..23:35:31 PDT
-           2026-08-09]. Frozen stamps summary (per-regime eligible/
-           passed, gate authority unchanged): ONLY fold 6 passes in
-           all active regimes; folds 1-5, 7 and 8 each fail in at
-           least one active regime (details in the stamps JSON) —
-           fold 7's r1 pass does NOT survive the corrected per-date
-           cadence. No interpretation here — PR B applies the stamps
-           unchanged and computes the §5 statistic.
+RUN:       execution 1 (full): ~39 min wall under caffeinate
+           (dominated by the 2032-date production regime series; the
+           16 XGB trainings + scoring took ~95s) [VERIFIED — run log
+           timestamps]. Execution 2 (test-scores-only regeneration
+           under the corrected cadence): ~2 min wall (23:40:30 launch
+           -> 23:42:26 manifest write) [VERIFIED — file timestamps];
+           8 full-train panel retrainings + 288 momentum cutoff
+           artifacts, regime map and validation blocks carried from
+           execution 1 after digest verification. Frozen stamps
+           summary (per-regime eligible/passed, gate authority
+           unchanged): folds 6 and 7 pass in all active regimes;
+           folds 1-5 and 8 each fail in at least one active regime
+           (details in the stamps JSON). No interpretation here — PR B
+           applies the stamps unchanged and computes the §5 statistic.
 
 NEXT:      merge this PR -> orch#956 (the join-only runner, ALREADY
            adapted to the committed schemas above at f24caf5b)
