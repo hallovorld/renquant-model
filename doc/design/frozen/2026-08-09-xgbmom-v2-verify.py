@@ -66,18 +66,6 @@ def check(path):
     else:
         errs.append(f"artifact_kind absent or unknown: {kind!r}")
 
-    # 7. artifact_kind discipline (model#213 post-merge P1, fail-closed):
-    # a RESULT must declare itself and carry the pin; a CONTROL must be
-    # corpus-inapplicable; an undeclared artifact is rejected outright, so
-    # a purported real result can never pass by omission.
-    kind = a.get("artifact_kind")
-    if kind not in ("control", "result"):
-        errs.append("artifact_kind missing or invalid (control|result)")
-    elif kind == "result" and a.get("corpus_sha256") != CORPUS_SHA256:
-        errs.append("result artifact lacks the prereg corpus pin")
-    elif kind == "control" and a.get("corpus_sha256") is not None:
-        errs.append("control artifact must be corpus-inapplicable")
-
     # 2. frozen feature-list hash
     want_feats = hashlib.sha256(json.dumps(h["FEATS"]).encode()).hexdigest()
     if a.get("features_sha256") != want_feats:
