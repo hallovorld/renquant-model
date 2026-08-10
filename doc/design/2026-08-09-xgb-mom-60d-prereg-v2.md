@@ -45,10 +45,15 @@ freedom exists.
 
 ## 3 · Gates — inherited verbatim from v1 §3
 
-Seed-mean real signal > 0; positive folds ≥ ⌈0.75 × n_realized⌉ (8
-realized → 6; 7 realized → 6 — the proportional form of v1's 6-of-8,
-stated now, not chosen later); the committed harness persists the frozen
-feature-list sha256 in every control and result artifact; A/A
+Seed-mean real signal > 0; **≥6 positive folds OF THE FIXED 8 — an
+unrealized fold (fold 8 failing its min-test guard) counts NON-POSITIVE**,
+so missing data can only cost a shot at the bar, never lower it (review
+r4: the earlier proportional form was availability-dependent and thereby
+more permissive; withdrawn). The committed harness already implements
+exactly this semantics (an unrealized fold's real-signal is NaN and
+`NaN > 0` counts as non-positive in the ≥6-of-8 test). The harness
+persists the frozen feature-list sha256 in every control and result
+artifact; A/A
 seed std ≤ 0.01; recency guard on the surviving recent folds. PASS earns a
 shadow-candidacy memo gated on orch#937/#931 (unchanged); KILL is a
 completed outcome. Expectation-setting, recorded before the run: part of
