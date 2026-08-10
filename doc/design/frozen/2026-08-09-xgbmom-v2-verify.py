@@ -18,7 +18,9 @@ the frozen text is the authority, nothing is re-derived) and exits 1 when:
   5. the gate arithmetic (all four legs recomputed; >=6-of-the-fixed-8
      with an unrealized fold counted NON-positive) does not recompute from
      the artifact's own numbers;
-  6. a real artifact's `corpus_sha256` differs from the prereg pin (also
+  6. `artifact_kind` is absent or unknown, a `result` artifact's
+     `corpus_sha256` is absent or differs from the prereg pin, or a
+     `control` artifact carries a non-null corpus pin (the pin is also
      asserted to appear literally in the harness source, so the two files
      cannot drift apart silently).
 
@@ -50,11 +52,31 @@ def check(path):
     a = json.loads(Path(path).read_text())
     h = harness_constants()
 
-    # 6. corpus pin — verifier vs harness, then artifact vs pin (real only)
+    # 6. corpus pin — verifier vs harness, then the fail-closed kind branch:
+    #    result ⇒ corpus_sha256 == the prereg pin; control ⇒ corpus_sha256 null
     if h.get("CORPUS_SHA256") != CORPUS_SHA256:
         errs.append("harness corpus pin drifted from verifier pin")
-    if a.get("corpus_sha256") is not None and a["corpus_sha256"] != CORPUS_SHA256:
-        errs.append("corpus_sha256 differs from the prereg pin")
+    kind = a.get("artifact_kind")
+    if kind == "result":
+        if a.get("corpus_sha256") != CORPUS_SHA256:
+            errs.append("result artifact without the pinned corpus_sha256")
+    elif kind == "control":
+        if a.get("corpus_sha256") is not None:
+            errs.append("control artifact must have corpus_sha256 null")
+    else:
+        errs.append(f"artifact_kind absent or unknown: {kind!r}")
+
+    # 7. artifact_kind discipline (model#213 post-merge P1, fail-closed):
+    # a RESULT must declare itself and carry the pin; a CONTROL must be
+    # corpus-inapplicable; an undeclared artifact is rejected outright, so
+    # a purported real result can never pass by omission.
+    kind = a.get("artifact_kind")
+    if kind not in ("control", "result"):
+        errs.append("artifact_kind missing or invalid (control|result)")
+    elif kind == "result" and a.get("corpus_sha256") != CORPUS_SHA256:
+        errs.append("result artifact lacks the prereg corpus pin")
+    elif kind == "control" and a.get("corpus_sha256") is not None:
+        errs.append("control artifact must be corpus-inapplicable")
 
     # 2. frozen feature-list hash
     want_feats = hashlib.sha256(json.dumps(h["FEATS"]).encode()).hexdigest()
