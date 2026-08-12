@@ -32,6 +32,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -58,6 +59,12 @@ OHLCV_ROOT = RQ / "data/ohlcv"
 #: for historical reasons — renaming it is a monitor+ops-manifest change and
 #: deliberately NOT bundled with receipt emission.
 RECEIPTS_DIR = RQ / "logs" / "promote_shadow_patchtst"
+#: Env override for the receipt output dir, resolved by ``resolve_receipts_dir``.
+#: UNSET in production → ``RECEIPTS_DIR`` (the monitor's real read path) is used
+#: verbatim, so the weekly job is byte-for-byte unchanged. Tests set it (or pass
+#: ``--receipts-dir``) so a test run's receipts land in a tmp dir and never
+#: under the operator's live receipt path.
+RECEIPTS_DIR_ENV = "MOMENTUM_RECEIPTS_DIR"
 MARKET = "SPY"
 DEFAULT_OUT_ROOT = Path.home() / "renquant-data-store" / "momentum-train"
 #: Dated-artifact basename — SHARED by every params_version (model#199 item 2).
@@ -211,7 +218,25 @@ def emit_ledger_append_receipt(receipts_dir: Path, ledger_path: Path,
     return out
 
 
-def _emit_receipt_or_warn(ledger_path: Path, digest_before: str | None,
+def resolve_receipts_dir(cli_arg: str | None = None) -> Path:
+    """Where ledger-append receipts are written.
+
+    Injection precedence: explicit ``--receipts-dir`` > ``$MOMENTUM_RECEIPTS_DIR``
+    > ``RECEIPTS_DIR`` (the production default — the exact path the
+    orchestrator's scorer-identity monitor reads). With NOTHING injected the
+    result is ``RECEIPTS_DIR`` unchanged, so the real weekly job is
+    behaviour-invariant; the seam exists so a test run redirects every receipt
+    write into a tmp dir instead of the operator's live receipt path."""
+    if cli_arg:
+        return Path(cli_arg).expanduser()
+    env = os.environ.get(RECEIPTS_DIR_ENV)
+    if env:
+        return Path(env).expanduser()
+    return RECEIPTS_DIR
+
+
+def _emit_receipt_or_warn(receipts_dir: Path, ledger_path: Path,
+                          digest_before: str | None,
                           artifact: Mapping[str, Any],
                           row: Mapping[str, Any]) -> None:
     """A failed receipt write must not fail a run whose append already
@@ -219,7 +244,7 @@ def _emit_receipt_or_warn(ledger_path: Path, digest_before: str | None,
     designed detection for a missing receipt, so this is fail-closed at the
     system level, never silent."""
     try:
-        emit_ledger_append_receipt(RECEIPTS_DIR, ledger_path, digest_before,
+        emit_ledger_append_receipt(receipts_dir, ledger_path, digest_before,
                                    artifact, row)
     except OSError as exc:
         print(json.dumps({
@@ -231,7 +256,8 @@ def _emit_receipt_or_warn(ledger_path: Path, digest_before: str | None,
         }, indent=2))
 
 
-def _reconcile_or_refuse(artifact_path: Path, ledger_path: Path) -> int:
+def _reconcile_or_refuse(artifact_path: Path, ledger_path: Path,
+                         receipts_dir: Path) -> int:
     """An artifact already exists at this cutoff's path — reconcile or refuse.
 
     Startup half of the two-file protocol (codex review round 3, PR #196): a
@@ -288,7 +314,8 @@ def _reconcile_or_refuse(artifact_path: Path, ledger_path: Path) -> int:
             "retry_reconciles": True,
         }, indent=2))
         return 5
-    _emit_receipt_or_warn(ledger_path, digest_before, existing, row)
+    _emit_receipt_or_warn(receipts_dir, ledger_path, digest_before, existing,
+                          row)
     print(json.dumps({
         "status": "RECONCILED",
         "why": ("artifact existed with no matching ledger row — a prior run "
@@ -320,9 +347,16 @@ def main(argv=None) -> int:
     ap.add_argument("--dry-run", action="store_true",
                     help="verify surfaces + resolve the universe + print the "
                          "plan; write NOTHING, digest NOTHING")
+    ap.add_argument("--receipts-dir", default=None,
+                    help="where to write ledger-append receipts; UNSET → "
+                         f"${RECEIPTS_DIR_ENV} → the production monitor path "
+                         "(RECEIPTS_DIR). The real weekly job leaves this unset "
+                         "and is unchanged; the seam exists so tests never "
+                         "write under the operator's live receipt dir")
     a = ap.parse_args(argv)
     asof = pd.Timestamp(a.asof)
     out_root = Path(a.out_root).expanduser()
+    receipts_dir = resolve_receipts_dir(a.receipts_dir)
     params = PARAMS_BY_VERSION[a.params_version]()
 
     surfaces = {
@@ -358,7 +392,7 @@ def main(argv=None) -> int:
         return 0
 
     if artifact_path.exists():
-        return _reconcile_or_refuse(artifact_path, ledger_path)
+        return _reconcile_or_refuse(artifact_path, ledger_path, receipts_dir)
 
     readers = LiveReaders()
     readers.record_digest("panel:alpha158_291_fundamental_dataset.parquet",
@@ -396,7 +430,8 @@ def main(argv=None) -> int:
             "retry_reconciles": True,
         }, indent=2))
         return 5
-    _emit_receipt_or_warn(ledger_path, digest_before, artifact, row)
+    _emit_receipt_or_warn(receipts_dir, ledger_path, digest_before, artifact,
+                          row)
     print(json.dumps({
         "status": "TRAINED",
         "cutoff_date": artifact["cutoff_date"],

@@ -489,9 +489,78 @@ def _wire_fake_cli_surfaces(monkeypatch, tmp_path, world):
     monkeypatch.setattr(world["readers"], "record_digest",
                         lambda *a, **kw: None, raising=False)
     monkeypatch.setattr(CLI, "LiveReaders", lambda *a, **kw: world["readers"])
+    # Redirect EVERY ledger-append receipt this run emits into a tmp dir. Without
+    # this the CLI's real-run path writes receipts into RECEIPTS_DIR — the
+    # operator's live monitor dir under RenQuant — so the test suite itself
+    # leaked receipts into a production path (the defect this fixes). The guard
+    # test below proves the default/prod dir is never touched.
+    monkeypatch.setenv(CLI.RECEIPTS_DIR_ENV, str(tmp_path / "receipts"))
     out_root = tmp_path / "out"
     asof_str = str(world["asof"].date())
     return out_root, asof_str, out_root / asof_str
+
+
+def test_receipts_dir_defaults_to_the_prod_monitor_path_when_uninjected(
+        monkeypatch):
+    """Behaviour-invariance for the real weekly job: with no --receipts-dir and
+    no env override, the resolved receipt dir is EXACTLY the production constant
+    the orchestrator's scorer-identity monitor reads — the fix redirects only
+    tests, never the live job. Injection precedence is arg > env > default."""
+    monkeypatch.delenv(CLI.RECEIPTS_DIR_ENV, raising=False)
+    assert CLI.resolve_receipts_dir() == CLI.RECEIPTS_DIR
+    assert CLI.RECEIPTS_DIR == CLI.RQ / "logs" / "promote_shadow_patchtst"
+    # an explicit CLI arg wins over everything
+    assert CLI.resolve_receipts_dir("/x/y") == Path("/x/y")
+    # the env override wins over the default when no explicit arg is given
+    monkeypatch.setenv(CLI.RECEIPTS_DIR_ENV, "/e/f")
+    assert CLI.resolve_receipts_dir() == Path("/e/f")
+    # …and an explicit arg still overrides even a set env
+    assert CLI.resolve_receipts_dir("/x/y") == Path("/x/y")
+
+
+def test_cli_receipt_write_never_touches_the_prod_receipts_dir(monkeypatch,
+                                                               tmp_path, world):
+    """HARD guard (Never write production paths): a full rc-0 real-run CLI must
+    land its ledger-append receipt in the INJECTED dir and must NEVER create or
+    modify RECEIPTS_DIR — the operator's live monitor path. Proven WITHOUT
+    touching the real filesystem: RECEIPTS_DIR is monkeypatched to a
+    non-existent tmp 'prod' stand-in and asserted still absent after the run,
+    while the injected dir holds exactly the one emitted receipt. This is the
+    regression that fails loudly if a future test drops receipt isolation."""
+    out_root, asof_str, _ = _wire_fake_cli_surfaces(monkeypatch, tmp_path, world)
+    # stand in for the live prod dir; it does not exist and must stay that way
+    fake_prod = tmp_path / "prod_receipts_must_stay_untouched"
+    monkeypatch.setattr(CLI, "RECEIPTS_DIR", fake_prod)
+    injected = tmp_path / "injected_receipts"
+    monkeypatch.setenv(CLI.RECEIPTS_DIR_ENV, str(injected))
+
+    rc = CLI.main(["--asof", asof_str, "--out-root", str(out_root)])
+    assert rc == 0
+    assert not fake_prod.exists(), \
+        "the CLI created/wrote the default (prod) receipt dir"
+    receipts = list(injected.glob("*.json"))
+    assert len(receipts) == 1, \
+        f"expected exactly one receipt in the injected dir, got {receipts}"
+    assert receipts[0].resolve().is_relative_to(injected.resolve())
+
+
+def test_cli_receipt_dir_flag_overrides_env_and_default(monkeypatch, tmp_path,
+                                                        world):
+    """The explicit --receipts-dir CLI seam threads all the way to the write:
+    it beats both the env override and RECEIPTS_DIR, and again the prod default
+    is never touched."""
+    out_root, asof_str, _ = _wire_fake_cli_surfaces(monkeypatch, tmp_path, world)
+    fake_prod = tmp_path / "prod_receipts_must_stay_untouched"
+    monkeypatch.setattr(CLI, "RECEIPTS_DIR", fake_prod)
+    monkeypatch.setenv(CLI.RECEIPTS_DIR_ENV, str(tmp_path / "env_receipts"))
+    flag_dir = tmp_path / "flag_receipts"
+
+    rc = CLI.main(["--asof", asof_str, "--out-root", str(out_root),
+                   "--receipts-dir", str(flag_dir)])
+    assert rc == 0
+    assert not fake_prod.exists()
+    assert not (tmp_path / "env_receipts").exists()
+    assert len(list(flag_dir.glob("*.json"))) == 1
 
 
 def test_finalize_happens_before_ledger_append(monkeypatch, tmp_path, world):
