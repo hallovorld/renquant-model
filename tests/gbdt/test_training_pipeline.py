@@ -29,6 +29,7 @@ def test_training_pipeline_uses_common_task_job_pattern(tmp_path: Path) -> None:
             "fingerprint": "sha256:model",
             "uri": "object://renquant-artifacts/gbdt-fixture.json",
             "promotion_status": "candidate",
+            "provenance": {"kind": "none"},
             "feature_cols": ["alpha_1", "alpha_2"],
             "local_artifact_path": str(output_dir / "gbdt-fixture.json"),
             "trained_date": "2026-05-25",
@@ -71,6 +72,11 @@ def test_training_pipeline_uses_common_task_job_pattern(tmp_path: Path) -> None:
     assert ctx.artifact_manifest["feature_cols"] == ["alpha_1", "alpha_2"]
     assert ctx.artifact_manifest["local_artifact_path"].endswith("gbdt-fixture.json")
     assert ctx.artifact_manifest["lookahead_days"] == 5
+    # The trainer's lineage determination must SURVIVE manifest assembly.
+    # BuildArtifactManifestTask rebuilds the manifest from _RUNTIME_ARTIFACT_FIELDS,
+    # so without "provenance" in that allow-list this key is silently dropped and
+    # validate_artifact_manifest then rejects the manifest for lacking it.
+    assert ctx.artifact_manifest["provenance"] == {"kind": "none"}
     assert ctx.metrics_record["oos_mean_ic"] == pytest.approx(0.031)
     assert ctx.metrics_record["panel_contract_ok"] is True
 
@@ -97,6 +103,7 @@ def test_training_pipeline_requires_strict_panel_oos_contract(tmp_path: Path) ->
             "fingerprint": "sha256:model",
             "uri": "object://renquant-artifacts/bad-panel.json",
             "promotion_status": "candidate",
+            "provenance": {"kind": "none"},
         }, {}
 
     def validator(artifact: dict, dataset, config: dict):

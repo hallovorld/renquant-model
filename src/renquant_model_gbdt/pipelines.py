@@ -154,6 +154,17 @@ class PanelGbdtTrainingPipeline(Pipeline):
 
 _RUNTIME_ARTIFACT_FIELDS = (
     "kind",
+    # Carried, not synthesised. BuildArtifactManifestTask rebuilds the
+    # manifest from this enumerated allow-list, so any key a trainer sets
+    # that is absent here is silently dropped. renquant-artifacts made
+    # provenance REQUIRED on 2026-08-15 (PROVENANCE_REQUIRED_AFTER), which
+    # turned that silent drop into an unconditional
+    # validate_artifact_manifest rejection: a trainer that correctly
+    # declares its lineage had the declaration stripped one layer below
+    # itself, then got rejected for not having one. This entry only stops
+    # the stripping -- it does not invent a determination for trainers that
+    # declare none (see the PR body).
+    "provenance",
     "feature_cols",
     "feature_columns",
     "input_feature_cols",
