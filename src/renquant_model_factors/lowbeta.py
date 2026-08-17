@@ -68,20 +68,29 @@ def score_lowbeta(readers: FactorReaders, ticker: str, ts: pd.Timestamp,
                   p: Mapping[str, Any]) -> TickerScore | None:
     """score = -beta_hat, OLS slope of ticker daily returns on SPY's.
 
-    Simple close-to-close returns on both legs (``fill_method=None`` — a
-    price gap yields NaN and the pair is DROPPED, never forward-filled),
-    inner-joined by date, non-finite pairs removed, then the trailing
-    ``beta_window`` pairs at/before the cutoff. Fewer than ``min_obs``
-    pairs, or a degenerate market window (Σ(x-x̄)² ≈ 0), -> NaN
-    (fail-closed). The newest paired date is MEASURED into last_read.
+    The two close series are inner-joined by date FIRST, simple
+    close-to-close returns are computed on the aligned price frame, and a
+    pair is kept only when its two dates are ADJACENT in the market
+    calendar (the market series' index) — so an interior gap on either
+    leg (missing row or NaN) DROPS the pairs touching it, never
+    forward-fills, and can never pair a multi-session ticker return with
+    a one-session market return. Non-finite pairs removed, then the
+    trailing ``beta_window`` pairs at/before the cutoff. Fewer than
+    ``min_obs`` pairs, or a degenerate market window (Σ(x-x̄)² ≈ 0),
+    -> NaN (fail-closed). The newest paired date is MEASURED into
+    last_read.
     """
     c = readers.close(ticker)
     if c is None:
         return None
     m = readers.market_close()
-    ri = c.loc[c.index <= ts].pct_change(fill_method=None)
-    rm = m.loc[m.index <= ts].pct_change(fill_method=None)
-    pair = pd.concat([ri, rm], axis=1, join="inner").dropna()
+    mm = m.loc[m.index <= ts]
+    px = pd.concat([c.loc[c.index <= ts], mm], axis=1, join="inner").dropna()
+    r = px.pct_change(fill_method=None)
+    # Paired-DAILY contract: consecutive aligned rows must be adjacent in
+    # the market calendar, else the return spans multiple sessions.
+    daily = np.diff(mm.index.get_indexer(px.index)) == 1
+    pair = r.iloc[1:][daily]
     pair = pair[np.isfinite(pair).all(axis=1)]
     pair = pair.tail(int(p["beta_window"]))
     n = int(len(pair))

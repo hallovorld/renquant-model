@@ -174,6 +174,35 @@ def test_lowbeta_degenerate_market_fails_closed():
     assert art["n_scored"] == 0
 
 
+def test_lowbeta_interior_date_gap_never_mispairs():
+    """AUDIT REGRESSION GUARD (PR #227 review): an interior ticker-date gap
+    must never pair a multi-session ticker return with a one-session SPY
+    return. The gap-spanning pair is DROPPED (frozen v0 contract), so a
+    ticker whose daily returns are exactly 2 × SPY's still scores exactly
+    -2.0; the old separate-pct_change pairing put one off-line point in
+    the window and measurably shifted the slope."""
+    hhh = _geometric(50.0, 2.0).drop(DATES[250])  # gap inside the window
+    art = build_lowbeta_artifact(
+        CUTOFF, ["HHH"], params_lowbeta_v0(),
+        readers=Readers(closes={"HHH": hhh}))
+    assert abs(art["scores"]["HHH"] - (-2.0)) < 1e-9
+    # 299 consecutive-date pairs minus the two touching the dropped date;
+    # the trailing window still fills to exactly beta_window=252.
+    assert art["n_obs"]["HHH"] == 252
+
+
+def test_lowbeta_nan_close_drops_the_pair_not_the_contract():
+    """A NaN close behaves like a missing row: the pairs touching it are
+    dropped (never forward-filled, never bridged into the estimate)."""
+    iii = _geometric(50.0, 2.0)
+    iii.iloc[250] = np.nan
+    art = build_lowbeta_artifact(
+        CUTOFF, ["III"], params_lowbeta_v0(),
+        readers=Readers(closes={"III": iii}))
+    assert abs(art["scores"]["III"] - (-2.0)) < 1e-9
+    assert art["n_obs"]["III"] == 252
+
+
 # --------------------------------------------------------------- quality_gp --
 @pytest.fixture()
 def quality_gp_world():

@@ -111,3 +111,36 @@ VERIFICATION:
 NEXT:      (1) impl step 2 — the cheap IC screen, ONLY AFTER the §5b batch
                manifest freeze (the screen views corpus scores).
            (2) weekly emitter scheduling — operator-gated, its own PR.
+
+---
+
+## Review fix (2026-08-17, Codex MED on lowbeta pairing)
+
+FINDING:   `lowbeta.py` computed `pct_change` on the ticker and SPY series
+           SEPARATELY, then joined the returns — an interior ticker-date
+           gap paired a multi-session ticker return with the one-session
+           SPY return at the endpoint, silently changing the beta
+           estimator and violating the frozen paired-daily-return
+           contract.
+
+FIX:       Inner-join the two PRICE series first, compute returns on the
+           aligned frame, and keep a pair only when its two dates are
+           ADJACENT in the market calendar (the market series' index) —
+           the gap-spanning pair is dropped, exactly the frozen v0 "a gap
+           yields a dropped pair, never forward-filled" contract (so no
+           new params version: this corrects the implementation to the
+           preregistered construction, not the construction itself). A
+           NaN close now behaves identically to a missing row.
+
+EVIDENCE:
+  discriminates: old-style pairing on the new gap fixture gives
+                 beta 1.994646 vs the exact 2.0 the construction implies
+                 (|Δ| = 5.35e-03, tolerance 1e-9)
+                 [VERIFIED — one-off recomputation of the old join on the
+                 test fixture, this session]
+  new tests:     `test_lowbeta_interior_date_gap_never_mispairs` (AUDIT
+                 REGRESSION GUARD) + `test_lowbeta_nan_close_drops_the_
+                 pair_not_the_contract`
+  focused suite: tests/test_factor_emitters.py +
+                 tests/test_factor_frozen_params.py — 35 passed, 0 failed
+                 [VERIFIED — pytest -q, this session]
