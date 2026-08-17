@@ -54,7 +54,15 @@ def test_pipeline_runs_with_adapter_checkpoint(tmp_path: Path):
     ck = summary_to_checkpoint(_SUMMARY, {"seq_len": 32, "embargo_days": 60})
 
     def stub_trainer(frame, config, out_dir):
-        return ck, {"kind": "patchtst-distributional-head", "promotion_status": "shadow"}
+        # The lineage determination is attached HERE, by the stub trainer, and not
+        # inside summary_to_checkpoint(): that adapter converts a real training
+        # summary, so having it emit kind="none" would make production code
+        # synthesise a determination it has no standing to make. A stub trainer
+        # over a synthetic summary genuinely has no lineage, so "none" is accurate.
+        return {**ck, "provenance": {"kind": "none"}}, {
+            "kind": "patchtst-distributional-head",
+            "promotion_status": "shadow",
+        }
 
     pipeline = build_training_pipeline(loader=lambda m: m, trainer=stub_trainer,
                                        validator=sanity_validator)

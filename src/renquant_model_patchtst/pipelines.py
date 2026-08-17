@@ -112,6 +112,13 @@ class BuildPatchTstArtifactManifestTask(Task):
             "config_fingerprint": ctx.model_config.get("config_fingerprint", "unfingerprinted"),
             "code_commit": ctx.model_config.get("code_commit", "uncommitted"),
         }
+        # Carried, not synthesised -- same reason as the gbdt path's
+        # _RUNTIME_ARTIFACT_FIELDS entry: this manifest is rebuilt from a fixed
+        # key set, so a lineage determination the trainer made would otherwise be
+        # dropped one layer below itself and then rejected for being absent
+        # (renquant-artifacts PROVENANCE_REQUIRED_AFTER = 2026-08-15).
+        if ctx.checkpoint_artifact.get("provenance") is not None:
+            manifest["provenance"] = ctx.checkpoint_artifact["provenance"]
         validate_artifact_manifest(manifest)
         ctx.artifact_manifest = manifest
         return True

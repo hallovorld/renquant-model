@@ -36,6 +36,7 @@ def _artifact(*, metadata: dict | None = None) -> dict:
         "fingerprint": "sha256:model",
         "uri": "object://renquant-artifacts/track-b-full-wf.json",
         "promotion_status": "candidate",
+        "provenance": {"kind": "none"},
         "kind": "panel_ltr_xgboost",
         "trained_date": "2026-06-05",
         "config_fingerprint": "sha256:config",

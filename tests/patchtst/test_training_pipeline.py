@@ -25,6 +25,7 @@ def test_patchtst_training_pipeline_runs_sanity_stage(tmp_path: Path) -> None:
             "fingerprint": "sha256:patchtst",
             "uri": "object://renquant-artifacts/patchtst-fixture.pt",
             "promotion_status": "shadow",
+            "provenance": {"kind": "none"},
             "input_feature_cols": ["alpha_1", "alpha_2"],
             "trained_date": "2026-05-25",
             "config_fingerprint": "sha256:config",
@@ -91,6 +92,7 @@ def test_patchtst_training_pipeline_requires_model_evidence_contract(tmp_path: P
             "fingerprint": "sha256:patchtst",
             "uri": "object://renquant-artifacts/patchtst-bad.pt",
             "promotion_status": "shadow",
+            "provenance": {"kind": "none"},
         }, {}
 
     def validator(checkpoint: dict, frame, config: dict):
