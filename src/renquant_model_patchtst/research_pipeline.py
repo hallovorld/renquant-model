@@ -302,7 +302,18 @@ class ResolvePathsTask(Task):
             spec.strategy_config = spec.strategy_config.expanduser()
         if not spec.dataset.exists():
             raise FileNotFoundError(f"dataset not found: {spec.dataset}")
-        if spec.require_regime_contract and not spec.spy_path.exists():
+        # SPY is a regime-contract input only on the legacy_stateless plane;
+        # the default production plane consumes the committed corpus BY PATH
+        # and fail-closes inside RegimeDetectorContractTask (orch#985 item 1).
+        from renquant_model_common.regime_plane import (  # noqa: PLC0415
+            PLANE_LEGACY_STATELESS,
+            resolve_regime_plane,
+        )
+        if (
+            spec.require_regime_contract
+            and resolve_regime_plane() == PLANE_LEGACY_STATELESS
+            and not spec.spy_path.exists()
+        ):
             raise FileNotFoundError(f"spy_path not found: {spec.spy_path}")
         if spec.label_shift_days is None:
             spec.label_shift_days = default_label_shift_days(spec.label_lookahead_days)
@@ -412,29 +423,35 @@ class ValidateTrainerSurfaceTask(Task):
 
 
 class RegimeDetectorContractTask(Task):
+    """Validate regime labels over the golden windows.
+
+    Labels come from the PRODUCTION plane by default (orch#985 ranked
+    item 1): the committed corpus renquant-backtesting publishes from the
+    kernel task-chain replay, consumed BY PATH because the import
+    boundary forbids computing it here. Set
+    ``RENQUANT_REGIME_PLANE=legacy_stateless`` to reproduce historical
+    results keyed to the stateless ``hmm_regime_labels`` approximation.
+    """
+
     def run(self, ctx: ExperimentContext) -> bool | None:
         spec = ctx.spec
         if not spec.require_regime_contract:
             ctx.regime_contract = {"required": False, "passed": True}
             return True
-        from renquant_common.hmm_regime_labels import (  # noqa: PLC0415
-            BEAR_RET_20D_THR,
-            BEAR_RET_5D_THR,
-            BEAR_VOL_20D_THR,
-            BEAR_VOL_5D_THR,
-            BULL_CALM_DRIFT_THR,
-            BULL_CALM_VOL_THR,
-            CHOPPY_DRIFT_TH,
-            CHOPPY_VOL_RATIO,
-            HURST_TREND_THR,
-            compute_hmm_regime_labels,
+        from renquant_model_common.regime_plane import (  # noqa: PLC0415
+            PLANE_PRODUCTION,
+            resolve_regime_plane,
         )
 
-        labels = compute_hmm_regime_labels(
-            spec.spy_path,
-            detector_version=spec.detector_version,
-        )
-        labels["date"] = pd.to_datetime(labels["date"])
+        plane = resolve_regime_plane()
+        if plane == PLANE_PRODUCTION:
+            return self._run_production_plane(ctx)
+        return self._run_legacy_stateless(ctx)
+
+    @staticmethod
+    def _check_golden_windows(
+        labels: pd.DataFrame,
+    ) -> tuple[dict[str, Any], list[str]]:
         counts: dict[str, Any] = {}
         failures: list[str] = []
         for window in REGIME_GOLDEN_WINDOWS:
@@ -457,11 +474,75 @@ class RegimeDetectorContractTask(Task):
                     failures.append(
                         f"{window['name']}: majority {majority}, expected {sorted(allowed)}"
                     )
+        return counts, failures
+
+    def _run_production_plane(self, ctx: ExperimentContext) -> bool | None:
+        from renquant_model_common.regime_plane import (  # noqa: PLC0415
+            PLANE_PRODUCTION,
+            corpus_identity,
+            load_production_regime_labels,
+        )
+
+        try:
+            labels = load_production_regime_labels()
+        except (FileNotFoundError, ValueError) as exc:
+            # Fail-CLOSED: no silent fallback to another label plane.
+            ctx.regime_contract = {
+                "required": True,
+                "passed": False,
+                "failures": [str(exc)],
+                "golden_window_counts": {},
+                "regime_plane": PLANE_PRODUCTION,
+                "module": "renquant_model_common.regime_plane",
+            }
+            ctx.verdict = "invalid_experiment"
+            return False
+        counts, failures = self._check_golden_windows(labels)
         ctx.regime_contract = {
             "required": True,
             "passed": not failures,
             "failures": failures,
             "golden_window_counts": counts,
+            "regime_plane": PLANE_PRODUCTION,
+            "module": "renquant_model_common.regime_plane",
+            # Identity of the consumed corpus (path + sha + the replayed
+            # chain-copy identity from the publisher manifest) replaces the
+            # stateless detector thresholds, which do not describe this
+            # plane.
+            "corpus": corpus_identity(),
+        }
+        if failures:
+            ctx.verdict = "invalid_experiment"
+            return False
+        return True
+
+    def _run_legacy_stateless(self, ctx: ExperimentContext) -> bool | None:
+        spec = ctx.spec
+        from renquant_common.hmm_regime_labels import (  # noqa: PLC0415
+            BEAR_RET_20D_THR,
+            BEAR_RET_5D_THR,
+            BEAR_VOL_20D_THR,
+            BEAR_VOL_5D_THR,
+            BULL_CALM_DRIFT_THR,
+            BULL_CALM_VOL_THR,
+            CHOPPY_DRIFT_TH,
+            CHOPPY_VOL_RATIO,
+            HURST_TREND_THR,
+            compute_hmm_regime_labels,
+        )
+
+        labels = compute_hmm_regime_labels(
+            spec.spy_path,
+            detector_version=spec.detector_version,
+        )
+        labels["date"] = pd.to_datetime(labels["date"])
+        counts, failures = self._check_golden_windows(labels)
+        ctx.regime_contract = {
+            "required": True,
+            "passed": not failures,
+            "failures": failures,
+            "golden_window_counts": counts,
+            "regime_plane": "legacy_stateless",
             "module": "renquant_common.hmm_regime_labels",
             "detector_version": spec.detector_version,
             "thresholds": {
@@ -1477,8 +1558,29 @@ def _daily_ic(df: pd.DataFrame) -> list[float]:
 
 
 def _load_regime_labels(ctx: ExperimentContext) -> pd.DataFrame | None:
+    """Regime labels for per-regime IC — SAME plane as the contract task.
+
+    Production plane (default): the committed corpus renquant-backtesting
+    publishes from the kernel task-chain replay (orch#985 item 1), gated
+    on the contract having passed (which on this plane proved the corpus
+    loadable). ``RENQUANT_REGIME_PLANE=legacy_stateless`` reproduces the
+    historical stateless labels.
+    """
     if not ctx.regime_contract.get("passed"):
         return None
+    from renquant_model_common.regime_plane import (  # noqa: PLC0415
+        PLANE_PRODUCTION,
+        load_production_regime_labels,
+        resolve_regime_plane,
+    )
+
+    if resolve_regime_plane() == PLANE_PRODUCTION:
+        try:
+            return load_production_regime_labels()
+        except (FileNotFoundError, ValueError):
+            # Fail-closed (labels absent → per-regime IC empty), never a
+            # silent fallback to the stateless plane.
+            return None
     if not ctx.spec.spy_path.exists():
         return None
     from renquant_common.hmm_regime_labels import compute_hmm_regime_labels  # noqa: PLC0415
