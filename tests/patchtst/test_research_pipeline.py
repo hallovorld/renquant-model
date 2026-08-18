@@ -533,9 +533,13 @@ def test_load_regime_labels_threads_detector_version(
 ) -> None:
     """W0.P0.2: _load_regime_labels must pass spec.detector_version to
     compute_hmm_regime_labels. Stub the library function and assert the
-    kwarg makes it through."""
+    kwarg makes it through.
+
+    Stateless-plane behavior — pinned to the legacy_stateless escape hatch
+    since orch#985 item 1 made the production corpus plane the default."""
     from renquant_model_patchtst import research_pipeline as rp
 
+    monkeypatch.setenv("RENQUANT_REGIME_PLANE", "legacy_stateless")
     spy = tmp_path / "spy.parquet"
     spy.write_bytes(b"")  # any existing file; we stub the loader
 
@@ -589,9 +593,13 @@ def test_regime_contract_stamps_v2026_thresholds(
 ) -> None:
     """PR #12 review M3: regime_contract.thresholds must include the v2026
     constants (BULL_CALM_VOL_THR / BULL_CALM_DRIFT_THR), since they're
-    material for decision attribution when detector_version='v2026-05-31'."""
+    material for decision attribution when detector_version='v2026-05-31'.
+
+    Stateless-plane stamping — pinned to the legacy_stateless escape hatch
+    since orch#985 item 1 made the production corpus plane the default."""
     from renquant_model_patchtst import research_pipeline as rp
 
+    monkeypatch.setenv("RENQUANT_REGIME_PLANE", "legacy_stateless")
     spy = tmp_path / "spy.parquet"
     spy.write_bytes(b"")
 
@@ -620,10 +628,14 @@ def test_regime_contract_task_stamps_detector_version(
 ) -> None:
     """W0.P0.2: RegimeDetectorContractTask must stamp detector_version into
     the regime_contract dict for audit, alongside passing it to
-    compute_hmm_regime_labels."""
+    compute_hmm_regime_labels.
+
+    Stateless-plane behavior — pinned to the legacy_stateless escape hatch
+    since orch#985 item 1 made the production corpus plane the default."""
     from renquant_model_patchtst import research_pipeline as rp
     import pandas as pd
 
+    monkeypatch.setenv("RENQUANT_REGIME_PLANE", "legacy_stateless")
     spy = tmp_path / "spy.parquet"
     spy.write_bytes(b"")
 

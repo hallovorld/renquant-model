@@ -11,7 +11,9 @@ hf_trainer for fair-comparison parity:
   * ``PerDayDataset`` (per-day, per-ticker sequence batching)
   * ``identity_collator``
   * ``margin_ranking_loss``
-  * ``compute_hmm_regime_labels`` (regime context for PerRegimeICCallback parity)
+  * regime context for PerRegimeICCallback parity — production-plane corpus
+    by default (orch#985 item 1), ``compute_hmm_regime_labels`` under the
+    ``RENQUANT_REGIME_PLANE=legacy_stateless`` escape hatch
 
 The result: a DLinear/NLinear run uses byte-identical data preprocessing
 to a PatchTST run, so the only thing that differs is the model architecture.
@@ -196,6 +198,60 @@ def _build_model(name: str, n_features: int, seq_len: int, kernel_size: int) -> 
     return cls(n_features=n_features, seq_len=seq_len)
 
 
+def _resolve_regime_map(args: argparse.Namespace) -> dict[int, str]:
+    """date→regime map for per-regime IC — production plane by default.
+
+    orch#985 ranked item 1: labels come from the committed production-chain
+    corpus renquant-backtesting publishes (consumed BY PATH — the import
+    boundary forbids computing that chain here). Set
+    ``RENQUANT_REGIME_PLANE=legacy_stateless`` to reproduce historical
+    results keyed to the stateless ``hmm_regime_labels`` approximation.
+    Fail-closed either way: missing inputs → empty map (per-regime IC
+    empty), never a silent fallback to the other plane.
+    """
+    from renquant_model_common.regime_plane import (  # noqa: PLC0415
+        PLANE_PRODUCTION,
+        REGIME_LABELS_PATH_ENV,
+        REGIME_PLANE_ENV,
+        load_production_regime_labels,
+        resolve_regime_plane,
+    )
+
+    if resolve_regime_plane() == PLANE_PRODUCTION:
+        try:
+            labels = load_production_regime_labels()
+        except (FileNotFoundError, ValueError) as exc:
+            log.warning(
+                "production regime corpus unavailable (%s) — per-regime IC "
+                "will be empty; set %s to a corpus copy or %s=legacy_stateless "
+                "to reproduce legacy results",
+                exc, REGIME_LABELS_PATH_ENV, REGIME_PLANE_ENV,
+            )
+            return {}
+        regime_map = {pd.Timestamp(d).value: r
+                      for d, r in zip(labels["date"], labels["regime"])}
+        log.info("loaded production-plane regime labels: n_dates=%d",
+                 len(regime_map))
+        return regime_map
+
+    # legacy_stateless escape hatch — historical reproduction only.
+    spy_path = Path(args.spy_path)
+    if not spy_path.is_absolute() and hasattr(hf, "REPO"):
+        spy_path = hf.REPO / spy_path
+    if not spy_path.exists():
+        log.warning("SPY parquet missing at %s — per-regime IC will be empty",
+                    spy_path)
+        return {}
+    from renquant_common.hmm_regime_labels import compute_hmm_regime_labels  # noqa: PLC0415
+    hmm = compute_hmm_regime_labels(
+        spy_path, detector_version=str(args.detector_version),
+    )
+    regime_map = {pd.Timestamp(d).value: r
+                  for d, r in zip(hmm["date"], hmm["regime"])}
+    log.info("loaded HMM labels: n_dates=%d", len(regime_map))
+    return regime_map
+
+
 def train_single_run(args: argparse.Namespace) -> dict[str, Any]:
     """Drop-in for hf_trainer.train_single_run — same input contract, same
     output shape. The research harness calls this transparently when
@@ -247,22 +303,8 @@ def _train_single_run_unlocked(args: argparse.Namespace) -> dict[str, Any]:
     if len(val_ds) == 0:
         raise RuntimeError("val dataset empty — check val_tail_pct + embargo_days")
 
-    # --- 3. Optional HMM regime labels (for per-regime IC, parity with PatchTST) ---
-    regime_map: dict[int, str] = {}
-    spy_path = Path(args.spy_path)
-    if not spy_path.is_absolute() and hasattr(hf, "REPO"):
-        spy_path = hf.REPO / spy_path
-    if spy_path.exists():
-        from renquant_common.hmm_regime_labels import compute_hmm_regime_labels  # noqa: PLC0415
-        hmm = compute_hmm_regime_labels(
-            spy_path, detector_version=str(args.detector_version),
-        )
-        regime_map = {pd.Timestamp(d).value: r
-                      for d, r in zip(hmm["date"], hmm["regime"])}
-        log.info("loaded HMM labels: n_dates=%d", len(regime_map))
-    else:
-        log.warning("SPY parquet missing at %s — per-regime IC will be empty",
-                    spy_path)
+    # --- 3. Optional regime labels (for per-regime IC, parity with PatchTST) ---
+    regime_map = _resolve_regime_map(args)
 
     # --- 4. Build model + optimizer ---
     model = _build_model(
