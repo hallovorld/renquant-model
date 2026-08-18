@@ -10,6 +10,7 @@ production data).
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 from pathlib import Path
@@ -18,6 +19,18 @@ import pandas as pd
 import pytest
 
 from renquant_model_common import regime_plane as rp
+
+
+def _write_manifest(corpus: Path, *, series_sha256: str | None = None) -> Path:
+    """Publisher-manifest sidecar; sha defaults to the true corpus hash."""
+    p = rp.corpus_manifest_path(corpus)
+    p.write_text(json.dumps({
+        "series_sha256": series_sha256
+        or hashlib.sha256(corpus.read_bytes()).hexdigest(),
+        "generated_on": "2026-08-17",
+        "chain": {"renquant_pipeline.kernel.regime": {"sha256": "x"}},
+    }))
+    return p
 
 
 def _write_fixture_corpus(tmp_path: Path, *, manifest: bool = True) -> Path:
@@ -36,13 +49,16 @@ def _write_fixture_corpus(tmp_path: Path, *, manifest: bool = True) -> Path:
     corpus = tmp_path / "production_regime_labels.csv"
     df.assign(date=df["date"].dt.strftime("%Y-%m-%d")).to_csv(corpus, index=False)
     if manifest:
-        (tmp_path / "production_regime_labels.manifest.json").write_text(
-            json.dumps({
-                "series_sha256": "fixture-sha",
-                "generated_on": "2026-08-17",
-                "chain": {"renquant_pipeline.kernel.regime": {"sha256": "x"}},
-            })
-        )
+        _write_manifest(corpus)
+    return corpus
+
+
+def _write_raw_corpus(tmp_path: Path, rows: list[str]) -> Path:
+    """Two-column corpus from literal rows, with a MATCHING manifest —
+    isolates the series-validity checks from the provenance hash check."""
+    corpus = tmp_path / "production_regime_labels.csv"
+    corpus.write_text("date,regime\n" + "\n".join(rows) + "\n")
+    _write_manifest(corpus)
     return corpus
 
 
@@ -88,8 +104,78 @@ def test_corpus_identity_stamps_manifest(monkeypatch, tmp_path):
     ident = rp.corpus_identity(corpus)
     assert ident["corpus_path"] == str(corpus)
     assert len(ident["corpus_sha256"]) == 64
-    assert ident["manifest_series_sha256"] == "fixture-sha"
+    assert ident["manifest_series_sha256"] == ident["corpus_sha256"]
     assert "renquant_pipeline.kernel.regime" in ident["chain"]
+
+
+# ── provenance contract: manifest REQUIRED, hash verified before parse ──────
+# codex review on model#228: a stale/tampered corpus must not run under the
+# recorded production chain identity.
+
+def test_missing_manifest_rejected(tmp_path):
+    corpus = _write_fixture_corpus(tmp_path, manifest=False)
+    with pytest.raises(ValueError, match="provenance manifest missing"):
+        rp.load_production_regime_labels(corpus)
+
+
+def test_malformed_manifest_rejected(tmp_path):
+    corpus = _write_fixture_corpus(tmp_path)
+    rp.corpus_manifest_path(corpus).write_text("{not json")
+    with pytest.raises(ValueError, match="provenance manifest unreadable"):
+        rp.load_production_regime_labels(corpus)
+
+
+def test_manifest_without_series_sha_rejected(tmp_path):
+    corpus = _write_fixture_corpus(tmp_path)
+    rp.corpus_manifest_path(corpus).write_text(
+        json.dumps({"generated_on": "2026-08-17"})
+    )
+    with pytest.raises(ValueError, match="lacks a series_sha256"):
+        rp.load_production_regime_labels(corpus)
+
+
+def test_series_hash_mismatch_rejected(tmp_path):
+    corpus = _write_fixture_corpus(tmp_path)
+    # tamper AFTER publish: bytes no longer match manifest.series_sha256
+    corpus.write_text(
+        corpus.read_text() + "2024-01-02,BEAR,0.9,tampered\n"
+    )
+    with pytest.raises(ValueError, match="stale or tampered"):
+        rp.load_production_regime_labels(corpus)
+
+
+# ── series validity: consumers must not silently join an invalid plane ──────
+
+def test_duplicate_dates_rejected(tmp_path):
+    corpus = _write_raw_corpus(tmp_path, [
+        "2020-01-02,BEAR", "2020-01-02,BEAR", "2020-01-03,BEAR",
+    ])
+    with pytest.raises(ValueError, match="duplicate dates"):
+        rp.load_production_regime_labels(corpus)
+
+
+def test_non_monotonic_dates_rejected(tmp_path):
+    corpus = _write_raw_corpus(tmp_path, [
+        "2020-01-03,BEAR", "2020-01-02,BEAR",
+    ])
+    with pytest.raises(ValueError, match="not monotonically increasing"):
+        rp.load_production_regime_labels(corpus)
+
+
+def test_unknown_regime_label_rejected(tmp_path):
+    corpus = _write_raw_corpus(tmp_path, [
+        "2020-01-02,BEAR", "2020-01-03,SIDEWAYS",
+    ])
+    with pytest.raises(ValueError, match="unknown regime labels"):
+        rp.load_production_regime_labels(corpus)
+
+
+def test_null_regime_label_rejected(tmp_path):
+    corpus = _write_raw_corpus(tmp_path, [
+        "2020-01-02,BEAR", "2020-01-03,",
+    ])
+    with pytest.raises(ValueError, match="null regime labels"):
+        rp.load_production_regime_labels(corpus)
 
 
 # ── site (ii): RegimeDetectorContractTask ───────────────────────────────────

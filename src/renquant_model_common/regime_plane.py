@@ -24,17 +24,25 @@ duplicated here because importing it is exactly what the boundary forbids):
   (the same sibling layout the Makefile uses for renquant-common etc.).
 
 Fail-closed: on the production plane a missing corpus surfaces as a loud
-error/empty diagnostics — never a silent fallback to another plane.
+error/empty diagnostics — never a silent fallback to another plane. The
+loader also enforces the provenance contract the publisher exposes: the
+corpus is trusted only together with a valid manifest sidecar whose
+``series_sha256`` equals SHA-256 of the exact CSV bytes, and only when the
+series itself is well-formed (unique monotonic dates, labels drawn from the
+closed :class:`~renquant_common.contracts.regime.RegimeLabel` taxonomy).
 """
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
+
+from renquant_common.contracts.regime import RegimeLabel
 
 REGIME_PLANE_ENV = "RENQUANT_REGIME_PLANE"
 REGIME_LABELS_PATH_ENV = "RENQUANT_REGIME_LABELS_PATH"
@@ -87,12 +95,88 @@ def load_corpus_manifest(corpus_path: Path | None = None) -> dict | None:
         return None
 
 
+def _require_manifest(corpus_path: Path) -> dict:
+    """Strict manifest load — missing/malformed sidecar is a ValueError.
+
+    The lenient :func:`load_corpus_manifest` (None on any problem) stays for
+    identity STAMPING; consuming the corpus requires this strict path.
+    """
+    p = corpus_manifest_path(corpus_path)
+    if not p.exists():
+        raise ValueError(
+            f"provenance manifest missing at {p}; the production corpus is "
+            f"trusted only together with its publisher sidecar — regenerate "
+            f"both via renquant-backtesting "
+            f"tools/publish_production_regime_labels.py"
+        )
+    try:
+        manifest = json.loads(p.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(
+            f"provenance manifest unreadable at {p}: {exc}"
+        ) from exc
+    sha = manifest.get("series_sha256") if isinstance(manifest, dict) else None
+    if not isinstance(sha, str) or not sha:
+        raise ValueError(
+            f"provenance manifest at {p} lacks a series_sha256 string; "
+            f"malformed sidecar — re-publish the corpus"
+        )
+    return manifest
+
+
+def _verify_series_hash(corpus_path: Path, raw: bytes) -> None:
+    """SHA-256(CSV bytes) must equal the manifest's series_sha256."""
+    expected = _require_manifest(corpus_path)["series_sha256"]
+    actual = hashlib.sha256(raw).hexdigest()
+    if actual != expected:
+        raise ValueError(
+            f"corpus at {corpus_path} fails provenance verification: "
+            f"sha256(csv)={actual} != manifest series_sha256={expected} — "
+            f"stale or tampered corpus; re-publish via renquant-backtesting "
+            f"tools/publish_production_regime_labels.py"
+        )
+
+
+def _validate_series(corpus_path: Path, df: pd.DataFrame) -> None:
+    """Reject invalid planes: null/unknown labels, duplicate/unsorted dates."""
+    regimes = df["regime"]
+    if regimes.isna().any():
+        raise ValueError(
+            f"corpus at {corpus_path} contains "
+            f"{int(regimes.isna().sum())} null regime labels"
+        )
+    unknown = sorted(set(regimes.unique()) - set(RegimeLabel.values()))
+    if unknown:
+        raise ValueError(
+            f"corpus at {corpus_path} contains unknown regime labels "
+            f"{unknown}; valid: {sorted(RegimeLabel.values())}"
+        )
+    dates = df["date"]
+    if dates.duplicated().any():
+        dups = dates[dates.duplicated()].dt.strftime("%Y-%m-%d").unique()
+        raise ValueError(
+            f"corpus at {corpus_path} contains duplicate dates "
+            f"(e.g. {list(dups[:3])})"
+        )
+    if not dates.is_monotonic_increasing:
+        raise ValueError(
+            f"corpus at {corpus_path} dates are not monotonically increasing"
+        )
+
+
 def load_production_regime_labels(path: Path | None = None) -> pd.DataFrame:
     """Load the production-plane per-date label series (date parsed).
 
-    Raises FileNotFoundError with the remediation options when the corpus
-    is absent — the caller decides whether that is fatal (contract gates)
-    or degrades to empty diagnostics (per-regime IC logging).
+    Fail-closed provenance contract (codex review on model#228): a valid
+    manifest sidecar is REQUIRED and SHA-256 of the exact CSV bytes must
+    equal its ``series_sha256`` BEFORE parsing — a stale or tampered corpus
+    must not run under the recorded production chain identity. The parsed
+    series must have unique, monotonically increasing dates and labels from
+    the closed :class:`RegimeLabel` taxonomy. Missing corpus raises
+    FileNotFoundError with the remediation options; every provenance or
+    validity failure raises ValueError. The caller decides whether that is
+    fatal (contract gates) or degrades to empty diagnostics (per-regime IC
+    logging) — never a silent fallback to another plane.
     """
     p = path or resolve_corpus_path()
     if not p.exists():
@@ -103,13 +187,16 @@ def load_production_regime_labels(path: Path | None = None) -> pd.DataFrame:
             f"or set {REGIME_PLANE_ENV}={PLANE_LEGACY_STATELESS} to "
             f"reproduce legacy stateless-plane results"
         )
-    df = pd.read_csv(p)
+    raw = p.read_bytes()
+    _verify_series_hash(p, raw)
+    df = pd.read_csv(io.BytesIO(raw))
     if "date" not in df.columns or "regime" not in df.columns:
         raise ValueError(
             f"corpus at {p} lacks required date/regime columns: "
             f"{sorted(df.columns)}"
         )
     df["date"] = pd.to_datetime(df["date"])
+    _validate_series(p, df)
     return df
 
 
