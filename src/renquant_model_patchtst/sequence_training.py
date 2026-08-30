@@ -547,16 +547,24 @@ class RecordTrainingRunTask(Task):
                 conn.close()
         except Exception as exc:  # noqa: BLE001
             hf.log.warning("record_training_run skipped: %s", exc)
-        # Refresh README
+        # Refresh README — best-effort. The refresher REFUSES (non-zero) when
+        # the README lives in a pinned runtime / detached checkout
+        # (`.subrepo_runtime`), printing the table instead of writing; a
+        # training job never passes --allow-runtime, so a pinned tree is
+        # never mutated from here. Output is captured so the refusal is one
+        # log line rather than a Markdown table in the training log.
         readme_refresh = repo / "scripts" / "refresh_readme_latest_models.py"
         readme = repo / "README.md"
         if readme_refresh.exists() and readme.exists():
             try:
-                subprocess.run(
+                proc = subprocess.run(
                     [sys.executable, str(readme_refresh),
                      "--db", str(db), "--readme", str(readme)],
-                    check=False, timeout=30,
+                    check=False, timeout=30, capture_output=True, text=True,
                 )
+                if proc.returncode != 0:
+                    hf.log.warning("README refresh not applied (rc=%s): %s",
+                                   proc.returncode, proc.stderr.strip())
             except Exception as exc:  # noqa: BLE001
                 hf.log.warning("README refresh skipped: %s", exc)
         return True

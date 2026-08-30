@@ -151,3 +151,114 @@ def test_refresh_db_missing_fails(tmp_path: Path) -> None:
     )
     assert result.returncode != 0
     assert "db not found" in (result.stdout + result.stderr)
+
+
+# --------------------------------------------------------------------------- #
+# Write guard (2026-08-30): a training job must never mutate a pinned runtime
+# checkout. The 2026-08-23 run rewrote README.md inside
+# `RenQuant/.subrepo_runtime/repos/renquant-model/`, dirtying a running tree.
+# --------------------------------------------------------------------------- #
+_ROW = {
+    "run_id": "guard01",
+    "run_date": "2026-08-30T10:00:00Z",
+    "strategy": "renquant_104", "artifact_type": "panel_ltr_xgboost",
+    "oos_mean_ic": 0.012, "n_features": 169,
+    "device": "cpu", "elapsed_sec": 70, "trigger": "scheduled_weekly",
+    "commit_sha": "deadbeef",
+}
+_ORIGINAL = "# foo\n\nUntouched\n"
+
+
+def _run_noraise(db: Path, readme: Path, *extra: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, str(REFRESH), "--db", str(db), "--readme", str(readme), *extra],
+        capture_output=True, text=True, check=False,
+    )
+
+
+def _git(repo: Path, *args: str) -> None:
+    subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@example.com",
+         "-C", str(repo), *args],
+        check=True, capture_output=True, text=True,
+    )
+
+
+def _init_checkout(repo: Path, *, detached: bool) -> Path:
+    """A git checkout holding README.md, committed, on a branch or detached."""
+    repo.mkdir(parents=True)
+    readme = repo / "README.md"
+    readme.write_text(_ORIGINAL)
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-q", "-m", "init")
+    if detached:
+        _git(repo, "checkout", "-q", "--detach", "HEAD")
+    return readme
+
+
+def test_refuses_under_subrepo_runtime(tmp_path: Path) -> None:
+    db = tmp_path / "sim.db"
+    _make_db(db, [_ROW])
+    readme = tmp_path / ".subrepo_runtime" / "repos" / "renquant-model" / "README.md"
+    readme.parent.mkdir(parents=True)
+    readme.write_text(_ORIGINAL)
+    result = _run_noraise(db, readme)
+    assert result.returncode == 2, result.stderr
+    assert "REFUSED" in result.stderr and ".subrepo_runtime" in result.stderr
+    # dry-run fallback: the table is rendered to stdout, nothing is written
+    assert "guard01" in result.stdout
+    assert readme.read_text() == _ORIGINAL
+
+
+def test_refuses_in_detached_pinned_checkout(tmp_path: Path) -> None:
+    db = tmp_path / "sim.db"
+    _make_db(db, [_ROW])
+    readme = _init_checkout(tmp_path / "pinned", detached=True)
+    result = _run_noraise(db, readme)
+    assert result.returncode == 2, result.stderr
+    assert "detached" in result.stderr
+    assert "guard01" in result.stdout
+    assert readme.read_text() == _ORIGINAL
+
+
+def test_writes_in_branch_checkout(tmp_path: Path) -> None:
+    db = tmp_path / "sim.db"
+    _make_db(db, [_ROW])
+    readme = _init_checkout(tmp_path / "dev", detached=False)
+    result = _run_noraise(db, readme)
+    assert result.returncode == 0, result.stderr
+    text = readme.read_text()
+    assert "guard01" in text and "Untouched" in text
+
+
+def test_allow_runtime_overrides_refusal(tmp_path: Path) -> None:
+    db = tmp_path / "sim.db"
+    _make_db(db, [_ROW])
+    readme = tmp_path / ".subrepo_runtime" / "repos" / "renquant-model" / "README.md"
+    readme.parent.mkdir(parents=True)
+    readme.write_text(_ORIGINAL)
+    result = _run_noraise(db, readme, "--allow-runtime")
+    assert result.returncode == 0, result.stderr
+    assert "guard01" in readme.read_text()
+
+
+def test_dry_run_writes_nothing(tmp_path: Path) -> None:
+    db = tmp_path / "sim.db"
+    _make_db(db, [_ROW])
+    readme = tmp_path / "README.md"
+    readme.write_text(_ORIGINAL)
+    result = _run_noraise(db, readme, "--dry-run")
+    assert result.returncode == 0, result.stderr
+    assert "guard01" in result.stdout
+    assert "dry-run" in result.stderr
+    assert readme.read_text() == _ORIGINAL
+
+
+def test_dry_run_wins_over_allow_runtime(tmp_path: Path) -> None:
+    db = tmp_path / "sim.db"
+    _make_db(db, [_ROW])
+    readme = _init_checkout(tmp_path / "dev", detached=False)
+    result = _run_noraise(db, readme, "--dry-run", "--allow-runtime")
+    assert result.returncode == 0, result.stderr
+    assert readme.read_text() == _ORIGINAL

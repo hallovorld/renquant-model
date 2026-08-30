@@ -44,7 +44,11 @@ runtime sentiment-gate behaviour is reproduced during training.
 After the Pipeline returns, the **driver** (`train_gbdt.py`) writes one row to
 `data/sim_runs.db::training_runs` and refreshes the README's
 `<!-- LATEST_MODELS:START/END -->` block via
-`scripts/refresh_readme_latest_models.py`.
+`scripts/refresh_readme_latest_models.py`. The refresher refuses (non-zero,
+table printed to stdout instead) when that README lives under a
+`.subrepo_runtime` path or in a detached (pinned) checkout, so a training run
+never dirties a pinned runtime tree; `--allow-runtime` is an operator-only
+override and `--dry-run` never writes.
 
 ### All hyperparameters
 
