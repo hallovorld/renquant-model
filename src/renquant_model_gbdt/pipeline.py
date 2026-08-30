@@ -147,7 +147,18 @@ class BuildArtifactTask(Task):
             train_run_id=ctx.train_run_id, training_notes=ctx.training_notes,
         )
         # Insertion order matters for byte-identity: base → cutoff → side_label → sentiment.
-        artifact.update(ctx.extra_artifact_fields)
+        # ``metadata`` is merged ONE LEVEL DEEP rather than replaced: the trainer
+        # now stamps measured data/feature cutoff dates under ``metadata``
+        # (orch#906), and a driver that layers its own ``metadata`` entries
+        # (e.g. the orchestrator's training_contract) must not clobber them —
+        # nor vice versa. ``metadata`` is OPERATIONAL/hash-neutral in both
+        # fingerprint implementations, so the merge cannot move the content hash.
+        extra = dict(ctx.extra_artifact_fields)
+        extra_metadata = extra.pop("metadata", None)
+        artifact.update(extra)
+        if isinstance(extra_metadata, dict) and extra_metadata:
+            merged = artifact.setdefault("metadata", {})
+            merged.update(extra_metadata)
         ctx.artifact = artifact
         return True
 

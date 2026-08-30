@@ -243,6 +243,54 @@ def evaluate_walk_forward_cv(
     }
 
 
+def training_data_cutoffs(train: "pd.DataFrame | None", label: str | None) -> dict:
+    """MEASURED data-cutoff stamps for the training frame — computed, never asserted.
+
+    Returns (possibly empty) ``metadata`` entries:
+
+    * ``data_cutoff_date`` — max ``date`` over rows whose ``label`` column is
+      non-null (the last LABELED training row; the freshness axis orch#906 /
+      the rq104 model-freshness monitor's 28-day fast-axis SLA key on).
+    * ``feature_cutoff_date`` — max ``date`` over EVERY row of the frame (the
+      last feature row the trainer consumed). Data-pipeline-health provenance
+      only, never a freshness axis (umbrella #423 round-3: fresh unlabeled
+      rows must not make a stale model read fresh). With the current
+      ``load_panel`` (which drops unlabeled rows) the two coincide BY
+      CONSTRUCTION; both stay independently measured so a loader that keeps
+      unlabeled rows stamps them honestly apart.
+
+    An unusable frame (no ``date`` column, empty, no label-complete row for
+    ``data_cutoff_date``) leaves the corresponding key ABSENT — a consumer
+    that requires the stamp then fails closed, which is the correct refusal;
+    a fabricated date would defeat the entire ``trained_date``-is-not-a-
+    freshness-axis discipline (orch#745/#906).
+    """
+    out: dict[str, Any] = {}
+    if train is None:
+        return out
+    columns = getattr(train, "columns", [])
+    if "date" not in columns or len(train) == 0:
+        return out
+    dates = pd.to_datetime(train["date"], errors="coerce")
+    feature_max = dates.max()
+    if not pd.isna(feature_max):
+        out["feature_cutoff_date"] = pd.Timestamp(feature_max).date().isoformat()
+        out["feature_cutoff_date_rule"] = (
+            "MEASURED max(date) over every training-frame row consumed — "
+            "data-pipeline-health provenance, NOT a freshness axis (#423 r3)")
+    if label and label in columns:
+        labeled = dates[train[label].notna()]
+        if len(labeled):
+            label_max = labeled.max()
+            if not pd.isna(label_max):
+                out["data_cutoff_date"] = pd.Timestamp(label_max).date().isoformat()
+                out["data_cutoff_date_rule"] = (
+                    "MEASURED max(date) over training rows with a non-null "
+                    f"{label!r} label — never asserted from window arithmetic "
+                    "or the wall clock (orch#906)")
+    return out
+
+
 def build_model_artifact(
     booster: Any,
     feat_cols: list[str],
@@ -266,6 +314,17 @@ def build_model_artifact(
 
     Data/contract-side fields (cutoff, side_label, sentiment, fingerprint, smoke)
     are layered on by the driver to preserve byte-identity with the production script (scripts/train_production_model.py).
+
+    One deliberate addition over the production script (orch#906): the trainer
+    itself stamps ``metadata.data_cutoff_date`` / ``metadata.feature_cutoff_date``
+    MEASURED from the training frame it consumed (see
+    :func:`training_data_cutoffs`), because the daily rq104 model-freshness
+    monitor fails closed to UNKNOWN on an artifact with no binding data cutoff
+    ("a fresh ``trained_date`` over stale data is not fresh"). ``metadata`` is
+    classified OPERATIONAL in ``renquant_common.model_fingerprint`` (and
+    denylisted in the legacy 0.8.1 hash), so the stamp is hash-neutral in both
+    fingerprint implementations — the byte-identity that matters (booster math,
+    predictive keys, content hash) is untouched.
     """
     raw_json = bytes(booster.save_raw(raw_format="json")).decode("utf-8")
     artifact = {
@@ -319,4 +378,9 @@ def build_model_artifact(
         artifact["feature_raw_clip_high"] = list(feature_raw_clip_high)
         artifact["feature_raw_clip_fit_split"] = "train"
         artifact["feature_preprocess_version"] = 2
+    # orch#906: the binding data cutoff, MEASURED from the consumed frame. An
+    # unusable frame stamps nothing (fail-closed downstream), never a guess.
+    cutoffs = training_data_cutoffs(train, label_used)
+    if cutoffs:
+        artifact["metadata"] = cutoffs
     return artifact
