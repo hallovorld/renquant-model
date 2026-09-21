@@ -1,5 +1,32 @@
 # 2026-09-15 — calibrator fit: stamp the identity the live runtime presents for an unstamped scorer
 
+STATUS:   delivered, awaiting review — zero reviews at head.
+WHAT:     `_artifact_fingerprint` in fit_calibrator_alpha158_fund.py now
+          stamps an unstamped (pre-schema-v1) served scorer with the same
+          0.8.1-denylist identity the live runtime presents
+          (`_runtime_legacy_identity` calls the shared
+          `stamp_artifact_metadata` shim `PanelScorer.load` already uses),
+          instead of the schema-v1 allowlist hash the fit script computed on
+          its own.
+WHY/DIR:  root cause, reproduced read-only against the served scorer — the
+          fit script and the runtime disagreed on which hash identifies an
+          unstamped artifact (allowlist vs. denylist), so
+          `monthly_calibrator_refresh` failed Step 3b's BINDING GATE on
+          2026-09-01 and will fail the same way on 2026-10-01 without this
+          change; the fifth occurrence of this class despite renquant-model#56
+          already unifying both producers on one `model_content_sha256` (the
+          runtime never calls that function for a legacy artifact at all).
+EVIDENCE: see §4(b) below.
+  artifact:      src/renquant_model_gbdt/fit_calibrator_alpha158_fund.py + tests/test_calibrator_stamps_runtime_identity.py (4 passed on this branch).
+  prod or exp:   exp — fit-script fix; production untouched (the binding gate quarantines, it does not corrupt, on mismatch); takes effect once the umbrella advances its renquant-model pin.
+  existing data: read-only reproduction 2026-09-15 against the live served scorer panel-ltr.alpha158_fund.json — verify_calibrator_scorer_binding.py: live pair pass; simulated fresh fit stamped the old way fail (BINDING MISMATCH); the same fit stamped with the runtime identity pass.
+  best-known?:   yes — anti-vacuity: the same 4 tests run against origin/main's package (isolated copy) = 3 failed, 1 passed; this branch = 4 passed.
+  scope:         src/renquant_model_gbdt/fit_calibrator_alpha158_fund.py and its test file only.
+NEXT:     merge after review; lands live once the umbrella advances its
+          renquant-model pin — the orchestrator ack row for
+          com.renquant.monthly-calibrator-refresh exit 1 (orch#1124) names
+          that pin advance as its clearing condition.
+
 ## Conclusion
 
 `monthly_calibrator_refresh` (umbrella, 1st of the month 03:00) failed on
