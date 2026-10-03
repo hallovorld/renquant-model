@@ -17,9 +17,13 @@ import re
 
 import numpy as np
 import pandas as pd
+import warnings
 from scipy.stats import spearmanr
 
-from renquant_common.model_fingerprint import model_content_sha256
+from renquant_common.model_fingerprint import (
+    model_content_sha256,
+    stamp_artifact_metadata,
+)
 from renquant_model_common.calibrator_quality import flat_region_stats
 from renquant_model_common.global_calibrator import fit_global_calibrator
 from renquant_model_gbdt.feature_transform import transform_feature_frame
@@ -43,13 +47,50 @@ MAX_FLAT_FRACTION = 0.30
 # not re-add a local copy here.
 
 
+def _runtime_legacy_identity(path: Path, payload: dict) -> str | None:
+    """The identity the LIVE RUNTIME presents for an UNSTAMPED (pre-schema-v1)
+    scorer artifact.
+
+    `PanelScorer.load` (renquant-pipeline, kernel/panel_pipeline/panel_scorer.py)
+    stamps its in-memory metadata through
+    `renquant_common.model_fingerprint.stamp_artifact_metadata`, whose
+    `model_content_fingerprint` is the 0.8.1 DENYLIST hash of the payload —
+    not the schema-v1 ALLOWLIST hash `model_content_sha256` returns. The
+    binding check (`_assert_calibrator_matches_scorer`) compares the
+    calibrator's stamp against THAT identity. For a legacy artifact the two
+    hashes never agree (measured 2026-09-15 on the served
+    panel-ltr.alpha158_fund.json: v1 0660bc89… vs runtime 2d5a0288…), so a
+    calibrator stamped with the v1 hash was quarantined on every monthly
+    refresh (2026-09-01 BINDING MISMATCH — the fifth occurrence of the class
+    that renquant-model#56 was meant to end; #56 unified the FUNCTION, but
+    the runtime does not use it for legacy artifacts). Ask the shared shim
+    for the identity the runtime will present instead of guessing which
+    hash it uses. Returns None when the shim cannot compute one (caller
+    falls through to the historical chain).
+    """
+    try:
+        with warnings.catch_warnings():
+            # The shim is deprecated for NEW producers; it is exactly the
+            # runtime's legacy path and the only way to agree with it.
+            warnings.simplefilter("ignore", DeprecationWarning)
+            meta = stamp_artifact_metadata({}, path, payload=payload)
+    except (OSError, ValueError, TypeError):
+        return None
+    identity = meta.get("model_content_fingerprint")
+    return identity if isinstance(identity, str) and identity else None
+
+
 def _artifact_fingerprint(path: Path, payload: dict) -> str:
     try:
         content_fingerprint = model_content_sha256(payload)
     except ValueError:
         content_fingerprint = None
     return (
+        # 1. a schema-v1 STAMPED artifact carries its own identity; use it.
         payload.get("model_content_fingerprint")
+        # 2. an UNSTAMPED (legacy) artifact: the identity the runtime presents.
+        or _runtime_legacy_identity(path, payload)
+        # 3. historical chain (v1 hash of the payload, then file hashes).
         or content_fingerprint
         or payload.get("artifact_fingerprint")
         or payload.get("artifact_sha256")
